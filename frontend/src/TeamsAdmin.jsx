@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Plus, RefreshCw, Save, ShieldCheck, Trash2, UserPlus, UsersRound } from "lucide-react";
 import { api } from "./lib/api";
+import { confirmModal } from "./lib/modal";
 
 function groupedPrivileges(privileges = []) {
   return privileges
@@ -104,7 +105,14 @@ export default function TeamsAdmin() {
   };
 
   const deleteTeam = async () => {
-    if (!selected || !payload.canManageAll || !window.confirm(`Delete team "${selected.name}"?`)) return;
+    if (!selected || !payload.canManageAll) return;
+    const confirmed = await confirmModal({
+      title: "Delete team",
+      message: `Delete team "${selected.name}"? This cannot be undone.`,
+      confirmText: "Delete",
+      danger: true
+    });
+    if (!confirmed) return;
     setError("");
     try {
       await api(`/teams/${selected.id}`, { method: "DELETE" });
