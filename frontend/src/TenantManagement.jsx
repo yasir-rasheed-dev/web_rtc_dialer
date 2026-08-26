@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Briefcase,
   ContactRound,
   CreditCard,
+  Globe,
   LayoutGrid,
   Mail,
+  MapPin,
   Pencil,
   Phone,
   Plus,
@@ -13,15 +16,18 @@ import {
   Table2,
   Trash2,
   UserCog,
-  Users
+  Users,
+  X
 } from "lucide-react";
 
 import Button from "./components/ui/Button";
 import Card from "./components/ui/Card";
+import DatePicker from "./components/ui/DatePicker";
 import EmptyState from "./components/ui/EmptyState";
 import Input from "./components/ui/Input";
 import Modal from "./components/ui/Modal";
 import PageHeader from "./components/ui/PageHeader";
+import Select from "./components/ui/Select";
 import { Skeleton, SkeletonTable } from "./components/ui/Skeleton";
 import { confirmModal } from "./lib/modal";
 import { notifyError, notifySuccess } from "./lib/toast";
@@ -430,34 +436,124 @@ export function RolesAdmin() {
 }
 const CONTACTS_TABLE_PAGE_SIZE = 20;
 const CONTACTS_GRID_BATCH = 24;
-const EMPTY_CONTACT_FORM = { firstName: "", lastName: "", company: "", phone: "", email: "", notes: "" };
+
+const EMPTY_PHONE = { number: "", label: "MOBILE" };
+const EMPTY_ADDRESS = { label: "OTHER", line1: "", line2: "", city: "", state: "", postalCode: "", country: "" };
+const EMPTY_CONTACT_FORM = {
+  firstName: "",
+  lastName: "",
+  nickname: "",
+  email: "",
+  company: "",
+  jobTitle: "",
+  birthdate: "",
+  website: "",
+  source: "OTHER",
+  phones: [{ ...EMPTY_PHONE }],
+  addresses: [],
+  notes: ""
+};
+
+const PHONE_LABEL_OPTIONS = [
+  { value: "MOBILE", label: "Mobile" },
+  { value: "HOME", label: "Home" },
+  { value: "WORK", label: "Work" },
+  { value: "OTHER", label: "Other" }
+];
+const ADDRESS_LABEL_OPTIONS = [
+  { value: "HOME", label: "Home" },
+  { value: "WORK", label: "Work" },
+  { value: "OTHER", label: "Other" }
+];
+const SOURCE_OPTIONS = [
+  { value: "OTHER", label: "Other" },
+  { value: "REFERRAL", label: "Referral" },
+  { value: "WEBSITE", label: "Website" },
+  { value: "ADVERTISEMENT", label: "Advertisement" },
+  { value: "SOCIAL_MEDIA", label: "Social media" },
+  { value: "EVENT", label: "Event" },
+  { value: "IMPORT", label: "Import" }
+];
 
 function contactInitials(first, last) {
   const value = `${(first || "").charAt(0)}${(last || "").charAt(0)}`.toUpperCase();
   return value || "?";
 }
 
+function fieldLabel() {
+  return "flex flex-col gap-1.5 text-xs font-medium text-muted";
+}
+
+function sectionHeading(icon, text) {
+  return (
+    <div className="col-span-2 mt-1 flex items-center gap-2 border-b border-border pb-2 text-[11px] font-extrabold uppercase tracking-wide text-brand first:mt-0">
+      {icon}
+      {text}
+    </div>
+  );
+}
+
 function ContactFormModal({ open, onClose, contact, onSaved }) {
   const [form, setForm] = useState(EMPTY_CONTACT_FORM);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (!open) return;
     setError("");
-    setForm(
-      contact
-        ? {
-            firstName: contact.first_name || "",
-            lastName: contact.last_name || "",
-            company: contact.company || "",
-            phone: contact.phone || "",
-            email: contact.email || "",
-            notes: contact.notes || ""
-          }
-        : EMPTY_CONTACT_FORM
-    );
+
+    if (!contact) {
+      setForm(EMPTY_CONTACT_FORM);
+      return;
+    }
+
+    setDetailLoading(true);
+    api(`/contacts/${contact.id}`)
+      .then((payload) => {
+        const c = payload.contact;
+        setForm({
+          firstName: c.first_name || "",
+          lastName: c.last_name || "",
+          nickname: c.nickname || "",
+          email: c.email || "",
+          company: c.company || "",
+          jobTitle: c.job_title || "",
+          birthdate: c.birthdate ? String(c.birthdate).slice(0, 10) : "",
+          website: c.website || "",
+          source: c.source || "OTHER",
+          phones: (payload.phones || []).length
+            ? payload.phones.map((phone) => ({ number: phone.number, label: phone.label }))
+            : [{ ...EMPTY_PHONE }],
+          addresses: (payload.addresses || []).map((address) => ({
+            label: address.label,
+            line1: address.line1 || "",
+            line2: address.line2 || "",
+            city: address.city || "",
+            state: address.state || "",
+            postalCode: address.postal_code || "",
+            country: address.country || ""
+          })),
+          notes: c.notes || ""
+        });
+      })
+      .catch((requestError) => setError(requestError.message))
+      .finally(() => setDetailLoading(false));
   }, [open, contact]);
+
+  const updatePhone = (index, patch) =>
+    setForm((current) => ({ ...current, phones: current.phones.map((phone, i) => (i === index ? { ...phone, ...patch } : phone)) }));
+  const addPhone = () => setForm((current) => ({ ...current, phones: [...current.phones, { ...EMPTY_PHONE }] }));
+  const removePhone = (index) => setForm((current) => ({ ...current, phones: current.phones.filter((_, i) => i !== index) }));
+
+  const updateAddress = (index, patch) =>
+    setForm((current) => ({
+      ...current,
+      addresses: current.addresses.map((address, i) => (i === index ? { ...address, ...patch } : address))
+    }));
+  const addAddress = () => setForm((current) => ({ ...current, addresses: [...current.addresses, { ...EMPTY_ADDRESS }] }));
+  const removeAddress = (index) =>
+    setForm((current) => ({ ...current, addresses: current.addresses.filter((_, i) => i !== index) }));
 
   const submit = async (event) => {
     event.preventDefault();
@@ -465,14 +561,20 @@ function ContactFormModal({ open, onClose, contact, onSaved }) {
       setError("First name is required");
       return;
     }
+    const phones = form.phones.filter((phone) => phone.number.trim());
+    if (!phones.length) {
+      setError("At least one phone number is required");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
+      const body = { ...form, phones };
       if (contact) {
-        await api(`/contacts/${contact.id}`, { method: "PATCH", body: form });
+        await api(`/contacts/${contact.id}`, { method: "PATCH", body });
         notifySuccess("Contact updated.");
       } else {
-        await api("/contacts", { method: "POST", body: form });
+        await api("/contacts", { method: "POST", body });
         notifySuccess("Contact added.");
       }
       onSaved();
@@ -484,47 +586,179 @@ function ContactFormModal({ open, onClose, contact, onSaved }) {
   };
 
   return (
-    <Modal open={open} onClose={onClose} title={contact ? "Edit contact" : "New contact"}>
-      <form onSubmit={submit} className="grid grid-cols-2 gap-3">
-        <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
-          First name
-          <Input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} autoFocus required />
-        </label>
-        <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
-          Last name
-          <Input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} />
-        </label>
-        <label className="col-span-2 flex flex-col gap-1.5 text-xs font-medium text-muted">
-          Company
-          <Input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
-        </label>
-        <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
-          Phone
-          <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-        </label>
-        <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
-          Email
-          <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-        </label>
-        <label className="col-span-2 flex flex-col gap-1.5 text-xs font-medium text-muted">
-          Notes
-          <textarea
-            rows={3}
-            value={form.notes}
-            onChange={(e) => setForm({ ...form, notes: e.target.value })}
-            className="w-full rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-sm text-text outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/20"
-          />
-        </label>
-        {error && <div className="col-span-2 rounded-lg bg-danger-soft px-3 py-2 text-xs font-medium text-danger">{error}</div>}
-        <div className="col-span-2 mt-1 flex justify-end gap-2">
-          <Button type="button" variant="secondary" size="sm" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" size="sm" loading={busy}>
-            {contact ? "Save changes" : "Add contact"}
-          </Button>
+    <Modal open={open} onClose={onClose} title={contact ? "Edit contact" : "New contact"} width="max-w-2xl">
+      {detailLoading ? (
+        <div className="grid grid-cols-2 gap-3">
+          {Array.from({ length: 8 }).map((_, index) => (
+            <Skeleton key={index} className="h-[52px]" />
+          ))}
         </div>
-      </form>
+      ) : (
+        <form onSubmit={submit} className="grid grid-cols-2 gap-3">
+          {sectionHeading(<ContactRound size={13} />, "Personal information")}
+
+          <label className={fieldLabel()}>
+            First name<span className="text-danger">*</span>
+            <Input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} autoFocus required />
+          </label>
+          <label className={fieldLabel()}>
+            Last name
+            <Input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} />
+          </label>
+          <label className={fieldLabel()}>
+            Nickname
+            <Input value={form.nickname} onChange={(e) => setForm({ ...form, nickname: e.target.value })} />
+          </label>
+          <label className={fieldLabel()}>
+            Email
+            <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+          </label>
+          <label className={`${fieldLabel()} col-span-2`}>
+            Company
+            <Input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
+          </label>
+          <label className={fieldLabel()}>
+            <span className="flex items-center gap-1.5">
+              <Briefcase size={12} />
+              Job title
+            </span>
+            <Input value={form.jobTitle} onChange={(e) => setForm({ ...form, jobTitle: e.target.value })} />
+          </label>
+          <label className={fieldLabel()}>
+            Birthdate
+            <DatePicker value={form.birthdate} onChange={(value) => setForm({ ...form, birthdate: value })} placeholder="Select date" />
+          </label>
+          <label className={`${fieldLabel()} col-span-2`}>
+            <span className="flex items-center gap-1.5">
+              <Globe size={12} />
+              Website
+            </span>
+            <Input value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} placeholder="https://example.com" />
+          </label>
+
+          {sectionHeading(
+            <Phone size={13} />,
+            <>
+              Phone numbers<span className="text-danger">*</span>
+            </>
+          )}
+          <div className="col-span-2 flex flex-col gap-2">
+            {form.phones.map((phone, index) => (
+              <div key={index} className="flex items-center gap-2">
+                <Input
+                  value={phone.number}
+                  onChange={(e) => updatePhone(index, { number: e.target.value })}
+                  placeholder="+1 (555) 000-0000"
+                  className="flex-1"
+                />
+                <Select
+                  className="w-32 shrink-0"
+                  isSearchable={false}
+                  options={PHONE_LABEL_OPTIONS}
+                  value={PHONE_LABEL_OPTIONS.find((option) => option.value === phone.label) || PHONE_LABEL_OPTIONS[0]}
+                  onChange={(option) => updatePhone(index, { label: option.value })}
+                />
+                <button
+                  type="button"
+                  onClick={() => removePhone(index)}
+                  disabled={form.phones.length <= 1}
+                  className="shrink-0 rounded-lg p-2 text-muted hover:bg-danger-soft hover:text-danger disabled:opacity-30"
+                  aria-label="Remove phone number"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            ))}
+            <Button type="button" variant="ghost" size="sm" icon={Plus} onClick={addPhone} className="self-start">
+              Add another number
+            </Button>
+          </div>
+
+          {sectionHeading(<MapPin size={13} />, "Addresses")}
+          <div className="col-span-2 flex flex-col gap-3">
+            {form.addresses.map((address, index) => (
+              <div key={index} className="flex flex-col gap-2 rounded-xl border border-border p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <Select
+                    className="w-32"
+                    isSearchable={false}
+                    options={ADDRESS_LABEL_OPTIONS}
+                    value={ADDRESS_LABEL_OPTIONS.find((option) => option.value === address.label) || ADDRESS_LABEL_OPTIONS[0]}
+                    onChange={(option) => updateAddress(index, { label: option.value })}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeAddress(index)}
+                    className="rounded-lg p-1.5 text-muted hover:bg-danger-soft hover:text-danger"
+                    aria-label="Remove address"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+                <Input
+                  value={address.line1}
+                  onChange={(e) => updateAddress(index, { line1: e.target.value })}
+                  placeholder="Address line 1"
+                />
+                <Input
+                  value={address.line2}
+                  onChange={(e) => updateAddress(index, { line2: e.target.value })}
+                  placeholder="Address line 2 (optional)"
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <Input value={address.city} onChange={(e) => updateAddress(index, { city: e.target.value })} placeholder="City" />
+                  <Input value={address.state} onChange={(e) => updateAddress(index, { state: e.target.value })} placeholder="State" />
+                  <Input
+                    value={address.postalCode}
+                    onChange={(e) => updateAddress(index, { postalCode: e.target.value })}
+                    placeholder="Postal code"
+                  />
+                  <Input
+                    value={address.country}
+                    onChange={(e) => updateAddress(index, { country: e.target.value })}
+                    placeholder="Country"
+                  />
+                </div>
+              </div>
+            ))}
+            <Button type="button" variant="ghost" size="sm" icon={Plus} onClick={addAddress} className="self-start">
+              Add address
+            </Button>
+          </div>
+
+          {sectionHeading(null, "Source")}
+          <label className="col-span-2">
+            <Select
+              isSearchable={false}
+              options={SOURCE_OPTIONS}
+              value={SOURCE_OPTIONS.find((option) => option.value === form.source) || SOURCE_OPTIONS[0]}
+              onChange={(option) => setForm({ ...form, source: option.value })}
+            />
+          </label>
+
+          {sectionHeading(null, "Notes")}
+          <label className="col-span-2">
+            <textarea
+              rows={3}
+              value={form.notes}
+              onChange={(e) => setForm({ ...form, notes: e.target.value })}
+              placeholder="Any additional notes…"
+              className="w-full rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-sm text-text outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/20"
+            />
+          </label>
+
+          {error && <div className="col-span-2 rounded-lg bg-danger-soft px-3 py-2 text-xs font-medium text-danger">{error}</div>}
+
+          <div className="col-span-2 mt-1 flex justify-end gap-2 border-t border-border pt-4">
+            <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" size="sm" icon={Plus} loading={busy}>
+              {contact ? "Save changes" : "Save contact"}
+            </Button>
+          </div>
+        </form>
+      )}
     </Modal>
   );
 }
@@ -541,7 +775,13 @@ function ContactCard({ contact, canEdit, canDelete, onEdit, onDelete, deleting }
             <p className="truncate text-sm font-semibold text-text">
               {contact.first_name} {contact.last_name}
             </p>
-            {contact.company && <p className="truncate text-xs text-muted">{contact.company}</p>}
+            {(contact.job_title || contact.company) && (
+              <p className="truncate text-xs text-muted">
+                {contact.job_title}
+                {contact.job_title && contact.company ? " · " : ""}
+                {contact.company}
+              </p>
+            )}
           </div>
         </div>
         {(canEdit || canDelete) && (

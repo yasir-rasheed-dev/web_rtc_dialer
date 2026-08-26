@@ -39,7 +39,7 @@ export default function Modal({ open, onClose, title, children, width = "max-w-m
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 8 }}
             transition={{ duration: 0.18, ease: "easeOut" }}
-            className={`w-full ${width} rounded-2xl border border-border bg-surface p-6 shadow-card`}
+            className={`flex max-h-[88vh] w-full flex-col overflow-y-auto rounded-2xl border border-border bg-surface p-6 shadow-card ${width}`}
           >
             {title && (
               <div className="mb-4 flex items-center justify-between gap-4">
