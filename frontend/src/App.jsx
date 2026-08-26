@@ -47,7 +47,7 @@ import { useTeamChatUnreadCount } from "./lib/teamChatBadge";
 import GlobalCallOverlay from "./components/ui/GlobalCallOverlay";
 import Softphone from "./pages/softphone/Softphone";
 
-const LazyAutoDialer = lazy(() => import("./AutoDialer"));
+const LazyAutoDialer = lazy(() => import("./pages/auto-dialer/AutoDialer"));
 const LazyOwnerDashboard = lazy(() => import("./pages/owner-dashboard/OwnerDashboard"));
 const LazyTeamsAdmin = lazy(() => import("./TeamsAdmin"));
 const LazyCallLogsPage = lazy(() => import("./pages/calls/CallLogsPage"));
