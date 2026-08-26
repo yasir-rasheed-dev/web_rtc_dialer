@@ -4,33 +4,32 @@ import {
   ArrowUpRight,
   Check,
   ChevronDown,
-  CircleAlert,
-  Clock3,
   Delete as DeleteKey,
   Eye,
   EyeOff,
   Headphones,
-  History,
-  LockKeyhole,
   Mic,
   MicOff,
   Pause,
   Phone,
   PhoneCall,
   PhoneIncoming,
+  PhoneMissed,
   PhoneOff,
+  PhoneOutgoing,
   Play,
   RefreshCw,
   Settings2,
   ShieldCheck,
-  Signal,
   Trash2,
   Wifi,
-  WifiOff
+  WifiOff,
+  X
 } from "lucide-react";
 import { RingnexSipClient } from "./lib/sipClient";
 import {
   formatDuration,
+  formatForDialing,
   initials,
   isValidDialString,
   normalizeDialString
@@ -44,6 +43,11 @@ import {
   saveHistory,
   saveTabPassword
 } from "./lib/storage";
+import Button from "./components/ui/Button";
+import Card from "./components/ui/Card";
+import EmptyState from "./components/ui/EmptyState";
+import Input from "./components/ui/Input";
+import Modal from "./components/ui/Modal";
 
 const KEYPAD = [
   ["1", ""],
@@ -78,6 +82,13 @@ const CALL_LABELS = {
   held: "Call on hold",
   ending: "Ending call"
 };
+
+const HISTORY_TABS = [
+  { id: "all", label: "All", icon: Phone },
+  { id: "incoming", label: "Incoming", icon: PhoneIncoming },
+  { id: "outgoing", label: "Outgoing", icon: PhoneOutgoing },
+  { id: "missed", label: "Missed", icon: PhoneMissed }
+];
 
 function Softphone({ sip = null, permissions = [] }) {
   const can = (key) => permissions.includes(key);
@@ -115,6 +126,13 @@ function Softphone({ sip = null, permissions = [] }) {
   const [conferenceId, setConferenceId] = useState(null);
 const [transferTarget, setTransferTarget] = useState("");
 const [transferStage, setTransferStage] = useState("idle");
+
+  // UI-only state for the redesigned layout (call-history tabs, the audio
+  // settings popover, and a drag-over highlight on the dial input) — none of
+  // it touches SIP/call logic above.
+  const [historyTab, setHistoryTab] = useState("all");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [dialDragOver, setDialDragOver] = useState(false);
 
   const remoteAudioRef = useRef(null);
   const clientRef = useRef(null);
@@ -450,7 +468,11 @@ const [transferStage, setTransferStage] = useState("idle");
     if (!isRegistered) fail("Connect the SIP account before placing a call.");
     if (callStatusRef.current !== "idle") fail("Another call is already in progress.");
 
-    const number = normalizeDialString(rawNumber);
+    // Whatever shape the agent typed/dropped/redialed (bare 10-digit, an 11-digit
+    // number with the leading 1, or already E.164), this puts it into the E.164
+    // form Commio expects on the wire — extensions and DTMF codes pass through
+    // unchanged. See lib/phone.js#formatForDialing.
+    const number = formatForDialing(rawNumber);
     if (!isValidDialString(number)) fail("Enter a valid phone number using digits, +, * or #.");
 
     const party = { number, displayName };
@@ -775,10 +797,7 @@ const addPstnParticipant = async () => {
     saveHistory([]);
   };
 
-  const connectionClass = `status-dot status-${connectionStatus}`;
   const primaryParty = currentParty.displayName || currentParty.number;
-  const secondaryParty = currentParty.displayName ? currentParty.number : "";
-  const secureContext = window.isSecureContext;
   const supportsAudioOutput = Boolean(remoteAudioRef.current?.setSinkId);
 
   const deviceLabel = useMemo(() => {
@@ -790,459 +809,537 @@ const addPstnParticipant = async () => {
     return "Permission not checked";
   }, [deviceStatus, microphones.length]);
 
+  const filteredHistory = useMemo(() => {
+    if (historyTab === "incoming") return history.filter((item) => item.direction === "incoming");
+    if (historyTab === "outgoing") return history.filter((item) => item.direction === "outgoing");
+    if (historyTab === "missed") return history.filter((item) => item.direction === "incoming" && item.outcome === "missed");
+    return history;
+  }, [history, historyTab]);
+
+  const callsToday = useMemo(() => {
+    const todayKey = new Date().toDateString();
+    return history.filter((item) => new Date(item.startedAt).toDateString() === todayKey).length;
+  }, [history]);
+
+  const redialFromHistory = (item) => {
+    if (callStatus === "idle") setDialNumber(item.number);
+  };
+
+  // Lets an agent drag a phone number they've selected anywhere on the page
+  // (a contact, a call-log row) and drop it straight into the dial input —
+  // browsers already support dragging selected text, so this only needs a
+  // drop target, no draggable="true" wiring on the source elements.
+  const handleDialDrop = (event) => {
+    event.preventDefault();
+    setDialDragOver(false);
+    if (callStatus !== "idle") return;
+    const raw = event.dataTransfer.getData("text/plain") || event.dataTransfer.getData("text") || "";
+    const candidate = normalizeDialString(raw);
+    if (candidate) setDialNumber(candidate);
+  };
+
+
   return (
-    <div className="app-shell">
+    <div className="flex h-full min-h-[600px] flex-col gap-4 p-6">
       <audio ref={remoteAudioRef} autoPlay playsInline />
 
-      <header className="topbar">
-        <div className="brand">
-          <div className="brand-mark" aria-hidden="true">RN</div>
-          <div>
-            <strong>Ringnex</strong>
-            <span>Web Dialer</span>
-          </div>
-        </div>
-        <div className="topbar-status">
-          <span className="secure-chip"><LockKeyhole size={14} /> Secure WebRTC</span>
-          <span className={`connection-chip ${connectionStatus}`}>
-            <span className={connectionClass} />
-            {CONNECTION_LABELS[connectionStatus]}
-          </span>
-        </div>
-      </header>
-
-      <main className="workspace">
-        <aside className="left-column">
-          <section className="panel account-panel">
-            <div className="panel-heading">
-              <div>
-                <span className="eyebrow">SIP account</span>
-                <h2>Agent connection</h2>
+      <div className="grid flex-1 grid-cols-1 gap-4 lg:grid-cols-[380px_1fr]">
+        <Card animate={false} className="flex flex-col !p-5">
+          <div className="mb-4 flex items-center justify-between gap-3 border-b border-border pb-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand/10 text-base font-bold text-brand">
+                {initials(config.displayName || config.username)}
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-text">{config.displayName || "Agent"}</p>
+                <p className="truncate text-xs text-muted">{config.username || "—"}</p>
               </div>
-              {isRegistered ? <ShieldCheck className="success-icon" size={22} /> : <Settings2 size={20} />}
             </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <span
+                className={`h-2.5 w-2.5 rounded-full ${
+                  isRegistered ? "bg-success" : connectionStatus === "error" ? "bg-danger" : "bg-muted"
+                }`}
+                title={CONNECTION_LABELS[connectionStatus]}
+              />
+              <button
+                type="button"
+                onClick={() => setSettingsOpen(true)}
+                className="rounded-lg p-1.5 text-muted hover:bg-surface-2 hover:text-text"
+                aria-label="Audio settings"
+              >
+                <Settings2 size={16} />
+              </button>
+            </div>
+          </div>
 
-            <form onSubmit={connect} className="account-form">
-              <label>
-                <span>SIP username</span>
-                <input
+          {/* No tenant-issued SIP identity was provided — a defensive fallback path
+              that never actually renders in the real app (App.jsx only mounts
+              Softphone once session.sip exists), kept so a manual connection is
+              still possible outside that flow. When `sip` is present the agent's
+              extension connects automatically in the background instead. */}
+          {!sip && (
+            <form onSubmit={connect} className="mb-5 flex flex-col gap-3 rounded-xl border border-border p-4">
+              <div className="flex items-center justify-between gap-2">
+                <h1 className="text-sm font-semibold text-text">Agent connection</h1>
+                {isRegistered ? <ShieldCheck size={18} className="text-success" /> : <Settings2 size={16} className="text-muted" />}
+              </div>
+              <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
+                SIP username
+                <Input
                   value={config.username}
                   onChange={(event) => setConfig({ ...config, username: event.target.value })}
                   autoComplete="username"
-                  disabled={settingsLocked || Boolean(sip)}
+                  disabled={settingsLocked}
                   placeholder="webdialer01"
                 />
               </label>
-              <label>
-                <span>SIP password</span>
-                <div className="password-field">
-                  <input
+              <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
+                SIP password
+                <div className="relative">
+                  <Input
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                     autoComplete="current-password"
-                    disabled={settingsLocked || Boolean(sip)}
+                    disabled={settingsLocked}
                     placeholder="Enter SIP password"
+                    className="pr-10"
                   />
                   <button
                     type="button"
-                    className="icon-button"
                     onClick={() => setShowPassword((current) => !current)}
+                    disabled={settingsLocked}
                     aria-label={showPassword ? "Hide password" : "Show password"}
-                    disabled={settingsLocked || Boolean(sip)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-text"
                   >
-                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 </div>
               </label>
-              <label>
-                <span>Display name</span>
-                <input
+              <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
+                Display name
+                <Input
                   value={config.displayName}
                   onChange={(event) => setConfig({ ...config, displayName: event.target.value })}
-                  disabled={settingsLocked || Boolean(sip)}
+                  disabled={settingsLocked}
                   placeholder="Agent name"
                 />
               </label>
 
-              <details className="advanced-settings">
-                <summary>Server settings <ChevronDown size={16} /></summary>
-                <div className="advanced-fields">
-                  <label>
-                    <span>SIP domain</span>
-                    <input
+              <details className="text-xs text-muted">
+                <summary className="cursor-pointer select-none font-medium text-text">Server settings</summary>
+                <div className="mt-2 flex flex-col gap-2">
+                  <label className="flex flex-col gap-1.5">
+                    SIP domain
+                    <Input
                       value={config.domain}
                       onChange={(event) => setConfig({ ...config, domain: event.target.value })}
-                      disabled={settingsLocked || Boolean(sip)}
+                      disabled={settingsLocked}
                       inputMode="url"
                     />
                   </label>
-                  <label>
-                    <span>WebSocket URL</span>
-                    <input
+                  <label className="flex flex-col gap-1.5">
+                    WebSocket URL
+                    <Input
                       value={config.wssUrl}
                       onChange={(event) => setConfig({ ...config, wssUrl: event.target.value })}
-                      disabled={settingsLocked || Boolean(sip)}
+                      disabled={settingsLocked}
                       inputMode="url"
                     />
                   </label>
                 </div>
               </details>
 
-              {!sip && (
-                <label className="check-row">
-                  <input
-                    type="checkbox"
-                    checked={rememberForTab}
-                    onChange={(event) => {
-                      setRememberForTab(event.target.checked);
-                      if (!event.target.checked) saveTabPassword("");
-                    }}
-                    disabled={settingsLocked}
-                  />
-                  <span>Keep password for this tab only</span>
-                </label>
-              )}
-              <p className="field-help">
-                {sip ? "SIP credentials were released for this authenticated session only." : "Use the SIP User password, not the portal password."}
-              </p>
+              <label className="flex items-center gap-2 text-xs text-text">
+                <input
+                  type="checkbox"
+                  checked={rememberForTab}
+                  onChange={(event) => {
+                    setRememberForTab(event.target.checked);
+                    if (!event.target.checked) saveTabPassword("");
+                  }}
+                  disabled={settingsLocked}
+                  className="h-4 w-4 rounded border-border-strong accent-[rgb(var(--rn-blue))]"
+                />
+                Keep password for this tab only
+              </label>
+              <p className="text-[11px] text-muted">Use the SIP User password, not the portal password.</p>
 
               {isRegistered ? (
-                <button type="button" className="button secondary full" onClick={disconnect} disabled={callInProgress}>
-                  <WifiOff size={17} /> Disconnect
-                </button>
+                <Button type="button" variant="secondary" icon={WifiOff} onClick={disconnect} disabled={callInProgress}>
+                  Disconnect
+                </Button>
               ) : (
-                <button
-                  type="submit"
-                  className="button primary full"
-                  disabled={connectionStatus === "connecting" || connectionStatus === "registering"}
-                >
-                  {connectionStatus === "connecting" || connectionStatus === "registering" ? (
-                    <RefreshCw className="spin" size={17} />
-                  ) : (
-                    <Wifi size={17} />
-                  )}
+                <Button type="submit" icon={Wifi} loading={connectionStatus === "connecting" || connectionStatus === "registering"}>
                   {connectionStatus === "connecting" || connectionStatus === "registering" ? "Connecting…" : "Connect account"}
-                </button>
+                </Button>
               )}
             </form>
-          </section>
-
-          <section className="panel history-panel">
-            <div className="panel-heading compact">
-              <div>
-                <span className="eyebrow">On this device</span>
-                <h2>Recent calls</h2>
-              </div>
-              {history.length > 0 && (
-                <button type="button" className="icon-button" onClick={clearHistory} aria-label="Clear call history">
-                  <Trash2 size={17} />
-                </button>
-              )}
-            </div>
-            <div className="history-list">
-              {history.length === 0 ? (
-                <div className="empty-state">
-                  <History size={22} />
-                  <span>Your recent calls will appear here.</span>
-                </div>
-              ) : (
-                history.slice(0, 6).map((item) => (
-                  <button
-                    type="button"
-                    className="history-item"
-                    key={item.id}
-                    onClick={() => {
-                      if (callStatus === "idle") setDialNumber(item.number);
-                    }}
-                  >
-                    <span className={`history-direction ${item.direction}`}>
-                      {item.direction === "incoming" ? <ArrowDownLeft size={16} /> : <ArrowUpRight size={16} />}
-                    </span>
-                    <span className="history-copy">
-                      <strong>{item.displayName || item.number}</strong>
-                      <small>{item.displayName ? item.number : item.outcome}</small>
-                    </span>
-                    <span className="history-meta">
-                      <small>{new Date(item.startedAt).toLocaleDateString([], { month: "short", day: "numeric" })}</small>
-                      <small>{item.duration ? formatDuration(item.duration) : item.outcome}</small>
-                    </span>
-                  </button>
-                ))
-              )}
-            </div>
-          </section>
-        </aside>
-
-        <section className="dialer-card" aria-label="Phone dialer">
-          <div className="call-state-line" aria-live="polite">
-            <span className={`status-dot ${callStatus === "active" ? "status-registered" : ""}`} />
-            {CALL_LABELS[callStatus]}
-          </div>
+          )}
 
           {callInProgress ? (
-            <div className="active-call-view">
-              <div className={`caller-avatar ${callStatus === "incoming" ? "ringing-avatar" : ""}`}>
-                {initials(primaryParty)}
-                {callStatus === "incoming" && <span className="ring-wave wave-one" />}
-                {callStatus === "incoming" && <span className="ring-wave wave-two" />}
-              </div>
-              <div className="caller-copy">
-                <span>{currentParty.displayName || (callStatus === "incoming" ? "Incoming call" : "Calling")}</span>
-                <h1>{currentParty.number || "Unknown caller"}</h1>
-                <p>{callEstablished ? formatDuration(elapsed) : CALL_LABELS[callStatus]}</p>
+            <div className="flex flex-1 flex-col items-center justify-between gap-6 py-2">
+              <div className="flex flex-col items-center gap-3 text-center">
+                <div className="relative flex h-20 w-20 items-center justify-center rounded-full bg-brand/10 text-xl font-bold text-brand">
+                  {callStatus === "incoming" && (
+                    <span className="absolute inset-0 animate-ping rounded-full bg-brand/20" />
+                  )}
+                  <span className="relative">{initials(primaryParty)}</span>
+                </div>
+                <div>
+                  <p className="text-xs text-muted">
+                    {currentParty.displayName || (callStatus === "incoming" ? "Incoming call" : "Calling")}
+                  </p>
+                  <p className="text-lg font-semibold text-text">{currentParty.number || "Unknown caller"}</p>
+                  <p className="mt-0.5 text-xs text-muted">{callEstablished ? formatDuration(elapsed) : CALL_LABELS[callStatus]}</p>
+                </div>
               </div>
 
               {callStatus === "incoming" ? (
-                <div className="incoming-actions">
-                  <button type="button" className="round-action decline" onClick={declineCall} aria-label="Decline call">
-                    <PhoneOff size={25} />
-                    <span>Decline</span>
+                <div className="flex w-full items-center justify-center gap-8">
+                  <button type="button" onClick={declineCall} className="flex flex-col items-center gap-1.5" aria-label="Decline call">
+                    <span className="flex h-14 w-14 items-center justify-center rounded-full bg-danger text-white shadow-card">
+                      <PhoneOff size={22} />
+                    </span>
+                    <span className="text-xs font-medium text-danger">Decline</span>
                   </button>
-                  {can("RECEIVE_CALLS") && <button type="button" className="round-action answer" onClick={answerCall} aria-label="Answer call">
-                    <PhoneIncoming size={25} />
-                    <span>Answer</span>
-                  </button>}
+                  {can("RECEIVE_CALLS") && (
+                    <button type="button" onClick={answerCall} className="flex flex-col items-center gap-1.5" aria-label="Answer call">
+                      <span className="flex h-14 w-14 items-center justify-center rounded-full bg-success text-white shadow-card">
+                        <PhoneIncoming size={22} />
+                      </span>
+                      <span className="text-xs font-medium text-success">Answer</span>
+                    </button>
+                  )}
                 </div>
               ) : (
-                <>
-                  <div className="call-controls">
+                <div className="flex w-full flex-col gap-4">
+                  <div className="grid grid-cols-4 gap-2">
                     <button
                       type="button"
-                      className={`control-button ${muted ? "selected" : ""}`}
                       onClick={toggleMute}
                       disabled={!callEstablished}
+                      className={`flex flex-col items-center gap-1 rounded-xl py-2.5 text-xs font-medium transition-colors disabled:opacity-40 ${
+                        muted ? "bg-brand/10 text-brand" : "bg-surface-2 text-muted hover:text-text"
+                      }`}
                     >
-                      {muted ? <MicOff size={21} /> : <Mic size={21} />}
-                      <span>{muted ? "Unmute" : "Mute"}</span>
+                      {muted ? <MicOff size={18} /> : <Mic size={18} />}
+                      {muted ? "Unmute" : "Mute"}
                     </button>
-                    {can("HOLD_CALL") && <button
-                      type="button"
-                      className={`control-button ${held ? "selected" : ""}`}
-                      onClick={toggleHold}
-                      disabled={!callEstablished}
-                    >
-                      {held ? <Play size={21} /> : <Pause size={21} />}
-                      <span>{held ? "Resume" : "Hold"}</span>
-                    </button>}
-                    {can("BLIND_TRANSFER") && <button
-                      type="button"
-                      className="control-button"
-                      onClick={transferCall}
-                      disabled={!callEstablished}
-                    >
-                      <ArrowUpRight size={21} />
-                      <span>Transfer</span>
-                    </button>}
-                    {can("WARM_TRANSFER") && <button
-  type="button"
-  className="control-button"
-  onClick={startWarmTransfer}
-  disabled={!callEstablished || transferStage !== "idle"}
->
-  <ArrowUpRight size={21} />
-  <span>
-    {transferStage === "idle"
-      ? "Warm Transfer"
-      : "Transferring..."}
-  </span>
-</button>}
-{can("WARM_TRANSFER") && transferStage === "ready" && conferenceId && (
-  <button
-    type="button"
-    className="control-button"
-    onClick={completeWarmTransfer}
-  >
-    <ArrowUpRight size={21} />
-    <span>Complete Transfer</span>
-  </button>
-)}
-{can("ADD_PARTICIPANT") && <button
-  type="button"
-  className="control-button"
-  onClick={addPstnParticipant}
-  disabled={!callEstablished}
->
-  <ArrowUpRight size={21} />
-  <span>Add Participant</span>
-</button>}
-                    <button type="button" className="control-button danger-control" onClick={hangup}>
-                      <PhoneOff size={21} />
-                      <span>Hang up</span>
-                    </button>
+                    {can("HOLD_CALL") && (
+                      <button
+                        type="button"
+                        onClick={toggleHold}
+                        disabled={!callEstablished}
+                        className={`flex flex-col items-center gap-1 rounded-xl py-2.5 text-xs font-medium transition-colors disabled:opacity-40 ${
+                          held ? "bg-brand/10 text-brand" : "bg-surface-2 text-muted hover:text-text"
+                        }`}
+                      >
+                        {held ? <Play size={18} /> : <Pause size={18} />}
+                        {held ? "Resume" : "Hold"}
+                      </button>
+                    )}
+                    {can("BLIND_TRANSFER") && (
+                      <button
+                        type="button"
+                        onClick={transferCall}
+                        disabled={!callEstablished}
+                        className="flex flex-col items-center gap-1 rounded-xl bg-surface-2 py-2.5 text-xs font-medium text-muted transition-colors hover:text-text disabled:opacity-40"
+                      >
+                        <ArrowUpRight size={18} />
+                        Transfer
+                      </button>
+                    )}
+                    {can("WARM_TRANSFER") && (
+                      <button
+                        type="button"
+                        onClick={startWarmTransfer}
+                        disabled={!callEstablished || transferStage !== "idle"}
+                        className="flex flex-col items-center gap-1 rounded-xl bg-surface-2 py-2.5 text-xs font-medium text-muted transition-colors hover:text-text disabled:opacity-40"
+                      >
+                        <ArrowUpRight size={18} />
+                        {transferStage === "idle" ? "Warm" : "Transferring"}
+                      </button>
+                    )}
                   </div>
 
+                  {can("WARM_TRANSFER") && transferStage === "ready" && conferenceId && (
+                    <Button size="sm" onClick={completeWarmTransfer} className="w-full justify-center">
+                      Complete transfer
+                    </Button>
+                  )}
+                  {can("ADD_PARTICIPANT") && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      icon={ArrowUpRight}
+                      onClick={addPstnParticipant}
+                      disabled={!callEstablished}
+                      className="w-full justify-center"
+                    >
+                      Add participant
+                    </Button>
+                  )}
+
+                  <Button variant="danger" icon={PhoneOff} onClick={hangup} className="w-full justify-center">
+                    Hang up
+                  </Button>
+
                   {callEstablished && can("SEND_DTMF") && (
-                    <div className="in-call-keypad" aria-label="DTMF keypad">
+                    <div className="grid grid-cols-3 gap-2 border-t border-border pt-4">
                       {KEYPAD.map(([key, letters]) => (
-                        <button type="button" key={key} onClick={() => pressKey(key)} aria-label={`Send DTMF ${key}`}>
-                          <strong>{key}</strong>
-                          <small>{letters}</small>
+                        <button
+                          type="button"
+                          key={key}
+                          onClick={() => pressKey(key)}
+                          aria-label={`Send DTMF ${key}`}
+                          className="flex flex-col items-center rounded-xl py-2 text-text transition-colors hover:bg-surface-2"
+                        >
+                          <span className="text-base font-semibold">{key}</span>
+                          {letters && <span className="text-[9px] text-muted">{letters}</span>}
                         </button>
                       ))}
                     </div>
                   )}
-                </>
+                </div>
               )}
             </div>
           ) : (
-            <div className="idle-dialer-view">
-              <div className="number-entry">
-                <span>Enter number</span>
-                <div className="number-line">
-                  <input
-                    value={dialNumber}
-                    onChange={(event) => setDialNumber(normalizeDialString(event.target.value))}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") placeCall(event);
-                    }}
-                    inputMode="tel"
-                    autoComplete="tel"
-                    placeholder="+1 555 000 0000"
-                    aria-label="Phone number"
-                  />
+            <div className="flex flex-1 flex-col gap-5">
+              <div
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setDialDragOver(true);
+                }}
+                onDragLeave={() => setDialDragOver(false)}
+                onDrop={handleDialDrop}
+                className={`flex items-center gap-2 rounded-xl border bg-surface-2 px-4 py-3 transition-colors ${
+                  dialDragOver ? "border-brand ring-2 ring-brand/20" : "border-border"
+                }`}
+              >
+                <input
+                  value={dialNumber}
+                  onChange={(event) => setDialNumber(normalizeDialString(event.target.value))}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") placeCall(event);
+                  }}
+                  inputMode="tel"
+                  autoComplete="tel"
+                  placeholder="Enter number…"
+                  aria-label="Phone number"
+                  className="min-w-0 flex-1 bg-transparent font-mono text-base tracking-wide text-text outline-none placeholder:font-sans placeholder:text-muted"
+                />
+                {dialNumber && (
                   <button
                     type="button"
-                    className="backspace-button"
                     onClick={() => setDialNumber((current) => current.slice(0, -1))}
-                    disabled={!dialNumber}
+                    className="shrink-0 text-muted hover:text-text"
                     aria-label="Delete last digit"
                   >
-                    <DeleteKey size={21} />
+                    <DeleteKey size={18} />
                   </button>
-                </div>
+                )}
               </div>
 
-              <div className="keypad" aria-label="Dial pad">
+              <div className="grid grid-cols-3 justify-items-center gap-3">
                 {KEYPAD.map(([key, letters]) => (
-                  <button type="button" key={key} onClick={() => pressKey(key)} aria-label={`Dial ${key}`}>
-                    <strong>{key}</strong>
-                    <small>{letters}</small>
+                  <button
+                    type="button"
+                    key={key}
+                    onClick={() => pressKey(key)}
+                    aria-label={`Dial ${key}`}
+                    className="flex h-16 w-16 flex-col items-center justify-center rounded-full bg-surface-2 text-text transition-colors hover:bg-surface-3 active:scale-95"
+                  >
+                    <span className="text-xl font-semibold">{key}</span>
+                    <span className="text-[9px] font-medium text-muted">{letters}</span>
                   </button>
                 ))}
               </div>
 
               <button
                 type="button"
-                className="call-button"
                 onClick={placeCall}
                 disabled={!can("MAKE_CALLS") || !isRegistered || !isValidDialString(dialNumber)}
                 aria-label="Start call"
+                className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-success text-white shadow-[0_10px_24px_-6px_rgb(var(--rn-green)/0.5)] transition-transform hover:scale-105 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
               >
-                <PhoneCall size={25} />
+                <PhoneCall size={22} />
               </button>
-              <p className="dialer-help">
-                {!can("MAKE_CALLS") ? "Outbound calling is disabled for your role." : isRegistered ? "Calls are routed through your tenant-aware Asterisk setup." : "Connect your SIP account to enable calling."}
+              <p className="text-center text-xs text-muted">
+                {!can("MAKE_CALLS")
+                  ? "Outbound calling is disabled for your role."
+                  : isRegistered
+                    ? "Calls are routed through your tenant-aware Asterisk setup."
+                    : "Connect your SIP account to enable calling."}
               </p>
             </div>
           )}
-        </section>
+        </Card>
 
-        <aside className="right-column">
-          <section className="panel audio-panel">
-            <div className="panel-heading">
-              <div>
-                <span className="eyebrow">Audio</span>
-                <h2>Device setup</h2>
-              </div>
-              <Headphones size={20} />
+        <Card animate={false} className="flex flex-col !p-5">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-text">Call History</h2>
+              <p className="text-xs text-muted">
+                {callsToday} call{callsToday === 1 ? "" : "s"} today
+              </p>
             </div>
-            <div className="device-summary">
-              <span className={`device-icon ${deviceStatus}`}><Mic size={18} /></span>
-              <div>
-                <strong>Microphone</strong>
-                <small>{deviceLabel}</small>
-              </div>
-              {deviceStatus === "ready" && <Check className="success-icon" size={18} />}
-            </div>
-            <button
-              type="button"
-              className="button secondary full"
-              onClick={() => refreshDevices(true)}
-              disabled={callInProgress}
-            >
-              <Mic size={17} /> Check microphone
-            </button>
-            <label className="select-label">
-              <span>Microphone input</span>
-              <select
-                value={microphoneId}
-                onChange={(event) => setMicrophoneId(event.target.value)}
-                disabled={settingsLocked || callInProgress || microphones.length === 0}
+            {history.length > 0 && (
+              <button
+                type="button"
+                onClick={clearHistory}
+                className="rounded-lg p-1.5 text-muted hover:bg-danger-soft hover:text-danger"
+                aria-label="Clear call history"
               >
-                <option value="">System default</option>
-                {microphones.map((device, index) => (
-                  <option value={device.deviceId} key={device.deviceId || index}>
-                    {device.label || `Microphone ${index + 1}`}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="select-label">
-              <span>Speaker output</span>
-              <select
-                value={speakerId}
-                onChange={(event) => selectSpeaker(event.target.value)}
-                disabled={!supportsAudioOutput || speakers.length === 0}
-              >
-                <option value="">System default</option>
-                {speakers.map((device, index) => (
-                  <option value={device.deviceId} key={device.deviceId || index}>
-                    {device.label || `Speaker ${index + 1}`}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <p className="field-help">Disconnect before changing the microphone. Speaker selection depends on browser support.</p>
-          </section>
-
-          <section className="panel system-panel">
-            <div className="panel-heading compact">
-              <div>
-                <span className="eyebrow">Live checks</span>
-                <h2>System status</h2>
-              </div>
-              <Signal size={19} />
-            </div>
-            <ul className="check-list">
-              <li>
-                <span className={`check-mark ${secureContext ? "ok" : "bad"}`}>{secureContext ? <Check size={14} /> : <CircleAlert size={14} />}</span>
-                <span><strong>Secure page</strong><small>{secureContext ? "HTTPS active" : "HTTPS required"}</small></span>
-              </li>
-              <li>
-                <span className={`check-mark ${online ? "ok" : "bad"}`}>{online ? <Check size={14} /> : <CircleAlert size={14} />}</span>
-                <span><strong>Network</strong><small>{online ? "Browser online" : "Browser offline"}</small></span>
-              </li>
-              <li>
-                <span className={`check-mark ${isRegistered ? "ok" : "neutral"}`}>{isRegistered ? <Check size={14} /> : <Clock3 size={14} />}</span>
-                <span><strong>Asterisk SIP</strong><small>{isRegistered ? "Registered" : "Waiting for login"}</small></span>
-              </li>
-            </ul>
-            <div className="endpoint-box">
-              <span>WebSocket endpoint</span>
-              <code>{config.wssUrl}</code>
-            </div>
-          </section>
-
-          <div className="safety-note">
-            <ShieldCheck size={18} />
-            <p><strong>Credential safety</strong><span>Your SIP password is never written into the app bundle or permanent browser storage.</span></p>
+                <Trash2 size={16} />
+              </button>
+            )}
           </div>
-        </aside>
-      </main>
+
+          <div className="mb-3 flex gap-1 border-b border-border">
+            {HISTORY_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setHistoryTab(tab.id)}
+                className={`flex items-center gap-1.5 border-b-2 px-3 pb-2.5 text-sm font-medium transition-colors ${
+                  historyTab === tab.id ? "border-brand text-brand" : "border-transparent text-muted hover:text-text"
+                }`}
+              >
+                <tab.icon size={14} />
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex-1 overflow-y-auto">
+            {filteredHistory.length ? (
+              <div className="flex flex-col divide-y divide-border/60">
+                {filteredHistory.map((item) => {
+                  const missed = item.direction === "incoming" && item.outcome === "missed";
+                  const RowIcon = item.direction === "incoming" ? ArrowDownLeft : ArrowUpRight;
+                  return (
+                    <button
+                      type="button"
+                      key={item.id}
+                      onClick={() => redialFromHistory(item)}
+                      className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-3 text-left transition-colors hover:bg-surface-2"
+                    >
+                      <span
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+                          missed ? "bg-danger-soft text-danger" : "bg-brand/10 text-brand"
+                        }`}
+                      >
+                        <RowIcon size={16} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-text">{item.displayName || item.number}</p>
+                        <p className="truncate text-xs text-muted">
+                          {item.displayName ? item.number : missed ? "Missed" : item.outcome}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="text-xs text-muted">
+                          {new Date(item.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        </p>
+                        {item.duration > 0 && <p className="text-xs text-muted">{formatDuration(item.duration)}</p>}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex flex-1 items-center justify-center py-16">
+                <EmptyState icon={Phone} title="No calls in this category" />
+              </div>
+            )}
+          </div>
+        </Card>
+      </div>
+
+      <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} title="Audio settings">
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center gap-2 text-sm font-semibold text-text">
+            <Headphones size={16} className="text-muted" />
+            Device setup
+          </div>
+
+          <div className="flex items-center gap-3 rounded-xl border border-border p-3">
+            <span
+              className={`flex h-9 w-9 items-center justify-center rounded-full ${
+                deviceStatus === "ready" ? "bg-success-soft text-success" : "bg-surface-3 text-muted"
+              }`}
+            >
+              <Mic size={16} />
+            </span>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-text">Microphone</p>
+              <p className="text-xs text-muted">{deviceLabel}</p>
+            </div>
+            {deviceStatus === "ready" && <Check size={16} className="text-success" />}
+          </div>
+          <Button variant="secondary" icon={Mic} onClick={() => refreshDevices(true)} disabled={callInProgress}>
+            Check microphone
+          </Button>
+
+          <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
+            Microphone input
+            <select
+              value={microphoneId}
+              onChange={(event) => setMicrophoneId(event.target.value)}
+              disabled={settingsLocked || callInProgress || microphones.length === 0}
+              className="w-full rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-sm text-text outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+            >
+              <option value="">System default</option>
+              {microphones.map((device, index) => (
+                <option value={device.deviceId} key={device.deviceId || index}>
+                  {device.label || `Microphone ${index + 1}`}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
+            Speaker output
+            <select
+              value={speakerId}
+              onChange={(event) => selectSpeaker(event.target.value)}
+              disabled={!supportsAudioOutput || speakers.length === 0}
+              className="w-full rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-sm text-text outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+            >
+              <option value="">System default</option>
+              {speakers.map((device, index) => (
+                <option value={device.deviceId} key={device.deviceId || index}>
+                  {device.label || `Speaker ${index + 1}`}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="text-xs text-muted">Disconnect before changing the microphone. Speaker selection depends on browser support.</p>
+
+          <div className="flex items-start gap-2 border-t border-border pt-4 text-xs text-muted">
+            <ShieldCheck size={16} className="mt-0.5 shrink-0 text-muted" />
+            <span>Your SIP password is never written into the app bundle or permanent browser storage.</span>
+          </div>
+        </div>
+      </Modal>
 
       {(error || notice || !online) && (
-        <div className={`toast ${error || !online ? "toast-error" : "toast-success"}`} role="status" aria-live="polite">
+        <div
+          className={`fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-xl border px-4 py-3 text-sm shadow-card ${
+            error || !online ? "border-danger/30 bg-surface text-danger" : "border-success/30 bg-surface text-success"
+          }`}
+          role="status"
+          aria-live="polite"
+        >
           {error || (!online ? "Internet connection lost." : notice)}
-          {error && <button type="button" onClick={() => setError("")} aria-label="Dismiss message">×</button>}
+          {error && (
+            <button type="button" onClick={() => setError("")} aria-label="Dismiss message" className="text-muted hover:text-text">
+              <X size={14} />
+            </button>
+          )}
         </div>
       )}
-
-      <footer>
-        <span>Ringnex Contact Center v1.0</span>
-        <span>Browser calling over WSS + DTLS-SRTP</span>
-        <span>Emergency calling requires separate E911 configuration.</span>
-      </footer>
     </div>
   );
 }

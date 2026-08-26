@@ -10,6 +10,24 @@ export function isValidDialString(value) {
   return /^\+?[0-9*#]{2,32}$/.test(normalizeDialString(value));
 }
 
+// Normalizes a PSTN-bound number to E.164 (+1XXXXXXXXXX) before it's handed
+// to the carrier — Commio expects that shape. Internal extensions and DTMF/
+// service codes (short numbers, *xx#) are left untouched since they never
+// leave the PBX, and anything already carrying a country code (leading "+",
+// or 11 digits starting with "1") is assumed correct as typed.
+export function formatForDialing(value) {
+  const normalized = normalizeDialString(value);
+  if (!normalized || normalized.startsWith("+") || normalized.startsWith("*") || normalized.startsWith("#")) {
+    return normalized;
+  }
+  const digitsOnly = normalized.replace(/[^0-9]/g, "");
+  if (digitsOnly.length === normalized.length) {
+    if (digitsOnly.length === 10) return `+1${digitsOnly}`;
+    if (digitsOnly.length === 11 && digitsOnly.startsWith("1")) return `+${digitsOnly}`;
+  }
+  return normalized;
+}
+
 export function makeSipDestination(value, domain) {
   const number = normalizeDialString(value);
   if (!isValidDialString(number)) {

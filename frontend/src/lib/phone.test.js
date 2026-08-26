@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatDuration,
+  formatForDialing,
   isValidDialString,
   makeSipDestination,
   normalizeDialString
@@ -24,5 +25,25 @@ describe("phone utilities", () => {
 
   it("formats the connected call timer", () => {
     expect(formatDuration(65)).toBe("01:05");
+  });
+
+  it("adds +1 to a bare 10-digit US number before dialing", () => {
+    expect(formatForDialing("7127307170")).toBe("+17127307170");
+  });
+
+  it("adds + to an 11-digit number that already has the 1 prefix", () => {
+    expect(formatForDialing("17127307170")).toBe("+17127307170");
+  });
+
+  it("leaves an already-E.164 number untouched", () => {
+    expect(formatForDialing("+17127307170")).toBe("+17127307170");
+  });
+
+  it("leaves a short internal extension untouched", () => {
+    expect(formatForDialing("1002")).toBe("1002");
+  });
+
+  it("leaves DTMF/service codes untouched", () => {
+    expect(formatForDialing("*123#")).toBe("*123#");
   });
 });
