@@ -1,0 +1,77 @@
+-- Ringnex tenant-owner dashboard, seat accounting and many-to-many team management.
+-- Safe to run after 20260825_saas_foundation.sql.
+
+SET NAMES utf8mb4;
+
+CREATE TABLE IF NOT EXISTS teams (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  tenant_id CHAR(36) NOT NULL,
+  name VARCHAR(120) NOT NULL,
+  description VARCHAR(500) NULL,
+  active TINYINT(1) NOT NULL DEFAULT 1,
+  created_by_user_id CHAR(36) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_teams_tenant_name (tenant_id, name),
+  KEY idx_teams_tenant_active (tenant_id, active)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS team_supervisors (
+  team_id CHAR(36) NOT NULL PRIMARY KEY,
+  tenant_id CHAR(36) NOT NULL,
+  supervisor_user_id CHAR(36) NOT NULL,
+  privileges_json LONGTEXT NULL,
+  assigned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_team_supervisors_tenant (tenant_id),
+  KEY idx_team_supervisors_user (tenant_id, supervisor_user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS team_members (
+  team_id CHAR(36) NOT NULL,
+  tenant_id CHAR(36) NOT NULL,
+  user_id CHAR(36) NOT NULL,
+  active TINYINT(1) NOT NULL DEFAULT 1,
+  added_by_user_id CHAR(36) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (team_id, user_id),
+  KEY idx_team_members_tenant_user (tenant_id, user_id),
+  KEY idx_team_members_team_active (team_id, active)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Existing team_name values are retained for backwards compatibility and migrated into real teams.
+INSERT IGNORE INTO teams (id,tenant_id,name,description,active)
+SELECT UUID(),u.tenant_id,TRIM(u.team_name) COLLATE utf8mb4_general_ci,'Migrated from legacy team assignment',1
+  FROM users u
+ WHERE u.tenant_id IS NOT NULL
+   AND u.team_name IS NOT NULL
+   AND TRIM(u.team_name) COLLATE utf8mb4_general_ci<>''
+   AND TRIM(u.team_name) COLLATE  COLLATE utf8mb4_general_ci <> '' COLLATE utf8mb4_general_ci
+ GROUP BY u.tenant_id,TRIM(u.team_name) COLLATE utf8mb4_general_ci;
+
+INSERT IGNORE INTO team_members (team_id,tenant_id,user_id,active,added_by_user_id)
+SELECT t.id,u.tenant_id,u.id,1,NULL
+  FROM users u
+  JOIN teams t ON t.tenant_id=u.tenant_id AND t.name COLLATE utf8mb4_general_ci = TRIM(u.team_name) COLLATE utf8mb4_general_ci
+  LEFT JOIN roles r ON r.id=u.role_id AND r.tenant_id=u.tenant_id
+ WHERE COALESCE(r.name COLLATE utf8mb4_general_ci,'')<>'Tenant Owner';
+
+INSERT IGNORE INTO team_supervisors (team_id,tenant_id,supervisor_user_id,privileges_json)
+SELECT t.id,t.tenant_id,MIN(u.id),
+       '{"VIEW_TEAM_MEMBERS":true,"ADD_TEAM_MEMBERS":false,"REMOVE_TEAM_MEMBERS":false,"EDIT_TEAM_SETTINGS":false,"VIEW_TEAM_LIVE_CALLS":true,"VIEW_TEAM_CALL_LOGS":true,"VIEW_TEAM_RECORDINGS":true,"VIEW_TEAM_REPORTS":true,"MONITOR_TEAM_CALLS":false,"LISTEN_TEAM_CALLS":false,"WHISPER_TEAM_CALLS":false,"BARGE_TEAM_CALLS":false}'
+  FROM teams t
+  JOIN users u ON u.tenant_id=t.tenant_id AND TRIM(u.team_name) COLLATE utf8mb4_general_ci = t.name COLLATE utf8mb4_general_ci AND u.active=1
+  JOIN roles r ON r.id=u.role_id AND r.tenant_id=u.tenant_id AND r.name COLLATE  COLLATE utf8mb4_general_ci = '' COLLATE utf8mb4_general_ci
+ GROUP BY t.id,t.tenant_id;
+
+-- Tenant Owner is a non-telephony management identity. It keeps reporting/admin rights but not dialer/monitor actions.
+DELETE rp
+  FROM role_permissions rp
+  JOIN roles r ON r.id=rp.role_id
+  JOIN permissions p ON p.id=rp.permission_id
+ WHERE r.name COLLATE  COLLATE utf8mb4_general_ci = '' COLLATE utf8mb4_general_ci
+   AND p.permission_key COLLATE utf8mb4_general_ci IN (
+     'VIEW_DIALER','MAKE_CALLS','RECEIVE_CALLS','HOLD_CALL','SEND_DTMF','BLIND_TRANSFER',
+     'WARM_TRANSFER','ADD_PARTICIPANT','RECORD_CALL','MONITOR_CALLS','LISTEN_LIVE_CALLS',
+     'WHISPER_CALLS','BARGE_CALLS'
+   );

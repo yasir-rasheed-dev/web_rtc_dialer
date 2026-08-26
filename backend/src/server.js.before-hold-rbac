@@ -1,0 +1,1479 @@
+import http from "node:http";
+import fs from "node:fs";
+import path from "node:path";
+import crypto from "node:crypto";
+import express from "express";
+import cors from "cors";
+import helmet from "helmet";
+import { Server as SocketServer } from "socket.io";
+import { config } from "./config.js";
+import { db, healthcheck, audit } from "./db.js";
+import {
+  decryptSipSecret,
+  encryptSipSecret,
+  hashPassword,
+  sanitizeUser,
+  signToken,
+  signSuperAdminToken,
+  verifyPassword,
+  verifyToken
+} from "./security.js";
+import { AmiClient } from "./ami.js";
+import { CallTracker } from "./callTracker.js";
+import { provisionTenantSipAccount, deprovisionSipAccount } from "./sipProvisioning.js";
+import {
+  allocateTenantExtension,
+  assertTenantUserCapacity,
+  createDefaultTenantRoles,
+  hasPermission,
+  loadRolePermissions,
+  normalizeWorkspace,
+  parseJson,
+  releaseTenantExtension,
+  requirePermission,
+  tenantFeatureEnabled,
+  tenantUsageSummary
+} from "./saas.js";
+import { PERMISSIONS } from "./permissions.js";
+
+const app = express();
+app.set("trust proxy", config.trustProxy);
+app.use(helmet({ crossOriginResourcePolicy: { policy: "same-site" } }));
+
+function corsOriginCheck(origin, callback) {
+  if (!origin || config.frontendOrigins.includes(origin)) return callback(null, true);
+  return callback(new Error(`Origin not allowed: ${origin}`));
+}
+
+app.use(cors({ origin: corsOriginCheck, credentials: false }));
+app.use(express.json({ limit: "512kb" }));
+
+const server = http.createServer(app);
+const io = new SocketServer(server, {
+  path: "/socket.io",
+  cors: { origin: corsOriginCheck, methods: ["GET", "POST"] }
+});
+const ami = new AmiClient(config.ami);
+const tracker = new CallTracker(io, config.recordingRoot);
+let amiConnected = false;
+const loginAttempts = new Map();
+
+function asyncRoute(handler) {
+  return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
+}
+
+function bearer(req) {
+  const value = req.headers.authorization || "";
+  return value.startsWith("Bearer ") ? value.slice(7) : "";
+}
+
+function normalizeDid(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, "");
+  return digits.length >= 7 && digits.length <= 15 ? digits : null;
+}
+
+function nullableLimit(value, unlimited = false) {
+  if (unlimited === true || String(unlimited).toLowerCase() === "true") return null;
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) throw new Error("Plan limits must be zero or a positive integer");
+  return parsed;
+}
+
+function legacyRoleForRoleName(roleName) {
+  if (["Tenant Owner", "Tenant Admin"].includes(roleName)) return "ADMIN";
+  if (roleName === "Supervisor") return "SUPERVISOR";
+  return "AGENT";
+}
+
+async function syncAgentDid(sipUsername, callerIdNumber) {
+  if (!sipUsername || !callerIdNumber) return;
+  await ami.action({ Action: "DBPut", Family: "ringnex_did", Key: sipUsername, Val: callerIdNumber });
+}
+
+async function clearAgentDid(sipUsername) {
+  if (!sipUsername) return;
+  await ami.action({ Action: "DBDel", Family: "ringnex_did", Key: sipUsername });
+}
+
+const ASTERISK_TELEPHONY_PERMISSIONS = Object.freeze([
+  "MAKE_CALLS",
+  "RECEIVE_CALLS",
+  "HOLD_CALL",
+  "SEND_DTMF",
+  "BLIND_TRANSFER",
+  "WARM_TRANSFER",
+  "ADD_PARTICIPANT",
+  "RECORD_CALL",
+  "MONITOR_CALLS",
+  "LISTEN_LIVE_CALLS",
+  "WHISPER_CALLS",
+  "BARGE_CALLS"
+]);
+
+async function syncAgentAsteriskPermissions({
+  sipUsername,
+  roleId,
+  tenant,
+  active = true
+}) {
+  if (!sipUsername) return;
+
+  const tenantId = tenant?.tenant_id || tenant?.id || null;
+  let permissionSourceEnabled = Boolean(active);
+
+  if (permissionSourceEnabled && roleId && tenantId) {
+    const [roleRows] = await db.execute(
+      "SELECT active FROM roles WHERE id=? AND tenant_id=? LIMIT 1",
+      [roleId, tenantId]
+    );
+    permissionSourceEnabled = Number(roleRows[0]?.active) === 1;
+  }
+
+  const permissions = permissionSourceEnabled
+    ? await loadRolePermissions(roleId, tenant)
+    : [];
+
+  for (const permission of ASTERISK_TELEPHONY_PERMISSIONS) {
+    const value = permissions.includes(permission) ? "1" : "0";
+
+    await ami.action({
+      Action: "DBPut",
+      Family: "ringnex_perm",
+      Key: `${sipUsername}/${permission}`,
+      Val: value
+    });
+
+    // Temporary backwards-compatible alias while the live dialplan
+    // still reads ringnex_make_calls for MAKE_CALLS.
+    if (permission === "MAKE_CALLS") {
+      await ami.action({
+        Action: "DBPut",
+        Family: "ringnex_make_calls",
+        Key: sipUsername,
+        Val: value
+      });
+    }
+  }
+}
+
+async function syncRoleAsteriskPermissions({
+  tenantId,
+  roleId,
+  tenant
+}) {
+  let tenantContext = tenant;
+
+  if (!tenantContext) {
+    const [tenantRows] = await db.execute(
+      "SELECT id,features_json FROM tenants WHERE id=? LIMIT 1",
+      [tenantId]
+    );
+    tenantContext = tenantRows[0];
+  }
+
+  if (!tenantContext) return;
+
+  const [users] = await db.execute(
+    `SELECT sip_username,active
+       FROM users
+      WHERE tenant_id=? AND role_id=? AND sip_username IS NOT NULL`,
+    [tenantId, roleId]
+  );
+
+  for (const user of users) {
+    await syncAgentAsteriskPermissions({
+      sipUsername: user.sip_username,
+      roleId,
+      tenant: tenantContext,
+      active: Number(user.active) === 1
+    });
+  }
+}
+
+async function syncTenantAsteriskPermissions(tenantId) {
+  const [tenantRows] = await db.execute(
+    "SELECT id,features_json FROM tenants WHERE id=? LIMIT 1",
+    [tenantId]
+  );
+
+  const tenant = tenantRows[0];
+  if (!tenant) return;
+
+  const [users] = await db.execute(
+    `SELECT sip_username,role_id,active
+       FROM users
+      WHERE tenant_id=? AND sip_username IS NOT NULL`,
+    [tenantId]
+  );
+
+  for (const user of users) {
+    await syncAgentAsteriskPermissions({
+      sipUsername: user.sip_username,
+      roleId: user.role_id,
+      tenant,
+      active: Number(user.active) === 1
+    });
+  }
+}
+async function syncAllAsteriskMappings() {
+  const [tenants] = await db.execute(`SELECT id,status,features_json FROM tenants`);
+  for (const tenant of tenants) {
+    await syncTenantRouting({ tenantId: tenant.id, status: tenant.status });
+  }
+  const [users] = await db.execute(
+    `SELECT tenant_id,sip_username,extension,caller_id_number,role_id
+       FROM users WHERE sip_username IS NOT NULL AND extension IS NOT NULL AND active=1`
+  );
+  for (const user of users) {
+    await syncTenantRouting({
+      tenantId: user.tenant_id,
+      sipUsername: user.sip_username,
+      extension: user.extension,
+      status: tenants.find((tenant) => tenant.id === user.tenant_id)?.status || "INACTIVE"
+    });
+    if (user.caller_id_number) await syncAgentDid(user.sip_username, user.caller_id_number);
+
+    const tenant = tenants.find((item) => item.id === user.tenant_id);
+    await syncAgentAsteriskPermissions({
+      sipUsername: user.sip_username,
+      roleId: user.role_id,
+      tenant
+    });
+  }
+}
+
+async function syncTenantRouting({ tenantId, sipUsername, extension, status = "ACTIVE" }) {
+  if (!tenantId) return;
+  await ami.action({ Action: "DBPut", Family: "ringnex_tenant_status", Key: tenantId, Val: status });
+  if (sipUsername) {
+    await ami.action({ Action: "DBPut", Family: "ringnex_tenant", Key: sipUsername, Val: tenantId });
+  }
+  if (sipUsername && extension) {
+    await ami.action({
+      Action: "DBPut",
+      Family: "ringnex_ext",
+      Key: `${tenantId}/${extension}`,
+      Val: sipUsername
+    });
+  }
+}
+
+async function resolveTenantDid(tenantId, value) {
+  const digits = normalizeDid(value);
+  if (!digits) return null;
+  const candidates = [digits, `+${digits}`];
+  const [rows] = await db.query(
+    `SELECT id, number, assigned_user_id, status
+       FROM tenant_dids
+      WHERE tenant_id=? AND number IN (?,?) AND status <> 'DISABLED'
+      LIMIT 1`,
+    [tenantId, ...candidates]
+  );
+  return rows[0] || null;
+}
+
+async function loadTenantUser(userId) {
+  const [rows] = await db.execute(
+    `SELECT u.id, u.tenant_id, u.email, u.name, u.role, u.role_id,
+            u.sip_username, u.sip_secret_ciphertext, u.extension, u.caller_id_number,
+            u.team_name, u.status, u.active,
+            r.name AS role_name, r.active AS role_active,
+            t.name AS tenant_name, t.workspace, t.status AS tenant_status,
+            t.features_json, t.price_per_user, t.max_users, t.outbound_minutes, t.inbound_minutes,
+            t.extension_start, t.next_extension, t.timezone
+       FROM users u
+       JOIN tenants t ON t.id=u.tenant_id
+       LEFT JOIN roles r ON r.id=u.role_id AND r.tenant_id=u.tenant_id
+      WHERE u.id=? LIMIT 1`,
+    [userId]
+  );
+  const user = rows[0];
+  if (!user || !user.active || user.role_active === 0) return null;
+  if (!["ACTIVE", "TRIAL"].includes(user.tenant_status)) return null;
+  user.permissions = await loadRolePermissions(user.role_id, user);
+  return user;
+}
+
+const authenticate = asyncRoute(async (req, res, next) => {
+  const token = bearer(req);
+  if (!token) return res.status(401).json({ error: "Authentication required" });
+  let claims;
+  try {
+    claims = verifyToken(token);
+  } catch {
+    return res.status(401).json({ error: "Session expired or invalid" });
+  }
+  if (claims.scope !== "tenant") return res.status(401).json({ error: "Invalid tenant session" });
+  const user = await loadTenantUser(claims.sub);
+  if (!user) return res.status(401).json({ error: "Account or workspace is disabled" });
+  req.user = user;
+  req.tenant = {
+    id: user.tenant_id,
+    name: user.tenant_name,
+    workspace: user.workspace,
+    status: user.tenant_status,
+    featuresJson: parseJson(user.features_json, {}),
+    pricePerUser: user.price_per_user,
+    maxUsers: user.max_users,
+    outboundMinutes: user.outbound_minutes,
+    inboundMinutes: user.inbound_minutes,
+    extensionStart: user.extension_start,
+    nextExtension: user.next_extension,
+    timezone: user.timezone
+  };
+  next();
+});
+
+const authenticateSuperAdmin = asyncRoute(async (req, res, next) => {
+  const token = bearer(req);
+  if (!token) return res.status(401).json({ error: "Authentication required" });
+  let claims;
+  try {
+    claims = verifyToken(token);
+  } catch {
+    return res.status(401).json({ error: "Session expired or invalid" });
+  }
+  if (claims.scope !== "super-admin") return res.status(401).json({ error: "Invalid Super Admin session" });
+  const [rows] = await db.execute(
+    `SELECT id,email,name,active FROM super_admins WHERE id=? LIMIT 1`,
+    [claims.sub]
+  );
+  if (!rows[0]?.active) return res.status(401).json({ error: "Super Admin account is disabled" });
+  req.superAdmin = rows[0];
+  next();
+});
+
+function authPayload(user) {
+  const safe = sanitizeUser(user);
+  return {
+    user: safe,
+    tenant: {
+      id: user.tenant_id,
+      name: user.tenant_name,
+      workspace: user.workspace,
+      status: user.tenant_status,
+      timezone: user.timezone,
+      limits: {
+        maxUsers: user.max_users,
+        outboundMinutes: user.outbound_minutes,
+        inboundMinutes: user.inbound_minutes
+      }
+    },
+    role: { id: user.role_id, name: user.role_name || user.role || "User" },
+    permissions: user.permissions || [],
+    sip: user.sip_username
+      ? {
+          username: user.sip_username,
+          password: decryptSipSecret(user.sip_secret_ciphertext),
+          extension: user.extension,
+          displayName: user.name,
+          domain: config.publicSipDomain,
+          wssUrl: config.publicWssUrl
+        }
+      : null
+  };
+}
+
+app.get("/api/health", asyncRoute(async (_req, res) => {
+  const database = await healthcheck();
+  res.json({ ok: database, database, ami: amiConnected, time: new Date().toISOString() });
+}));
+
+// ---------------------------
+// Super Admin / Product Owner
+// ---------------------------
+app.post("/api/super-admin/auth/login", asyncRoute(async (req, res) => {
+  const email = String(req.body.email || "").trim().toLowerCase();
+  const password = String(req.body.password || "");
+  const [rows] = await db.execute(
+    `SELECT id,email,name,password_hash,active FROM super_admins WHERE email=? LIMIT 1`,
+    [email]
+  );
+  const admin = rows[0];
+  if (!admin || !admin.active || !(await verifyPassword(password, admin.password_hash))) {
+    return res.status(401).json({ error: "Invalid email or password" });
+  }
+  await db.execute("UPDATE super_admins SET last_login_at=UTC_TIMESTAMP() WHERE id=?", [admin.id]);
+  res.json({
+    token: signSuperAdminToken(admin),
+    admin: { id: admin.id, email: admin.email, name: admin.name }
+  });
+}));
+
+app.get("/api/super-admin/auth/session", authenticateSuperAdmin, (req, res) => {
+  res.json({ admin: req.superAdmin });
+});
+
+app.get("/api/super-admin/overview", authenticateSuperAdmin, asyncRoute(async (_req, res) => {
+  const [[summary]] = await db.execute(
+    `SELECT COUNT(*) AS totalTenants,
+            SUM(status='ACTIVE') AS activeTenants,
+            SUM(status='TRIAL') AS trialTenants,
+            SUM(status='INACTIVE') AS inactiveTenants,
+            SUM(status='SUSPENDED') AS suspendedTenants
+       FROM tenants`
+  );
+  const [[users]] = await db.execute("SELECT COUNT(*) AS totalUsers, SUM(active=1) AS activeUsers FROM users");
+  const [[carrier]] = await db.execute(
+    `SELECT COALESCE(SUM(cost),0) AS carrierCost
+       FROM carrier_cdrs
+      WHERE started_at >= DATE_FORMAT(UTC_TIMESTAMP(), '%Y-%m-01')`
+  );
+  const [tenants] = await db.execute(
+    `SELECT t.id,t.name,t.workspace,t.status,t.price_per_user,t.max_users,t.outbound_minutes,t.inbound_minutes,
+            t.extension_start,t.timezone,p.name AS plan_name,
+            COUNT(u.id) AS users,
+            SUM(u.active=1) AS active_users
+       FROM tenants t
+       LEFT JOIN pricing_plans p ON p.id=t.plan_id
+       LEFT JOIN users u ON u.tenant_id=t.id
+      GROUP BY t.id
+      ORDER BY t.created_at DESC`
+  );
+  res.json({
+    summary: {
+      ...summary,
+      totalUsers: users.totalUsers,
+      activeUsers: users.activeUsers,
+      carrierCost: carrier.carrierCost
+    },
+    tenants
+  });
+}));
+
+app.get("/api/super-admin/plans", authenticateSuperAdmin, asyncRoute(async (_req, res) => {
+  const [plans] = await db.execute("SELECT * FROM pricing_plans ORDER BY active DESC, name ASC");
+  res.json({ plans: plans.map((plan) => ({ ...plan, features: parseJson(plan.features_json, {}) })) });
+}));
+
+app.post("/api/super-admin/plans", authenticateSuperAdmin, asyncRoute(async (req, res) => {
+  const id = crypto.randomUUID();
+  const name = String(req.body.name || "").trim();
+  const code = normalizeWorkspace(req.body.code || name);
+  if (!name || !code) return res.status(400).json({ error: "Plan name is required" });
+  const features = req.body.features && typeof req.body.features === "object" ? req.body.features : { ALL: true };
+  await db.execute(
+    `INSERT INTO pricing_plans
+      (id,code,name,description,price_per_user,max_users,outbound_minutes,inbound_minutes,features_json,active)
+     VALUES (?,?,?,?,?,?,?,?,?,1)`,
+    [
+      id,
+      code,
+      name,
+      String(req.body.description || "").trim() || null,
+      Number(req.body.pricePerUser || 0),
+      nullableLimit(req.body.maxUsers, req.body.unlimitedUsers),
+      nullableLimit(req.body.outboundMinutes, req.body.unlimitedOutbound),
+      nullableLimit(req.body.inboundMinutes, req.body.unlimitedInbound),
+      JSON.stringify(features)
+    ]
+  );
+  res.status(201).json({ id });
+}));
+
+app.patch("/api/super-admin/plans/:id", authenticateSuperAdmin, asyncRoute(async (req, res) => {
+  const [rows] = await db.execute("SELECT * FROM pricing_plans WHERE id=? LIMIT 1", [req.params.id]);
+  const plan = rows[0];
+  if (!plan) return res.status(404).json({ error: "Plan not found" });
+  const features = req.body.features === undefined ? plan.features_json : JSON.stringify(req.body.features || {});
+  await db.execute(
+    `UPDATE pricing_plans SET name=?,description=?,price_per_user=?,max_users=?,outbound_minutes=?,inbound_minutes=?,features_json=?,active=? WHERE id=?`,
+    [
+      req.body.name ?? plan.name,
+      req.body.description ?? plan.description,
+      req.body.pricePerUser === undefined ? plan.price_per_user : Number(req.body.pricePerUser),
+      req.body.maxUsers === undefined && req.body.unlimitedUsers === undefined ? plan.max_users : nullableLimit(req.body.maxUsers, req.body.unlimitedUsers),
+      req.body.outboundMinutes === undefined && req.body.unlimitedOutbound === undefined ? plan.outbound_minutes : nullableLimit(req.body.outboundMinutes, req.body.unlimitedOutbound),
+      req.body.inboundMinutes === undefined && req.body.unlimitedInbound === undefined ? plan.inbound_minutes : nullableLimit(req.body.inboundMinutes, req.body.unlimitedInbound),
+      features,
+      req.body.active === undefined ? plan.active : Number(Boolean(req.body.active)),
+      req.params.id
+    ]
+  );
+  res.status(204).end();
+}));
+
+app.get("/api/super-admin/tenants", authenticateSuperAdmin, asyncRoute(async (_req, res) => {
+  const [tenants] = await db.execute(
+    `SELECT t.*, p.name AS plan_name,
+            (SELECT COUNT(*) FROM users u WHERE u.tenant_id=t.id AND u.active=1) AS active_users
+       FROM tenants t LEFT JOIN pricing_plans p ON p.id=t.plan_id
+      ORDER BY t.created_at DESC`
+  );
+  res.json({ tenants: tenants.map((tenant) => ({ ...tenant, features: parseJson(tenant.features_json, {}) })) });
+}));
+
+app.post("/api/super-admin/tenants", authenticateSuperAdmin, asyncRoute(async (req, res) => {
+  const id = crypto.randomUUID();
+  const name = String(req.body.name || "").trim();
+  const workspace = normalizeWorkspace(req.body.workspace || name);
+  const ownerName = String(req.body.ownerName || "").trim();
+  const ownerEmail = String(req.body.ownerEmail || "").trim().toLowerCase();
+  const ownerPassword = String(req.body.ownerPassword || "");
+  const extensionStart = Number(req.body.extensionStart || 1001);
+  if (!name || !workspace || !ownerName || !ownerEmail) {
+    return res.status(400).json({ error: "Company, workspace and owner details are required" });
+  }
+  if (!Number.isInteger(extensionStart) || extensionStart < 100) {
+    return res.status(400).json({ error: "Extension start number must be at least 100" });
+  }
+
+  let plan = null;
+  if (req.body.planId) {
+    const [planRows] = await db.execute("SELECT * FROM pricing_plans WHERE id=? AND active=1 LIMIT 1", [req.body.planId]);
+    plan = planRows[0] || null;
+    if (!plan) return res.status(400).json({ error: "Selected pricing plan is not available" });
+  }
+
+  const effective = {
+    pricePerUser: req.body.pricePerUser === undefined ? Number(plan?.price_per_user || 0) : Number(req.body.pricePerUser),
+    maxUsers: req.body.maxUsers === undefined && req.body.unlimitedUsers === undefined
+      ? plan?.max_users ?? null
+      : nullableLimit(req.body.maxUsers, req.body.unlimitedUsers),
+    outboundMinutes: req.body.outboundMinutes === undefined && req.body.unlimitedOutbound === undefined
+      ? plan?.outbound_minutes ?? null
+      : nullableLimit(req.body.outboundMinutes, req.body.unlimitedOutbound),
+    inboundMinutes: req.body.inboundMinutes === undefined && req.body.unlimitedInbound === undefined
+      ? plan?.inbound_minutes ?? null
+      : nullableLimit(req.body.inboundMinutes, req.body.unlimitedInbound),
+    featuresJson: JSON.stringify(req.body.features || parseJson(plan?.features_json, { ALL: true }))
+  };
+
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    await connection.execute(
+      `INSERT INTO tenants
+        (id,name,workspace,status,plan_id,price_per_user,max_users,outbound_minutes,inbound_minutes,features_json,
+         extension_start,next_extension,timezone,country,billing_cycle)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [
+        id,
+        name,
+        workspace,
+        req.body.status || "ACTIVE",
+        plan?.id || null,
+        effective.pricePerUser,
+        effective.maxUsers,
+        effective.outboundMinutes,
+        effective.inboundMinutes,
+        effective.featuresJson,
+        extensionStart,
+        extensionStart,
+        String(req.body.timezone || "UTC"),
+        String(req.body.country || "").trim() || null,
+        req.body.billingCycle === "ANNIVERSARY" ? "ANNIVERSARY" : "CALENDAR_MONTH"
+      ]
+    );
+
+    const roleIds = await createDefaultTenantRoles(connection, id);
+    const ownerId = crypto.randomUUID();
+    await connection.execute(
+      `INSERT INTO users
+        (id,tenant_id,email,name,role,role_id,password_hash,team_name,status,active)
+       VALUES (?,?,?,?,?,?,?,?, 'OFFLINE',1)`,
+      [ownerId, id, ownerEmail, ownerName, "ADMIN", roleIds["Tenant Owner"], await hashPassword(ownerPassword), "Administration"]
+    );
+
+    const dids = Array.isArray(req.body.dids) ? req.body.dids : [];
+    for (const did of dids) {
+      const digits = normalizeDid(did);
+      if (!digits) continue;
+      await connection.execute(
+        `INSERT INTO tenant_dids (id,tenant_id,number,status) VALUES (?,?,?,'AVAILABLE')`,
+        [crypto.randomUUID(), id, digits]
+      );
+    }
+    await connection.commit();
+
+    try {
+      await syncTenantRouting({ tenantId: id, status: req.body.status || "ACTIVE" });
+    } catch (error) {
+      console.error("Tenant Asterisk status sync failed:", error.message);
+    }
+
+    res.status(201).json({ id, workspace, ownerEmail });
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}));
+
+app.patch("/api/super-admin/tenants/:id", authenticateSuperAdmin, asyncRoute(async (req, res) => {
+  const [rows] = await db.execute("SELECT * FROM tenants WHERE id=? LIMIT 1", [req.params.id]);
+  const tenant = rows[0];
+  if (!tenant) return res.status(404).json({ error: "Tenant not found" });
+  const status = req.body.status ?? tenant.status;
+  const allowedStatuses = ["TRIAL", "ACTIVE", "INACTIVE", "SUSPENDED", "CANCELLED"];
+  if (!allowedStatuses.includes(status)) return res.status(400).json({ error: "Invalid tenant status" });
+  await db.execute(
+    `UPDATE tenants SET name=?,status=?,plan_id=?,price_per_user=?,max_users=?,outbound_minutes=?,inbound_minutes=?,features_json=?,timezone=? WHERE id=?`,
+    [
+      req.body.name ?? tenant.name,
+      status,
+      req.body.planId === undefined ? tenant.plan_id : req.body.planId || null,
+      req.body.pricePerUser === undefined ? tenant.price_per_user : Number(req.body.pricePerUser),
+      req.body.maxUsers === undefined && req.body.unlimitedUsers === undefined ? tenant.max_users : nullableLimit(req.body.maxUsers, req.body.unlimitedUsers),
+      req.body.outboundMinutes === undefined && req.body.unlimitedOutbound === undefined ? tenant.outbound_minutes : nullableLimit(req.body.outboundMinutes, req.body.unlimitedOutbound),
+      req.body.inboundMinutes === undefined && req.body.unlimitedInbound === undefined ? tenant.inbound_minutes : nullableLimit(req.body.inboundMinutes, req.body.unlimitedInbound),
+      req.body.features === undefined ? tenant.features_json : JSON.stringify(req.body.features || {}),
+      req.body.timezone ?? tenant.timezone,
+      req.params.id
+    ]
+  );
+  try {
+    await syncTenantRouting({ tenantId: tenant.id, status });
+    await syncTenantAsteriskPermissions(tenant.id);
+  } catch (error) {
+    console.error("Tenant Asterisk status sync failed:", error.message);
+  }
+  res.status(204).end();
+}));
+
+app.post("/api/super-admin/tenants/:id/dids", authenticateSuperAdmin, asyncRoute(async (req, res) => {
+  const number = normalizeDid(req.body.number);
+  if (!number) return res.status(400).json({ error: "Valid DID is required" });
+  const [tenantRows] = await db.execute("SELECT id FROM tenants WHERE id=?", [req.params.id]);
+  if (!tenantRows[0]) return res.status(404).json({ error: "Tenant not found" });
+  const id = crypto.randomUUID();
+  await db.execute(
+    `INSERT INTO tenant_dids (id,tenant_id,number,label,status) VALUES (?,?,?,?, 'AVAILABLE')`,
+    [id, req.params.id, number, String(req.body.label || "").trim() || null]
+  );
+  res.status(201).json({ id, number });
+}));
+
+app.get("/api/super-admin/tenants/:id/usage", authenticateSuperAdmin, asyncRoute(async (req, res) => {
+  const [rows] = await db.execute("SELECT * FROM tenants WHERE id=? LIMIT 1", [req.params.id]);
+  const tenant = rows[0];
+  if (!tenant) return res.status(404).json({ error: "Tenant not found" });
+  const usage = await tenantUsageSummary(tenant.id);
+  const [[seats]] = await db.execute("SELECT COUNT(*) AS activeUsers FROM users WHERE tenant_id=? AND active=1", [tenant.id]);
+  res.json({
+    tenant: { id: tenant.id, name: tenant.name, workspace: tenant.workspace },
+    usage,
+    activeUsers: Number(seats.activeUsers || 0),
+    estimatedSeatRevenue: Number(seats.activeUsers || 0) * Number(tenant.price_per_user || 0),
+    limits: {
+      maxUsers: tenant.max_users,
+      outboundMinutes: tenant.outbound_minutes,
+      inboundMinutes: tenant.inbound_minutes
+    }
+  });
+}));
+
+// ---------------------------
+// Tenant authentication
+// ---------------------------
+app.post("/api/auth/login", asyncRoute(async (req, res) => {
+  const attemptKey = `${req.ip}:${String(req.body.workspace || "legacy").toLowerCase()}`;
+  const attempt = loginAttempts.get(attemptKey) || { count: 0, resetAt: Date.now() + 15 * 60 * 1000 };
+  if (Date.now() > attempt.resetAt) {
+    attempt.count = 0;
+    attempt.resetAt = Date.now() + 15 * 60 * 1000;
+  }
+  if (attempt.count >= 8) {
+    res.setHeader("Retry-After", Math.ceil((attempt.resetAt - Date.now()) / 1000));
+    return res.status(429).json({ error: "Too many login attempts; try again later" });
+  }
+
+  const workspace = normalizeWorkspace(req.body.workspace || "legacy");
+  const email = String(req.body.email || "").trim().toLowerCase();
+  const password = String(req.body.password || "");
+  const [rows] = await db.execute(
+    `SELECT u.id,u.password_hash
+       FROM users u JOIN tenants t ON t.id=u.tenant_id
+      WHERE t.workspace=? AND u.email=? LIMIT 1`,
+    [workspace, email]
+  );
+  const candidate = rows[0];
+  const user = candidate ? await loadTenantUser(candidate.id) : null;
+  if (!user || !(await verifyPassword(password, candidate.password_hash))) {
+    attempt.count += 1;
+    loginAttempts.set(attemptKey, attempt);
+    return res.status(401).json({ error: "Invalid workspace, email or password" });
+  }
+
+  loginAttempts.delete(attemptKey);
+  await db.execute("UPDATE users SET last_login_at=UTC_TIMESTAMP() WHERE id=?", [user.id]);
+  await audit(user.id, "AUTH_LOGIN", "user", user.id, { ip: req.ip, workspace }, user.tenant_id);
+  res.json({ token: signToken(user), ...authPayload(user) });
+}));
+
+app.get("/api/auth/session", authenticate, (req, res) => res.json(authPayload(req.user)));
+
+app.post("/api/auth/logout", authenticate, asyncRoute(async (req, res) => {
+  await audit(req.user.id, "AUTH_LOGOUT", "user", req.user.id, { ip: req.ip }, req.user.tenant_id);
+  res.status(204).end();
+}));
+
+// ---------------------------
+// Dynamic RBAC
+// ---------------------------
+app.get("/api/permissions", authenticate, requirePermission("VIEW_ROLES", "MANAGE_ROLES"), (_req, res) => {
+  res.json({ permissions: PERMISSIONS });
+});
+
+app.get("/api/roles", authenticate, requirePermission("VIEW_ROLES", "MANAGE_ROLES", "VIEW_AGENTS", "MANAGE_AGENTS"), asyncRoute(async (req, res) => {
+  const [roles] = await db.execute(
+    `SELECT id,name,description,is_system,active,created_at FROM roles WHERE tenant_id=? ORDER BY is_system DESC,name ASC`,
+    [req.user.tenant_id]
+  );
+  for (const role of roles) {
+    role.permissions = await loadRolePermissions(role.id, req.user);
+  }
+  res.json({ roles });
+}));
+
+app.post("/api/roles", authenticate, requirePermission("MANAGE_ROLES"), asyncRoute(async (req, res) => {
+  const name = String(req.body.name || "").trim();
+  const description = String(req.body.description || "").trim() || null;
+  if (!name) return res.status(400).json({ error: "Role name is required" });
+  const requested = [...new Set(Array.isArray(req.body.permissions) ? req.body.permissions.map(String) : [])];
+  const allowedKeys = requested.filter((key) => PERMISSIONS.some((item) => item.key === key) && tenantFeatureEnabled(req.user, key));
+  const id = crypto.randomUUID();
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    await connection.execute(
+      `INSERT INTO roles (id,tenant_id,name,description,is_system,active) VALUES (?,?,?,?,0,1)`,
+      [id, req.user.tenant_id, name, description]
+    );
+    if (allowedKeys.length) {
+      const [permissionRows] = await connection.query(
+        `SELECT id FROM permissions WHERE permission_key IN (${allowedKeys.map(() => "?").join(",")})`,
+        allowedKeys
+      );
+      for (const permission of permissionRows) {
+        await connection.execute("INSERT INTO role_permissions (role_id,permission_id) VALUES (?,?)", [id, permission.id]);
+      }
+    }
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+  await audit(req.user.id, "ROLE_CREATE", "role", id, { name, permissions: allowedKeys }, req.user.tenant_id);
+  res.status(201).json({ id });
+}));
+
+app.patch("/api/roles/:id", authenticate, requirePermission("MANAGE_ROLES"), asyncRoute(async (req, res) => {
+  const [rows] = await db.execute("SELECT * FROM roles WHERE id=? AND tenant_id=? LIMIT 1", [req.params.id, req.user.tenant_id]);
+  const role = rows[0];
+  if (!role) return res.status(404).json({ error: "Role not found" });
+  if (role.is_system && (req.body.name !== undefined || req.body.permissions !== undefined)) {
+    return res.status(409).json({ error: "System role name and permissions are protected; create a custom role instead" });
+  }
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    await connection.execute(
+      "UPDATE roles SET name=?,description=?,active=? WHERE id=? AND tenant_id=?",
+      [req.body.name ?? role.name, req.body.description ?? role.description, req.body.active === undefined ? role.active : Number(Boolean(req.body.active)), role.id, req.user.tenant_id]
+    );
+    if (req.body.permissions !== undefined) {
+      const requested = [...new Set(Array.isArray(req.body.permissions) ? req.body.permissions.map(String) : [])]
+        .filter((key) => PERMISSIONS.some((item) => item.key === key) && tenantFeatureEnabled(req.user, key));
+      await connection.execute("DELETE FROM role_permissions WHERE role_id=?", [role.id]);
+      if (requested.length) {
+        const [permissionRows] = await connection.query(
+          `SELECT id FROM permissions WHERE permission_key IN (${requested.map(() => "?").join(",")})`, requested
+        );
+        for (const permission of permissionRows) {
+          await connection.execute("INSERT INTO role_permissions (role_id,permission_id) VALUES (?,?)", [role.id, permission.id]);
+        }
+      }
+    }
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+
+  try {
+    await syncRoleAsteriskPermissions({
+      tenantId: req.user.tenant_id,
+      roleId: role.id,
+      tenant: req.user
+    });
+  } catch (error) {
+    console.error("Role Asterisk permission sync failed:", error.message);
+  }
+
+  res.status(204).end();
+}));
+
+app.delete("/api/roles/:id", authenticate, requirePermission("MANAGE_ROLES"), asyncRoute(async (req, res) => {
+  const [rows] = await db.execute("SELECT * FROM roles WHERE id=? AND tenant_id=? LIMIT 1", [req.params.id, req.user.tenant_id]);
+  const role = rows[0];
+  if (!role) return res.status(404).json({ error: "Role not found" });
+  if (role.is_system) return res.status(409).json({ error: "System roles cannot be deleted" });
+  const [[usage]] = await db.execute("SELECT COUNT(*) AS total FROM users WHERE tenant_id=? AND role_id=?", [req.user.tenant_id, role.id]);
+  if (Number(usage.total) > 0) return res.status(409).json({ error: `${usage.total} users currently use this role` });
+  await db.execute("DELETE FROM role_permissions WHERE role_id=?", [role.id]);
+  await db.execute("DELETE FROM roles WHERE id=? AND tenant_id=?", [role.id, req.user.tenant_id]);
+  res.status(204).end();
+}));
+
+// ---------------------------
+// Tenant users / agents
+// ---------------------------
+app.get("/api/users", authenticate, requirePermission("VIEW_AGENTS", "MANAGE_AGENTS", "MONITOR_CALLS"), asyncRoute(async (req, res) => {
+  const params = [req.user.tenant_id];
+  let where = "WHERE u.tenant_id=?";
+  if (req.user.role_name === "Supervisor") {
+    where += " AND u.team_name=?";
+    params.push(req.user.team_name);
+  }
+  const [rows] = await db.execute(
+    `SELECT u.id,u.tenant_id,u.email,u.name,u.role,u.role_id,u.sip_username,u.extension,u.caller_id_number,
+            u.team_name,u.status,u.active,u.last_login_at,u.created_at,r.name AS role_name
+       FROM users u LEFT JOIN roles r ON r.id=u.role_id
+       ${where}
+      ORDER BY u.active DESC,u.name ASC`,
+    params
+  );
+  res.json({ users: rows.map(sanitizeUser) });
+}));
+
+app.post("/api/users", authenticate, requirePermission("MANAGE_AGENTS"), asyncRoute(async (req, res) => {
+  await assertTenantUserCapacity(req.user.tenant_id);
+  const id = crypto.randomUUID();
+  const email = String(req.body.email || "").trim().toLowerCase();
+  const name = String(req.body.name || "").trim();
+  const password = String(req.body.password || "");
+  const roleId = String(req.body.roleId || "").trim();
+  const teamName = String(req.body.teamName || "Default").trim() || "Default";
+  const generateSipAccount = req.body.generateSipAccount === true || String(req.body.generateSipAccount || "").toLowerCase() === "true";
+  if (!email || !name || !roleId) return res.status(400).json({ error: "Name, email and role are required" });
+
+  const [roleRows] = await db.execute("SELECT * FROM roles WHERE id=? AND tenant_id=? AND active=1 LIMIT 1", [roleId, req.user.tenant_id]);
+  const role = roleRows[0];
+  if (!role) return res.status(400).json({ error: "Selected role is not available in this workspace" });
+
+  let callerIdNumber = null;
+  let didRecord = null;
+  if (req.body.callerIdNumber) {
+    didRecord = await resolveTenantDid(req.user.tenant_id, req.body.callerIdNumber);
+    if (!didRecord) return res.status(400).json({ error: "Selected DID is not assigned to this workspace" });
+    if (didRecord.assigned_user_id) return res.status(409).json({ error: "Selected DID is already assigned to another user" });
+    callerIdNumber = didRecord.number;
+  }
+
+  let generatedSip = null;
+  let extension = null;
+  let userInserted = false;
+  try {
+    if (generateSipAccount) {
+      extension = await allocateTenantExtension(req.user.tenant_id, id);
+      generatedSip = await provisionTenantSipAccount({
+        tenantId: req.user.tenant_id,
+        extension,
+        displayName: name
+      });
+    }
+
+    await db.execute(
+      `INSERT INTO users
+        (id,tenant_id,email,name,role,role_id,password_hash,sip_username,sip_secret_ciphertext,extension,caller_id_number,team_name,status,active)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'OFFLINE',1)`,
+      [
+        id,
+        req.user.tenant_id,
+        email,
+        name,
+        legacyRoleForRoleName(role.name),
+        role.id,
+        await hashPassword(password),
+        generatedSip?.sipUsername || null,
+        generatedSip?.sipPassword ? encryptSipSecret(generatedSip.sipPassword) : null,
+        extension,
+        callerIdNumber,
+        teamName
+      ]
+    );
+    userInserted = true;
+
+    if (didRecord) {
+      await db.execute(
+        `UPDATE tenant_dids SET assigned_user_id=?,status='ASSIGNED' WHERE id=? AND tenant_id=?`,
+        [id, didRecord.id, req.user.tenant_id]
+      );
+    }
+
+    if (generatedSip) {
+      try {
+        await syncTenantRouting({
+          tenantId: req.user.tenant_id,
+          sipUsername: generatedSip.sipUsername,
+          extension,
+          status: req.user.tenant_status
+        });
+        if (callerIdNumber) await syncAgentDid(generatedSip.sipUsername, callerIdNumber);
+
+        await syncAgentAsteriskPermissions({
+          sipUsername: generatedSip.sipUsername,
+          roleId: role.id,
+          tenant: req.user,
+          active: true
+        });
+      } catch (error) {
+        console.error("Asterisk mapping sync failed after user creation:", error.message);
+      }
+    }
+  } catch (error) {
+    if (userInserted) await db.execute("DELETE FROM users WHERE id=? AND tenant_id=?", [id, req.user.tenant_id]).catch(() => undefined);
+    if (generatedSip?.sipUsername) await deprovisionSipAccount(generatedSip.sipUsername).catch(() => undefined);
+    if (extension) await releaseTenantExtension(req.user.tenant_id, id).catch(() => undefined);
+    if (didRecord) await db.execute("UPDATE tenant_dids SET assigned_user_id=NULL,status='AVAILABLE' WHERE id=?", [didRecord.id]).catch(() => undefined);
+    throw error;
+  }
+
+  await audit(req.user.id, "USER_CREATE", "user", id, {
+    email,
+    roleId: role.id,
+    roleName: role.name,
+    sipUsername: generatedSip?.sipUsername || null,
+    extension,
+    callerIdNumber,
+    sipGenerated: Boolean(generatedSip)
+  }, req.user.tenant_id);
+
+  res.status(201).json({
+    id,
+    sipUsername: generatedSip?.sipUsername || null,
+    extension,
+    sipGenerated: Boolean(generatedSip)
+  });
+}));
+
+app.patch("/api/users/:id", authenticate, requirePermission("MANAGE_AGENTS"), asyncRoute(async (req, res) => {
+  const [rows] = await db.execute("SELECT * FROM users WHERE id=? AND tenant_id=? LIMIT 1", [req.params.id, req.user.tenant_id]);
+  const current = rows[0];
+  if (!current) return res.status(404).json({ error: "User not found" });
+
+  let roleId = current.role_id;
+  let legacyRole = current.role;
+  if (req.body.roleId !== undefined) {
+    const [roleRows] = await db.execute("SELECT * FROM roles WHERE id=? AND tenant_id=? AND active=1 LIMIT 1", [req.body.roleId, req.user.tenant_id]);
+    if (!roleRows[0]) return res.status(400).json({ error: "Selected role is not available in this workspace" });
+    roleId = roleRows[0].id;
+    legacyRole = legacyRoleForRoleName(roleRows[0].name);
+  }
+
+  let callerIdNumber = current.caller_id_number;
+  if (req.body.callerIdNumber !== undefined) {
+    const requested = String(req.body.callerIdNumber || "").trim();
+    if (!requested) {
+      if (current.caller_id_number) {
+        await db.execute(
+          `UPDATE tenant_dids SET assigned_user_id=NULL,status='AVAILABLE'
+            WHERE tenant_id=? AND assigned_user_id=?`,
+          [req.user.tenant_id, current.id]
+        );
+      }
+      callerIdNumber = null;
+    } else {
+      const did = await resolveTenantDid(req.user.tenant_id, requested);
+      if (!did) return res.status(400).json({ error: "Selected DID is not assigned to this workspace" });
+      if (did.assigned_user_id && did.assigned_user_id !== current.id) {
+        return res.status(409).json({ error: "Selected DID is already assigned to another user" });
+      }
+      await db.execute(
+        `UPDATE tenant_dids SET assigned_user_id=NULL,status='AVAILABLE'
+          WHERE tenant_id=? AND assigned_user_id=? AND id<>?`,
+        [req.user.tenant_id, current.id, did.id]
+      );
+      await db.execute("UPDATE tenant_dids SET assigned_user_id=?,status='ASSIGNED' WHERE id=?", [current.id, did.id]);
+      callerIdNumber = did.number;
+    }
+  }
+
+  const updates = {
+    name: req.body.name ?? current.name,
+    role_id: roleId,
+    role: legacyRole,
+    caller_id_number: callerIdNumber,
+    team_name: req.body.teamName ?? current.team_name,
+    active: req.body.active === undefined ? current.active : Number(Boolean(req.body.active)),
+    password_hash: req.body.password ? await hashPassword(String(req.body.password)) : current.password_hash
+  };
+
+  if (!Number(current.active) && Number(updates.active)) {
+    await assertTenantUserCapacity(req.user.tenant_id);
+  }
+
+  await db.execute(
+    `UPDATE users SET name=?,role=?,role_id=?,caller_id_number=?,team_name=?,active=?,password_hash=?
+      WHERE id=? AND tenant_id=?`,
+    [
+      updates.name,
+      updates.role,
+      updates.role_id,
+      updates.caller_id_number,
+      updates.team_name,
+      updates.active,
+      updates.password_hash,
+      current.id,
+      req.user.tenant_id
+    ]
+  );
+
+  if (current.sip_username) {
+    try {
+      if (updates.caller_id_number) await syncAgentDid(current.sip_username, updates.caller_id_number);
+      else if (current.caller_id_number) await clearAgentDid(current.sip_username);
+
+      await syncAgentAsteriskPermissions({
+        sipUsername: current.sip_username,
+        roleId: updates.role_id,
+        tenant: req.user,
+        active: Number(updates.active) === 1
+      });
+    } catch (error) { console.error("Agent Asterisk sync failed:", error.message); }
+  }
+
+  await audit(req.user.id, "USER_UPDATE", "user", current.id, {
+    roleId: updates.role_id,
+    active: updates.active,
+    callerIdNumber: updates.caller_id_number
+  }, req.user.tenant_id);
+  res.status(204).end();
+}));
+
+app.post("/api/agent/status", authenticate, asyncRoute(async (req, res) => {
+  const status = String(req.body.status || "").toUpperCase();
+  if (!["READY", "PAUSED", "WRAP_UP", "OFFLINE"].includes(status)) return res.status(400).json({ error: "Invalid agent status" });
+  await db.execute("UPDATE users SET status=? WHERE id=? AND tenant_id=?", [status, req.user.id, req.user.tenant_id]);
+  const payload = { tenantId: req.user.tenant_id, userId: req.user.id, agent: req.user.sip_username, status, updatedAt: new Date().toISOString() };
+  io.to(`tenant:${req.user.tenant_id}:live`).emit("agent:status", payload);
+  if (req.user.team_name) io.to(`tenant:${req.user.tenant_id}:team:${req.user.team_name}`).emit("agent:status", payload);
+  res.json(payload);
+}));
+
+// ---------------------------
+// DIDs and contacts
+// ---------------------------
+app.get("/api/dids", authenticate, requirePermission("VIEW_DIDS", "MANAGE_DIDS", "MANAGE_AGENTS"), asyncRoute(async (req, res) => {
+  const [rows] = await db.execute(
+    `SELECT d.id,d.number,d.label,d.status,d.assigned_user_id,u.name AS assigned_user_name
+       FROM tenant_dids d LEFT JOIN users u ON u.id=d.assigned_user_id AND u.tenant_id=d.tenant_id
+      WHERE d.tenant_id=? ORDER BY d.number ASC`,
+    [req.user.tenant_id]
+  );
+  res.json({ dids: rows });
+}));
+
+app.get("/api/contacts", authenticate, requirePermission("VIEW_CONTACTS"), asyncRoute(async (req, res) => {
+  const search = String(req.query.search || "").slice(0, 80);
+  const term = `%${search}%`;
+  const [rows] = await db.execute(
+    `SELECT id,first_name,last_name,company,phone,email,notes,created_at,updated_at
+       FROM contacts
+      WHERE tenant_id=? AND (?='' OR first_name LIKE ? OR last_name LIKE ? OR company LIKE ? OR phone LIKE ? OR email LIKE ?)
+      ORDER BY first_name,last_name LIMIT 500`,
+    [req.user.tenant_id, search, term, term, term, term, term]
+  );
+  res.json({ contacts: rows });
+}));
+
+app.post("/api/contacts", authenticate, requirePermission("CREATE_CONTACTS"), asyncRoute(async (req, res) => {
+  const firstName = String(req.body.firstName || "").trim();
+  if (!firstName) return res.status(400).json({ error: "First name is required" });
+  const id = crypto.randomUUID();
+  await db.execute(
+    `INSERT INTO contacts (id,tenant_id,owner_user_id,first_name,last_name,company,phone,email,notes)
+     VALUES (?,?,?,?,?,?,?,?,?)`,
+    [
+      id, req.user.tenant_id, req.user.id, firstName,
+      String(req.body.lastName || "").trim() || null,
+      String(req.body.company || "").trim() || null,
+      String(req.body.phone || "").trim() || null,
+      String(req.body.email || "").trim().toLowerCase() || null,
+      String(req.body.notes || "").slice(0, 4000) || null
+    ]
+  );
+  res.status(201).json({ id });
+}));
+
+app.patch("/api/contacts/:id", authenticate, requirePermission("EDIT_CONTACTS"), asyncRoute(async (req, res) => {
+  const [rows] = await db.execute("SELECT * FROM contacts WHERE id=? AND tenant_id=? LIMIT 1", [req.params.id, req.user.tenant_id]);
+  const contact = rows[0];
+  if (!contact) return res.status(404).json({ error: "Contact not found" });
+  await db.execute(
+    `UPDATE contacts SET first_name=?,last_name=?,company=?,phone=?,email=?,notes=? WHERE id=? AND tenant_id=?`,
+    [
+      req.body.firstName ?? contact.first_name,
+      req.body.lastName ?? contact.last_name,
+      req.body.company ?? contact.company,
+      req.body.phone ?? contact.phone,
+      req.body.email ?? contact.email,
+      req.body.notes ?? contact.notes,
+      contact.id,
+      req.user.tenant_id
+    ]
+  );
+  res.status(204).end();
+}));
+
+app.delete("/api/contacts/:id", authenticate, requirePermission("DELETE_CONTACTS"), asyncRoute(async (req, res) => {
+  const [result] = await db.execute("DELETE FROM contacts WHERE id=? AND tenant_id=?", [req.params.id, req.user.tenant_id]);
+  if (!result.affectedRows) return res.status(404).json({ error: "Contact not found" });
+  res.status(204).end();
+}));
+
+// ---------------------------
+// Calls, recordings, reports
+// ---------------------------
+app.get("/api/calls", authenticate, requirePermission("VIEW_CALL_LOGS"), asyncRoute(async (req, res) => {
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const pageSize = Math.min(100, Math.max(10, Number(req.query.pageSize) || 25));
+  const params = [req.user.tenant_id];
+  let where = "WHERE c.tenant_id=?";
+  const canViewTenantCalls = hasPermission(req.user, "VIEW_REPORTS") || hasPermission(req.user, "MONITOR_CALLS") || hasPermission(req.user, "MANAGE_AGENTS");
+  if (!canViewTenantCalls) {
+    where += " AND c.agent_user_id=?";
+    params.push(req.user.id);
+  } else if (req.user.role_name === "Supervisor") {
+    where += " AND (c.agent_user_id IN (SELECT id FROM users WHERE tenant_id=? AND team_name=?) OR c.agent_user_id IS NULL)";
+    params.push(req.user.tenant_id, req.user.team_name);
+  }
+  if (req.query.from) { where += " AND c.started_at>=?"; params.push(`${req.query.from} 00:00:00`); }
+  if (req.query.to) { where += " AND c.started_at<DATE_ADD(?,INTERVAL 1 DAY)"; params.push(`${req.query.to} 00:00:00`); }
+  if (req.query.search) {
+    where += " AND (c.from_number LIKE ? OR c.to_number LIKE ? OR c.agent_sip_username LIKE ?)";
+    const term = `%${String(req.query.search).slice(0, 64)}%`;
+    params.push(term, term, term);
+  }
+  const [[count]] = await db.execute(`SELECT COUNT(*) AS total FROM calls c ${where}`, params);
+  const [rows] = await db.execute(
+    `SELECT c.id,c.linkedid,c.agent_sip_username,c.direction,c.from_number,c.to_number,c.status,
+            c.disposition,c.started_at,c.answered_at,c.ended_at,c.duration_sec,c.billable_sec,
+            c.hangup_cause,c.recording_name
+       FROM calls c ${where} ORDER BY c.started_at DESC LIMIT ? OFFSET ?`,
+    [...params, pageSize, (page - 1) * pageSize]
+  );
+  res.json({ rows, page, pageSize, total: count.total });
+}));
+
+app.patch("/api/calls/:id", authenticate, requirePermission("EDIT_CALL_DISPOSITION"), asyncRoute(async (req, res) => {
+  const [rows] = await db.execute("SELECT agent_user_id FROM calls WHERE id=? AND tenant_id=? LIMIT 1", [req.params.id, req.user.tenant_id]);
+  const call = rows[0];
+  if (!call) return res.status(404).json({ error: "Call not found" });
+  const canEditAny = hasPermission(req.user, "VIEW_REPORTS") || hasPermission(req.user, "MONITOR_CALLS") || hasPermission(req.user, "MANAGE_AGENTS");
+  if (!canEditAny && call.agent_user_id !== req.user.id) return res.status(403).json({ error: "Not your call" });
+  const disposition = String(req.body.disposition || "").slice(0, 64) || null;
+  const notes = String(req.body.notes || "").slice(0, 2000) || null;
+  await db.execute("UPDATE calls SET disposition=?,notes=? WHERE id=? AND tenant_id=?", [disposition, notes, req.params.id, req.user.tenant_id]);
+  await audit(req.user.id, "CALL_DISPOSITION", "call", req.params.id, { disposition }, req.user.tenant_id);
+  res.status(204).end();
+}));
+
+app.get("/api/recordings/:callId", authenticate, requirePermission("VIEW_RECORDINGS"), asyncRoute(async (req, res) => {
+  const [rows] = await db.execute(
+    `SELECT c.id,c.agent_user_id,c.recording_path,c.recording_name,u.team_name
+       FROM calls c LEFT JOIN users u ON u.id=c.agent_user_id
+      WHERE c.id=? AND c.tenant_id=? LIMIT 1`,
+    [req.params.callId, req.user.tenant_id]
+  );
+  const call = rows[0];
+  if (!call?.recording_path) return res.status(404).json({ error: "Recording not found" });
+  const canViewAny = hasPermission(req.user, "VIEW_REPORTS") || hasPermission(req.user, "MONITOR_CALLS") || hasPermission(req.user, "MANAGE_AGENTS");
+  if (!canViewAny && call.agent_user_id !== req.user.id) return res.status(403).json({ error: "Recording access denied" });
+  if (req.user.role_name === "Supervisor" && call.team_name !== req.user.team_name) return res.status(403).json({ error: "Recording is outside your team" });
+  const candidate = path.isAbsolute(call.recording_path) ? path.resolve(call.recording_path) : path.resolve(config.recordingRoot, call.recording_path);
+  if (!candidate.startsWith(`${config.recordingRoot}${path.sep}`)) return res.status(403).json({ error: "Invalid recording path" });
+  const stat = await fs.promises.stat(candidate).catch(() => null);
+  if (!stat?.isFile()) return res.status(404).json({ error: "Recording file is unavailable" });
+  const range = req.headers.range;
+  const contentType = candidate.endsWith(".wav") ? "audio/wav" : "audio/mpeg";
+  res.setHeader("Content-Type", contentType);
+  res.setHeader("Accept-Ranges", "bytes");
+  res.setHeader("Content-Disposition", `inline; filename="${path.basename(candidate).replace(/[\"\r\n]/g, "")}"`);
+  if (!range) {
+    res.setHeader("Content-Length", stat.size);
+    return fs.createReadStream(candidate).pipe(res);
+  }
+  const match = range.match(/bytes=(\d*)-(\d*)/);
+  const start = match?.[1] ? Number(match[1]) : 0;
+  const end = match?.[2] ? Math.min(Number(match[2]), stat.size - 1) : stat.size - 1;
+  if (!match || start > end || start >= stat.size) return res.status(416).end();
+  res.status(206);
+  res.setHeader("Content-Range", `bytes ${start}-${end}/${stat.size}`);
+  res.setHeader("Content-Length", end - start + 1);
+  fs.createReadStream(candidate, { start, end }).pipe(res);
+}));
+
+app.get("/api/reports/kpis", authenticate, requirePermission("VIEW_DASHBOARD", "VIEW_REPORTS"), asyncRoute(async (req, res) => {
+  const days = Math.min(90, Math.max(1, Number(req.query.days) || 7));
+  const params = [req.user.tenant_id, days];
+  let accessFilter = "";
+  const canViewTenant = hasPermission(req.user, "VIEW_REPORTS") || hasPermission(req.user, "MONITOR_CALLS") || hasPermission(req.user, "MANAGE_AGENTS");
+  if (!canViewTenant) {
+    accessFilter = "AND c.agent_user_id=?";
+    params.push(req.user.id);
+  } else if (req.user.role_name === "Supervisor") {
+    accessFilter = "AND u.team_name=?";
+    params.push(req.user.team_name);
+  }
+  const [summaryRows] = await db.execute(
+    `SELECT COUNT(*) AS total_calls,
+            SUM(c.status='COMPLETED') AS completed_calls,
+            SUM(c.status='FAILED') AS failed_calls,
+            ROUND(AVG(NULLIF(c.billable_sec,0)),1) AS avg_talk_sec,
+            SUM(c.billable_sec) AS total_talk_sec,
+            ROUND(100*SUM(c.status='COMPLETED')/NULLIF(COUNT(*),0),1) AS answer_rate
+       FROM calls c LEFT JOIN users u ON u.id=c.agent_user_id
+      WHERE c.tenant_id=? AND c.started_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL ? DAY) ${accessFilter}`,
+    params
+  );
+  const [daily] = await db.execute(
+    `SELECT DATE(c.started_at) AS day,COUNT(*) AS calls,SUM(c.status='COMPLETED') AS completed,SUM(c.billable_sec) AS talk_sec
+       FROM calls c LEFT JOIN users u ON u.id=c.agent_user_id
+      WHERE c.tenant_id=? AND c.started_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL ? DAY) ${accessFilter}
+      GROUP BY DATE(c.started_at) ORDER BY day ASC`,
+    params
+  );
+  const [agents] = await db.execute(
+    `SELECT COALESCE(u.name,c.agent_sip_username,'Unassigned') AS agent,COUNT(*) AS calls,
+            SUM(c.status='COMPLETED') AS completed,SUM(c.billable_sec) AS talk_sec,
+            ROUND(AVG(NULLIF(c.billable_sec,0)),1) AS avg_talk_sec
+       FROM calls c LEFT JOIN users u ON u.id=c.agent_user_id
+      WHERE c.tenant_id=? AND c.started_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL ? DAY) ${accessFilter}
+      GROUP BY COALESCE(u.name,c.agent_sip_username,'Unassigned') ORDER BY calls DESC LIMIT 25`,
+    params
+  );
+  res.json({ summary: summaryRows[0], daily, agents, days });
+}));
+
+app.get("/api/usage", authenticate, requirePermission("VIEW_USAGE", "VIEW_BILLING"), asyncRoute(async (req, res) => {
+  const usage = await tenantUsageSummary(req.user.tenant_id);
+  const [[seats]] = await db.execute("SELECT COUNT(*) AS activeUsers FROM users WHERE tenant_id=? AND active=1", [req.user.tenant_id]);
+  res.json({
+    usage,
+    activeUsers: Number(seats.activeUsers || 0),
+    pricePerUser: Number(req.user.price_per_user || 0),
+    estimatedSeatRevenue: Number(seats.activeUsers || 0) * Number(req.user.price_per_user || 0),
+    limits: {
+      maxUsers: req.user.max_users,
+      outboundMinutes: req.user.outbound_minutes,
+      inboundMinutes: req.user.inbound_minutes
+    }
+  });
+}));
+
+// ---------------------------
+// Warm transfer / conference
+// ---------------------------
+app.post("/api/calls/conference/start", authenticate, requirePermission("WARM_TRANSFER", "ADD_PARTICIPANT"), asyncRoute(async (req, res) => {
+  if (!req.user.sip_username) return res.status(400).json({ error: "Your account has no SIP endpoint" });
+  const call = tracker.findByAgent(req.user.sip_username);
+  if (!call || call.tenantId !== req.user.tenant_id) return res.status(404).json({ error: "No active call found for this agent" });
+  const channels = [...call.channels];
+  const agentChannel = channels.find((channel) => channel.startsWith(`PJSIP/${req.user.sip_username}-`));
+  const customerChannel = channels.find((channel) => channel !== agentChannel);
+  if (!agentChannel || !customerChannel) return res.status(409).json({ error: "Both call legs are not available" });
+  const conferenceId = String(Date.now());
+  await ami.action({
+    Action: "Redirect",
+    Channel: agentChannel,
+    Context: "ringnex-transfer-agent",
+    Exten: conferenceId,
+    Priority: "1",
+    ExtraChannel: customerChannel,
+    ExtraContext: "ringnex-transfer-customer",
+    ExtraExten: conferenceId,
+    ExtraPriority: "1"
+  });
+  await audit(req.user.id, "CONFERENCE_START", "call", call.linkedid, { conferenceId }, req.user.tenant_id);
+  res.json({ accepted: true, linkedid: call.linkedid, conferenceId });
+}));
+
+app.post("/api/calls/conference/complete", authenticate, requirePermission("WARM_TRANSFER"), asyncRoute(async (req, res) => {
+  const conferenceId = String(req.body?.conferenceId || "").trim();
+  if (!conferenceId || !/^\d+$/.test(conferenceId)) return res.status(400).json({ error: "Valid conferenceId is required" });
+  if (!req.user.sip_username) return res.status(400).json({ error: "Your account has no SIP endpoint" });
+  const call = tracker.findByAgent(req.user.sip_username);
+  if (!call || call.tenantId !== req.user.tenant_id) return res.status(404).json({ error: "No active call found for this agent" });
+  const agentChannel = [...call.channels].find((channel) => channel.startsWith(`PJSIP/${req.user.sip_username}-`));
+  if (!agentChannel) return res.status(409).json({ error: "Agent conference channel not found" });
+  await ami.action({ Action: "ConfbridgeKick", Conference: conferenceId, Channel: agentChannel });
+  await audit(req.user.id, "CONFERENCE_TRANSFER_COMPLETE", "conference", conferenceId, { agentChannel }, req.user.tenant_id);
+  res.json({ accepted: true, conferenceId, removedChannel: agentChannel });
+}));
+
+app.post("/api/calls/conference/invite-agent", authenticate, requirePermission("WARM_TRANSFER"), asyncRoute(async (req, res) => {
+  const conferenceId = String(req.body?.conferenceId || "").trim();
+  const targetExtension = String(req.body?.targetExtension || "").trim();
+  if (!conferenceId || !/^\d+$/.test(conferenceId)) return res.status(400).json({ error: "Valid conferenceId is required" });
+  if (!targetExtension) return res.status(400).json({ error: "Target agent extension is required" });
+  const [rows] = await db.execute(
+    `SELECT id,name,sip_username,extension,active
+       FROM users
+      WHERE tenant_id=? AND extension=? LIMIT 1`,
+    [req.user.tenant_id, targetExtension]
+  );
+  const targetAgent = rows[0];
+  if (!targetAgent) return res.status(404).json({ error: "Target agent not found in this workspace" });
+  if (!targetAgent.active) return res.status(409).json({ error: "Target agent is disabled" });
+  if (!targetAgent.sip_username) return res.status(409).json({ error: "Target agent has no SIP endpoint" });
+  await ami.action({
+    Action: "Originate",
+    Channel: `PJSIP/${targetAgent.sip_username}`,
+    Application: "ConfBridge",
+    Data: `${conferenceId},default_bridge,transfer_agent`,
+    Timeout: "30000",
+    Async: "true"
+  });
+  await audit(req.user.id, "CONFERENCE_AGENT_INVITE", "conference", conferenceId, {
+    targetAgentId: targetAgent.id,
+    targetExtension: targetAgent.extension,
+    targetSipUsername: targetAgent.sip_username
+  }, req.user.tenant_id);
+  res.json({ accepted: true, conferenceId, targetAgent: { id: targetAgent.id, name: targetAgent.name, extension: targetAgent.extension, sipUsername: targetAgent.sip_username } });
+}));
+
+app.post("/api/calls/conference/invite-pstn", authenticate, requirePermission("ADD_PARTICIPANT"), asyncRoute(async (req, res) => {
+  const conferenceId = String(req.body?.conferenceId || "").trim();
+  const targetNumber = String(req.body?.number || "").replace(/\D/g, "");
+  if (!conferenceId || !/^\d+$/.test(conferenceId)) return res.status(400).json({ error: "Valid conferenceId is required" });
+  if (!targetNumber || targetNumber.length < 7 || targetNumber.length > 15) return res.status(400).json({ error: "Valid participant phone number is required" });
+  if (!req.user.caller_id_number) return res.status(409).json({ error: "No outbound DID assigned to this agent" });
+  await ami.action({
+    Action: "Originate",
+    Channel: `PJSIP/${targetNumber}@commio`,
+    Application: "ConfBridge",
+    Data: `${conferenceId},default_bridge,transfer_customer`,
+    CallerID: `"Ringnex" <${req.user.caller_id_number}>`,
+    Timeout: "30000",
+    Async: "true"
+  });
+  await audit(req.user.id, "CONFERENCE_PSTN_INVITE", "conference", conferenceId, { targetNumber, callerIdNumber: req.user.caller_id_number }, req.user.tenant_id);
+  res.json({ accepted: true, conferenceId, targetNumber });
+}));
+
+// ---------------------------
+// Live monitoring
+// ---------------------------
+app.get("/api/supervisor/live", authenticate, requirePermission("MONITOR_CALLS", "VIEW_REPORTS"), (req, res) => {
+  let calls = tracker.list(req.user.tenant_id);
+  let presence = tracker.listPresence(req.user.tenant_id);
+  if (req.user.role_name === "Supervisor") {
+    calls = calls.filter((call) => call.teamName === req.user.team_name);
+    const allowedAgents = new Set(calls.map((call) => call.agent).filter(Boolean));
+    presence = presence.filter((item) => allowedAgents.has(item.agent));
+  }
+  res.json({ calls, presence, ami: amiConnected });
+});
+
+app.post("/api/supervisor/monitor", authenticate, requirePermission("MONITOR_CALLS"), asyncRoute(async (req, res) => {
+  const linkedid = String(req.body.linkedid || "");
+  const mode = String(req.body.mode || "listen");
+  const modePermissions = { listen: "LISTEN_LIVE_CALLS", whisper: "WHISPER_CALLS", barge: "BARGE_CALLS" };
+  const flags = { listen: "q", whisper: "qw", barge: "qB" };
+  if (!flags[mode]) return res.status(400).json({ error: "Invalid monitoring mode" });
+  if (!hasPermission(req.user, modePermissions[mode])) return res.status(403).json({ error: "You do not have permission for this monitoring mode" });
+  if (!req.user.sip_username) return res.status(400).json({ error: "Supervisor has no SIP endpoint" });
+  const call = tracker.find(linkedid);
+  if (!call || call.tenantId !== req.user.tenant_id) return res.status(404).json({ error: "Live call no longer exists" });
+  if (req.user.role_name === "Supervisor" && call.teamName !== req.user.team_name) return res.status(403).json({ error: "Live call is outside your team" });
+  const targetChannel = [...call.channels].find((channel) => call.agent && channel.startsWith(`PJSIP/${call.agent}-`));
+  if (!targetChannel) return res.status(409).json({ error: "Agent channel is not available" });
+  await ami.action({
+    Action: "Originate",
+    Channel: `PJSIP/${req.user.sip_username}`,
+    Application: "ChanSpy",
+    Data: `${targetChannel},${flags[mode]}`,
+    CallerID: `Supervisor <${req.user.extension || "9000"}>`,
+    Async: "true"
+  });
+  await audit(req.user.id, `SUPERVISOR_${mode.toUpperCase()}`, "call", linkedid, { targetChannel }, req.user.tenant_id);
+  res.json({ accepted: true });
+}));
+
+// ---------------------------
+// Socket tenant isolation
+// ---------------------------
+io.use(async (socket, next) => {
+  try {
+    const claims = verifyToken(socket.handshake.auth?.token || "");
+    if (claims.scope !== "tenant") return next(new Error("Unauthorized"));
+    const user = await loadTenantUser(claims.sub);
+    if (!user) return next(new Error("Unauthorized"));
+    socket.user = user;
+    next();
+  } catch {
+    next(new Error("Unauthorized"));
+  }
+});
+
+io.on("connection", (socket) => {
+  const user = socket.user;
+  if (hasPermission(user, "MONITOR_CALLS") || hasPermission(user, "VIEW_REPORTS") || hasPermission(user, "MANAGE_AGENTS")) {
+    socket.join(`tenant:${user.tenant_id}:live`);
+  }
+  if (user.role_name === "Supervisor" && user.team_name) {
+    socket.join(`tenant:${user.tenant_id}:team:${user.team_name}`);
+  }
+  let calls = tracker.list(user.tenant_id);
+  if (user.role_name === "Supervisor") calls = calls.filter((call) => call.teamName === user.team_name);
+  if (!(hasPermission(user, "MONITOR_CALLS") || hasPermission(user, "VIEW_REPORTS") || hasPermission(user, "MANAGE_AGENTS"))) calls = [];
+  socket.emit("system:state", { ami: amiConnected, calls });
+});
+
+ami.on("connection", (connected) => {
+  amiConnected = connected;
+  io.emit("ami:status", { connected });
+  if (connected) {
+    syncAllAsteriskMappings().catch((error) => console.error("Asterisk SaaS mapping reconciliation failed", error));
+  }
+});
+ami.on("event", (event) => tracker.handle(event).catch((error) => console.error("AMI event persistence failed", error)));
+ami.on("error", (error) => console.error("AMI error", error.message));
+
+app.use((error, _req, res, _next) => {
+  console.error(error);
+  if (error?.code === "ER_DUP_ENTRY") return res.status(409).json({ error: "This value already exists in this scope" });
+  if (error?.statusCode) return res.status(error.statusCode).json({ error: error.message });
+  res.status(500).json({ error: config.env === "production" ? "Unexpected server error" : error.message });
+});
+
+async function start() {
+  await healthcheck();
+  server.listen(config.port, "127.0.0.1", () => {
+    console.log(`Ringnex SaaS API listening on 127.0.0.1:${config.port}`);
+  });
+  ami.start();
+}
+
+async function shutdown(signal) {
+  console.log(`Received ${signal}; shutting down`);
+  ami.stop();
+  io.close();
+  server.close(async () => {
+    await db.end();
+    process.exit(0);
+  });
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
+start().catch((error) => {
+  console.error("Startup failed", error);
+  process.exit(1);
+});
+
+
+
+
+
+
