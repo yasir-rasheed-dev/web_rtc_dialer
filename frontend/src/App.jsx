@@ -3,7 +3,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   Activity,
   BarChart3,
-  ChevronRight,
   CircleUserRound,
   Clock3,
   ContactRound,
@@ -588,25 +587,25 @@ function Sidebar({ navigation, page, setPage, sidebarOpen, setSidebarOpen, sessi
         )}
       </AnimatePresence>
 
-      <aside className={`console-sidebar !bg-surface !border-border ${sidebarOpen ? "open" : ""}`}>
-        <div className="mb-6 flex items-center gap-3 px-1">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand to-blue-700 text-sm font-extrabold text-white">
+      <aside className={`console-sidebar !bg-surface !border-border !shadow-none ${sidebarOpen ? "open" : ""}`}>
+        <div className="mb-7 flex items-center gap-2.5 px-1">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand text-xs font-bold text-white">
             RN
           </span>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-bold text-text">{session.tenant?.name || "Ringnex"}</p>
-            <p className="truncate text-xs text-muted">{session.tenant?.workspace || "Contact Center"}</p>
+            <p className="truncate text-[13px] font-semibold text-text">{session.tenant?.name || "Ringnex"}</p>
+            <p className="truncate text-[11px] text-muted">{session.tenant?.workspace || "Contact Center"}</p>
           </div>
           <button
             onClick={() => setSidebarOpen(false)}
-            className="rounded-lg p-1.5 text-muted hover:bg-surface-2 hover:text-text lg:hidden"
+            className="rounded-md p-1.5 text-muted hover:bg-surface-2 hover:text-text lg:hidden"
             aria-label="Close menu"
           >
-            <X size={18} />
+            <X size={16} />
           </button>
         </div>
 
-        <div className="flex flex-1 flex-col gap-1 overflow-y-auto">
+        <div className="flex flex-1 flex-col gap-0.5 overflow-y-auto">
           {navigation.map(({ id, label, icon: Icon }) => {
             const active = page === id;
             return (
@@ -616,22 +615,28 @@ function Sidebar({ navigation, page, setPage, sidebarOpen, setSidebarOpen, sessi
                   setPage(id);
                   setSidebarOpen(false);
                 }}
-                className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                  active ? "bg-brand/10 text-brand" : "text-text/70 hover:bg-surface-2 hover:text-text"
+                className={`relative flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] transition-colors ${
+                  active ? "font-semibold text-brand" : "font-medium text-text/60 hover:text-text"
                 }`}
               >
-                <Icon size={17} />
-                <span className="flex-1 text-left">{label}</span>
-                {active && <ChevronRight size={14} />}
+                {active && (
+                  <motion.span
+                    layoutId="sidebar-active"
+                    transition={{ type: "spring", stiffness: 480, damping: 38 }}
+                    className="absolute inset-0 rounded-lg bg-brand/[0.08]"
+                  />
+                )}
+                <Icon size={16} className="relative shrink-0" strokeWidth={2} />
+                <span className="relative flex-1 text-left">{label}</span>
               </button>
             );
           })}
         </div>
 
-        <div className="mt-4 flex items-center gap-2.5 rounded-xl border border-border px-3 py-3">
-          <span className={`h-2 w-2 shrink-0 rounded-full ${amiConnected ? "bg-success shadow-[0_0_0_4px_rgb(var(--rn-green)/0.15)]" : "bg-muted"}`} />
+        <div className="mt-3 flex items-center gap-2.5 border-t border-border px-1 pt-4">
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${amiConnected ? "bg-success" : "bg-muted"}`} />
           <div className="min-w-0">
-            <p className="text-xs font-semibold text-text">Asterisk AMI</p>
+            <p className="text-xs font-medium text-text">Asterisk AMI</p>
             <p className="truncate text-[11px] text-muted">{amiConnected ? "Connected" : "Offline"}</p>
           </div>
         </div>
