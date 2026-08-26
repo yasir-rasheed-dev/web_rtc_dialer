@@ -519,13 +519,27 @@ const [transferStage, setTransferStage] = useState("idle");
   }, []);
 
   useEffect(() => {
-    // Published for panels rendered outside the softphone (Auto Dialer). The
-    // snapshot covers consumers that mount after the last transition.
-    window.ringnexSoftphoneState = { registered: isRegistered, callStatus };
+    // Published for panels rendered outside the softphone (Auto Dialer, and
+    // the GlobalCallOverlay that surfaces incoming-call/in-call controls on
+    // every page). connectedAt is a timestamp rather than a ticking elapsed
+    // count so this only re-broadcasts on real state transitions, not once
+    // a second — consumers that need a live timer run their own interval
+    // off connectedAt, same as this component does internally.
+    window.ringnexSoftphoneState = {
+      registered: isRegistered,
+      callStatus,
+      currentParty,
+      connectedAt: activeCallRef.current?.connectedAt || null,
+      muted,
+      held,
+      canReceive: can("RECEIVE_CALLS"),
+      canHold: can("HOLD_CALL")
+    };
     window.dispatchEvent(
       new CustomEvent("ringnex:softphone-state", { detail: window.ringnexSoftphoneState })
     );
-  }, [isRegistered, callStatus]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRegistered, callStatus, currentParty, muted, held]);
 
   const answerCall = async () => {
     setError("");
@@ -578,6 +592,28 @@ const [transferStage, setTransferStage] = useState("idle");
       setError(holdError?.message || "The hold request was not accepted.");
     }
   };
+
+  // Same ref-indirection as startCallRef/window.ringnexDial above, so
+  // GlobalCallOverlay (rendered outside this component, on every page) can
+  // answer/decline/hang up/mute/hold an in-progress call without this
+  // component needing to know that overlay exists.
+  const globalControlsRef = useRef({});
+  globalControlsRef.current = { answerCall, declineCall, hangup, toggleMute, toggleHold };
+  useEffect(() => {
+    window.ringnexAnswerCall = () => globalControlsRef.current.answerCall();
+    window.ringnexDeclineCall = () => globalControlsRef.current.declineCall();
+    window.ringnexHangup = () => globalControlsRef.current.hangup();
+    window.ringnexToggleMute = () => globalControlsRef.current.toggleMute();
+    window.ringnexToggleHold = () => globalControlsRef.current.toggleHold();
+    return () => {
+      delete window.ringnexAnswerCall;
+      delete window.ringnexDeclineCall;
+      delete window.ringnexHangup;
+      delete window.ringnexToggleMute;
+      delete window.ringnexToggleHold;
+    };
+  }, []);
+
   const transferCall = async () => {
     if (!clientRef.current || !callEstablished) {
       setError("No active call available to transfer.");

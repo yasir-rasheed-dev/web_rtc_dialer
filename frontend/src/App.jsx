@@ -41,6 +41,7 @@ import { api, getToken, recordingBlob, setToken } from "./lib/api";
 // Softphone stays eagerly imported and permanently mounted (see TenantApp) so
 // an in-progress SIP call never drops when the agent navigates to another
 // page. Everything else below is lazy-loaded to keep the initial bundle lean.
+import GlobalCallOverlay from "./components/ui/GlobalCallOverlay";
 import Softphone from "./Softphone";
 
 const LazyAutoDialer = lazy(() => import("./AutoDialer"));
@@ -872,6 +873,7 @@ function TenantApp() {
           )}
         </main>
       </div>
+      {!ownerAccount && session.sip && <GlobalCallOverlay onDialerPage={page === "dialer"} />}
     </div>
   );
 }
