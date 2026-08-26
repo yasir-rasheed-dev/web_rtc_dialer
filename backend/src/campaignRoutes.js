@@ -12,7 +12,9 @@ import {
     deleteCampaign,
     uploadCampaignContacts,
     assignCampaignAgents,
-    getCampaignReport
+    getCampaignReport,
+    getCampaignDetail,
+    getCampaignContacts
 } from "./campaign.js";
 
 import {
@@ -111,6 +113,20 @@ export default function createCampaignRoutes(authenticate) {
         authenticate,
         requirePermission("VIEW_CAMPAIGN_REPORTS"),
         asyncRoute(getCampaignReport)
+    );
+
+    router.get(
+        "/:id/contacts",
+        authenticate,
+        requirePermission("VIEW_CAMPAIGNS", "MANAGE_CAMPAIGNS"),
+        asyncRoute(getCampaignContacts)
+    );
+
+    router.get(
+        "/:id",
+        authenticate,
+        requirePermission("VIEW_CAMPAIGNS", "MANAGE_CAMPAIGNS"),
+        asyncRoute(getCampaignDetail)
     );
 
     return router;

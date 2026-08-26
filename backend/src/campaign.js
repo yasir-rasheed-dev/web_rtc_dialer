@@ -4,6 +4,15 @@ import XLSX from "xlsx";
 
 import { db, audit } from "./db.js";
 
+// Buckets the raw campaign_contacts.status enum into the 5 groups the
+// "Manage" detail view filters/counts by.
+const STATUS_BUCKETS = {
+  pending: ["NEW", "ASSIGNED", "READY", "CALLING"],
+  connected: ["CONNECTED", "COMPLETED"],
+  failed: ["FAILED", "DNC"],
+  retry: ["NO_ANSWER", "BUSY", "CALLBACK"]
+};
+
 
 // ===============================
 // GET CAMPAIGNS
@@ -543,4 +552,110 @@ agents
 });
 
 
+}
+
+
+
+
+// ===============================
+// CAMPAIGN DETAIL (for the "Manage" view)
+// ===============================
+
+export async function getCampaignDetail(req, res) {
+  const tenantId = req.user.tenant_id;
+  const campaignId = req.params.id;
+
+  const [[campaign]] = await db.execute(
+    `
+    SELECT
+      c.*,
+      COUNT(cc.id) AS total_contacts,
+      SUM(cc.status='CONNECTED' OR cc.status='COMPLETED') AS connected_contacts
+    FROM campaigns c
+    LEFT JOIN campaign_contacts cc
+      ON cc.campaign_id=c.id
+      AND cc.tenant_id=c.tenant_id
+    WHERE c.id=? AND c.tenant_id=?
+    GROUP BY c.id
+    `,
+    [campaignId, tenantId]
+  );
+
+  if (!campaign) {
+    return res.status(404).json({ error: "Campaign not found" });
+  }
+
+  const [agents] = await db.execute(
+    `
+    SELECT ca.user_id, ca.assignment_type, u.name
+    FROM campaign_agents ca
+    JOIN users u ON u.id=ca.user_id AND u.tenant_id=ca.tenant_id
+    WHERE ca.tenant_id=? AND ca.campaign_id=? AND ca.active=1
+    ORDER BY u.name ASC
+    `,
+    [tenantId, campaignId]
+  );
+
+  res.json({ campaign, agents });
+}
+
+// ===============================
+// CAMPAIGN CONTACT QUEUE (for the "Manage" view)
+// ===============================
+
+export async function getCampaignContacts(req, res) {
+  const tenantId = req.user.tenant_id;
+  const campaignId = req.params.id;
+  const status = String(req.query.status || "all").toLowerCase();
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const pageSize = Math.min(100, Math.max(10, Number(req.query.pageSize) || 25));
+
+  const statusList = STATUS_BUCKETS[status] || null;
+
+  const params = [tenantId, campaignId];
+  let where = "WHERE cc.tenant_id=? AND cc.campaign_id=?";
+  if (statusList) {
+    where += ` AND cc.status IN (${statusList.map(() => "?").join(",")})`;
+    params.push(...statusList);
+  }
+
+  const [[{ total }]] = await db.execute(
+    `SELECT COUNT(*) total FROM campaign_contacts cc ${where}`,
+    params
+  );
+
+  const [rows] = await db.execute(
+    `
+    SELECT cc.id, cc.name, cc.phone, cc.email, cc.company, cc.status,
+           cc.attempt_count, cc.disposition, cc.next_attempt_at, cc.last_called_at,
+           u.name AS agent_name
+    FROM campaign_contacts cc
+    LEFT JOIN users u ON u.id=cc.assigned_agent_id AND u.tenant_id=cc.tenant_id
+    ${where}
+    ORDER BY cc.created_at ASC
+    LIMIT ? OFFSET ?
+    `,
+    [...params, pageSize, (page - 1) * pageSize]
+  );
+
+  const [countRows] = await db.execute(
+    `SELECT status, COUNT(*) count FROM campaign_contacts WHERE tenant_id=? AND campaign_id=? GROUP BY status`,
+    [tenantId, campaignId]
+  );
+  const countsByStatus = Object.fromEntries(countRows.map((row) => [row.status, Number(row.count)]));
+  const bucketCount = (keys) => keys.reduce((sum, key) => sum + (countsByStatus[key] || 0), 0);
+
+  res.json({
+    contacts: rows,
+    total,
+    page,
+    pageSize,
+    counts: {
+      total: countRows.reduce((sum, row) => sum + Number(row.count), 0),
+      pending: bucketCount(STATUS_BUCKETS.pending),
+      connected: bucketCount(STATUS_BUCKETS.connected),
+      failed: bucketCount(STATUS_BUCKETS.failed),
+      retry: bucketCount(STATUS_BUCKETS.retry)
+    }
+  });
 }

@@ -52,6 +52,16 @@ export function getCampaignReport(id) {
   return api(`/campaigns/${encodeURIComponent(id)}/report`);
 }
 
+export function getCampaignDetail(id) {
+  return api(`/campaigns/${encodeURIComponent(id)}`);
+}
+
+// status: "all" | "pending" | "connected" | "failed" | "retry"
+export function getCampaignContacts(id, { status = "all", page = 1, pageSize = 25 } = {}) {
+  const query = new URLSearchParams({ status, page: String(page), pageSize: String(pageSize) });
+  return api(`/campaigns/${encodeURIComponent(id)}/contacts?${query.toString()}`);
+}
+
 // ---------------------------
 // Agent dialer
 // ---------------------------
