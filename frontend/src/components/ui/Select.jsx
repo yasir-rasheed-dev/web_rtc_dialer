@@ -27,13 +27,19 @@ const baseStyles = {
   indicatorSeparator: () => ({ display: "none" }),
   menu: (base) => ({
     ...base,
-    zIndex: 30,
     borderRadius: 12,
     overflow: "hidden",
     backgroundColor: "rgb(var(--rn-surface))",
     border: "1px solid var(--rn-border)",
     boxShadow: "0 24px 64px rgba(0, 0, 0, 0.28)"
   }),
+  // Portaled to <body> (see menuPortalTarget below), so this menuPortal
+  // z-index is what actually controls stacking now — without it the menu
+  // would render above the page but under other portaled UI (modals,
+  // toasts). Also fixes selects inside a `overflow-x-auto` table wrapper
+  // (e.g. the campaigns status column): a non-portaled menu gets clipped
+  // by the ancestor's overflow instead of floating above it.
+  menuPortal: (base) => ({ ...base, zIndex: 65 }),
   menuList: (base) => ({ ...base, padding: 4 }),
   option: (base, state) => ({
     ...base,
@@ -62,12 +68,13 @@ const baseStyles = {
  * expects: options = [{ value, label }], onChange receives the option (or
  * null when cleared), not a raw string.
  */
-export default function Select({ className = "", styles, ...props }) {
+export default function Select({ className = "", styles, menuPortalTarget, ...props }) {
   return (
     <ReactSelect
       classNamePrefix="rn-select"
       className={className}
       styles={styles ? { ...baseStyles, ...styles } : baseStyles}
+      menuPortalTarget={menuPortalTarget === undefined ? (typeof document !== "undefined" ? document.body : undefined) : menuPortalTarget}
       {...props}
     />
   );

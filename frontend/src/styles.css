@@ -283,23 +283,33 @@ input,
 select {
   width: 100%;
   height: 42px;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--rn-border-strong);
   border-radius: 10px;
-  color: var(--text);
-  background: rgba(4, 13, 25, 0.52);
+  color: rgb(var(--rn-text));
+  background: rgb(var(--rn-surface-2));
   padding: 0 12px;
   transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
 }
 
 input::placeholder {
-  color: #64748b;
+  color: rgb(var(--rn-muted));
 }
 
+/*
+  Specificity note: `input:focus` (tag+pseudo-class) is MORE specific than a
+  single Tailwind utility class like `.bg-surface-2` — it was winning over
+  every Tailwind-styled input's focus state and swapping in this hardcoded
+  dark background, which is exactly the "goes gray on focus" bug reported
+  in light mode. Keeping the background identical to the resting state
+  (only border/ring change on focus, matching Input.jsx's own focus
+  treatment) means it no longer matters which rule wins — both resolve to
+  the same theme-correct color now.
+*/
 input:focus,
 select:focus {
-  border-color: rgba(46, 140, 255, 0.72);
-  box-shadow: 0 0 0 3px rgba(46, 140, 255, 0.12);
-  background: rgba(4, 13, 25, 0.72);
+  border-color: rgb(var(--rn-blue) / 0.72);
+  box-shadow: 0 0 0 3px rgb(var(--rn-blue) / 0.12);
+  background: rgb(var(--rn-surface-2));
 }
 
 .password-field {
