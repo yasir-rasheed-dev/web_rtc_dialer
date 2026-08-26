@@ -1,0 +1,11 @@
+/*
+  Tailwind is introduced incrementally alongside the legacy styles.css /
+  console.css stylesheets (see SAAS redesign plan, Phase 0). @tailwind base
+  (Preflight) is intentionally NOT enabled yet — it resets default element
+  styling (headings, buttons, lists, fieldsets) globally and would visually
+  change pages that haven't been migrated to Tailwind yet, even with zero
+  utility classes in use. Preflight is enabled in the final cleanup phase
+  once every page has moved off the legacy stylesheets.
+*/
+@tailwind components;
+@tailwind utilities;
