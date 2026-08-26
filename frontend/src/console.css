@@ -41,9 +41,9 @@ button, input, select { font: inherit; }
 .login-copy h1 { font-size: 40px; }
 .login-copy p, .page-heading p, .card-title p { color: var(--console-muted); margin: 0; line-height: 1.55; }
 .login-card form { display: grid; gap: 18px; }
-.login-card label, .admin-form label { display: grid; gap: 8px; color: #b9c9d9; font-size: 12px; font-weight: 700; }
-.login-card input, .admin-form input, .admin-form select, .select-control { background: #091522; border: 1px solid #263b52; color: white; border-radius: 10px; padding: 13px 14px; outline: none; }
-.login-card input:focus, .admin-form input:focus, .admin-form select:focus { border-color: #2f8cff; box-shadow: 0 0 0 3px rgba(47,140,255,.12); }
+.login-card label, .admin-form label { display: grid; gap: 8px; color: rgb(var(--rn-muted)); font-size: 12px; font-weight: 700; }
+.login-card input, .admin-form input, .admin-form select, .select-control { background: rgb(var(--rn-surface-2)); border: 1px solid var(--rn-border); color: rgb(var(--rn-text)); border-radius: 10px; padding: 13px 14px; outline: none; }
+.login-card input:focus, .admin-form input:focus, .admin-form select:focus { border-color: rgb(var(--rn-blue)); box-shadow: 0 0 0 3px rgb(var(--rn-blue) / 0.12); }
 .primary-action, .secondary-action { border: 0; border-radius: 10px; padding: 12px 16px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: 800; cursor: pointer; }
 .primary-action { background: linear-gradient(135deg, #2f8cff, #1767e7); color: white; box-shadow: 0 10px 24px rgba(47,140,255,.2); }
 .secondary-action { background: #14253a; border: 1px solid #294058; color: #d7e7f7; }
@@ -106,16 +106,16 @@ button, input, select { font: inherit; }
 /* SaaS / multi-tenant management */
 textarea, .role-form input, .role-form textarea, .saas-setup-form textarea, .plan-inline-form input {
   font: inherit;
-  background: #091522;
-  border: 1px solid #263b52;
-  color: white;
+  background: rgb(var(--rn-surface-2));
+  border: 1px solid var(--rn-border);
+  color: rgb(var(--rn-text));
   border-radius: 10px;
   padding: 12px 14px;
   outline: none;
 }
 textarea:focus, .role-form input:focus, .role-form textarea:focus, .plan-inline-form input:focus {
-  border-color: #2f8cff;
-  box-shadow: 0 0 0 3px rgba(47,140,255,.12);
+  border-color: rgb(var(--rn-blue));
+  box-shadow: 0 0 0 3px rgb(var(--rn-blue) / 0.12);
 }
 .inline-check, .sip-generate-option {
   display: flex !important;
@@ -123,9 +123,9 @@ textarea:focus, .role-form input:focus, .role-form textarea:focus, .plan-inline-
   align-items: center;
   gap: 9px !important;
   padding: 11px 12px;
-  border: 1px solid #23394f;
+  border: 1px solid var(--rn-border);
   border-radius: 9px;
-  background: #0a1726;
+  background: rgb(var(--rn-surface-2));
 }
 .inline-check input, .sip-generate-option input { width: 16px; height: 16px; margin: 0; }
 .full-span { grid-column: 1/-1 !important; }
@@ -176,7 +176,7 @@ textarea:focus, .role-form input:focus, .role-form textarea:focus, .plan-inline-
 .filter-row label, .call-filter-grid label, .team-create-form label, .team-settings-grid label {
   display: grid;
   gap: 7px;
-  color: #aebfd0;
+  color: rgb(var(--rn-muted));
   font-size: 10px;
   font-weight: 800;
   text-transform: uppercase;
@@ -186,11 +186,11 @@ textarea:focus, .role-form input:focus, .role-form textarea:focus, .plan-inline-
 .team-create-form input, .team-create-form select, .team-create-form textarea,
 .team-settings-grid input, .team-settings-grid select, .add-member-row select {
   min-height: 40px;
-  border: 1px solid #263b52;
+  border: 1px solid var(--rn-border);
   border-radius: 9px;
   padding: 9px 11px;
-  color: #e7f1fb;
-  background: #091522;
+  color: rgb(var(--rn-text));
+  background: rgb(var(--rn-surface-2));
   outline: 0;
 }
 .filter-row input:focus, .filter-row select:focus, .call-filter-grid input:focus, .call-filter-grid select:focus,

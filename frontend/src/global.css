@@ -57,6 +57,23 @@ button {
   font: inherit;
 }
 
+/*
+  Chrome/Edge tint autofilled inputs with a fixed yellow/blue background and
+  force black text via an internal UA style that a plain `background-color`
+  override can't beat — only the -webkit-box-shadow inset trick can. Without
+  this, any input the browser autofills (or has ever autofilled) shows the
+  wrong background/text color in light mode regardless of our own styling.
+*/
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px rgb(var(--rn-surface-2)) inset !important;
+  -webkit-text-fill-color: rgb(var(--rn-text)) !important;
+  caret-color: rgb(var(--rn-text));
+  transition: background-color 9999s ease-in-out 0s;
+}
+
 :root[data-theme="dark"] {
   color-scheme: dark;
 
