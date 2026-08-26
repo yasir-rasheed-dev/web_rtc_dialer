@@ -12,6 +12,8 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
   Phone,
   PhoneCall,
   PhoneForwarded,
@@ -572,7 +574,10 @@ function Reports() {
   );
 }
 
-function Sidebar({ navigation, page, setPage, sidebarOpen, setSidebarOpen, session, amiConnected }) {
+const SIDEBAR_WIDTH = 250;
+const SIDEBAR_WIDTH_COLLAPSED = 76;
+
+function Sidebar({ navigation, page, setPage, sidebarOpen, setSidebarOpen, session, amiConnected, collapsed, setCollapsed }) {
   return (
     <>
       <AnimatePresence>
@@ -587,15 +592,20 @@ function Sidebar({ navigation, page, setPage, sidebarOpen, setSidebarOpen, sessi
         )}
       </AnimatePresence>
 
-      <aside className={`console-sidebar !bg-surface !border-border !shadow-none ${sidebarOpen ? "open" : ""}`}>
-        <div className="mb-7 flex items-center gap-2.5 px-1">
+      <aside
+        style={{ "--rn-sidebar-w": `${collapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH}px` }}
+        className={`console-sidebar !bg-surface !border-border !shadow-none transition-[width] duration-200 lg:!w-[var(--rn-sidebar-w)] ${sidebarOpen ? "open" : ""}`}
+      >
+        <div className={`mb-7 flex items-center gap-2.5 px-1 ${collapsed ? "justify-center" : ""}`}>
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand text-xs font-bold text-white">
             RN
           </span>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[13px] font-semibold text-text">{session.tenant?.name || "Ringnex"}</p>
-            <p className="truncate text-[11px] text-muted">{session.tenant?.workspace || "Contact Center"}</p>
-          </div>
+          {!collapsed && (
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] font-semibold text-text">{session.tenant?.name || "Ringnex"}</p>
+              <p className="truncate text-[11px] text-muted">{session.tenant?.workspace || "Contact Center"}</p>
+            </div>
+          )}
           <button
             onClick={() => setSidebarOpen(false)}
             className="rounded-md p-1.5 text-muted hover:bg-surface-2 hover:text-text lg:hidden"
@@ -605,19 +615,20 @@ function Sidebar({ navigation, page, setPage, sidebarOpen, setSidebarOpen, sessi
           </button>
         </div>
 
-        <div className="flex flex-1 flex-col gap-0.5 overflow-y-auto">
+        <div className="flex flex-1 flex-col divide-y divide-border/60 overflow-y-auto overflow-x-hidden">
           {navigation.map(({ id, label, icon: Icon }) => {
             const active = page === id;
             return (
               <button
                 key={id}
+                title={collapsed ? label : undefined}
                 onClick={() => {
                   setPage(id);
                   setSidebarOpen(false);
                 }}
-                className={`relative flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] transition-colors ${
-                  active ? "font-semibold text-brand" : "font-medium text-text/60 hover:text-text"
-                }`}
+                className={`relative flex items-center gap-3 px-3 py-2.5 text-[13px] transition-colors ${
+                  collapsed ? "justify-center" : ""
+                } ${active ? "font-semibold text-brand" : "font-medium text-text/60 hover:text-text"}`}
               >
                 {active && (
                   <motion.span
@@ -627,19 +638,32 @@ function Sidebar({ navigation, page, setPage, sidebarOpen, setSidebarOpen, sessi
                   />
                 )}
                 <Icon size={16} className="relative shrink-0" strokeWidth={2} />
-                <span className="relative flex-1 text-left">{label}</span>
+                {!collapsed && <span className="relative flex-1 text-left">{label}</span>}
               </button>
             );
           })}
         </div>
 
-        <div className="mt-3 flex items-center gap-2.5 border-t border-border px-1 pt-4">
+        <div className={`mt-3 flex items-center gap-2.5 border-t border-border px-1 pt-4 ${collapsed ? "justify-center" : ""}`}>
           <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${amiConnected ? "bg-success" : "bg-muted"}`} />
-          <div className="min-w-0">
-            <p className="text-xs font-medium text-text">Asterisk AMI</p>
-            <p className="truncate text-[11px] text-muted">{amiConnected ? "Connected" : "Offline"}</p>
-          </div>
+          {!collapsed && (
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-text">Asterisk AMI</p>
+              <p className="truncate text-[11px] text-muted">{amiConnected ? "Connected" : "Offline"}</p>
+            </div>
+          )}
         </div>
+
+        <button
+          onClick={() => setCollapsed((current) => !current)}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          className={`mt-3 hidden items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium text-text/60 hover:bg-surface-2 hover:text-text lg:flex ${
+            collapsed ? "justify-center" : ""
+          }`}
+        >
+          {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+          {!collapsed && <span>Collapse</span>}
+        </button>
       </aside>
     </>
   );
@@ -691,10 +715,15 @@ function TenantApp() {
   const [loading, setLoading] = useState(Boolean(getToken()));
   const [page, setPage] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem("ringnex.sidebarCollapsed") === "1");
   const [liveCalls, setLiveCalls] = useState([]);
   const [presence, setPresence] = useState([]);
   const [amiConnected, setAmiConnected] = useState(false);
   const [agentStatus, setAgentStatus] = useState("OFFLINE");
+
+  useEffect(() => {
+    localStorage.setItem("ringnex.sidebarCollapsed", collapsed ? "1" : "0");
+  }, [collapsed]);
 
   useEffect(() => {
     if (!getToken()) {
@@ -822,8 +851,13 @@ function TenantApp() {
         setSidebarOpen={setSidebarOpen}
         session={session}
         amiConnected={amiConnected}
+        collapsed={collapsed}
+        setCollapsed={setCollapsed}
       />
-      <div className="console-content">
+      <div
+        className="console-content transition-[margin-left] duration-200 lg:!ml-[var(--rn-sidebar-w)]"
+        style={{ "--rn-sidebar-w": `${collapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH}px` }}
+      >
         <Header
           session={session}
           ownerAccount={ownerAccount}

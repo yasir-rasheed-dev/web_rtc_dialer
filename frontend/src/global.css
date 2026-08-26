@@ -37,6 +37,26 @@
   --rn-shadow: rgba(15, 23, 42, 0.08);
 }
 
+/*
+  Minimal button reset. Preflight isn't enabled yet (see note above), so
+  any new Tailwind-styled <button> that doesn't set its own background
+  falls back to native OS button chrome (grey box, beveled border) —
+  that's what was showing up behind the sidebar nav items. Every legacy
+  console.css/styles.css button rule already sets its own explicit
+  background/border, so this reset changes nothing on pages that haven't
+  been migrated yet — it only fixes buttons that forgot to set one.
+*/
+button {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
 :root[data-theme="dark"] {
   color-scheme: dark;
 
