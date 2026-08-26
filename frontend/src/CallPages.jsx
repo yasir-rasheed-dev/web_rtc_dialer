@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { FileAudio, Filter, RefreshCw, Search, X } from "lucide-react";
+
+import Button from "./components/ui/Button";
+import Card from "./components/ui/Card";
+import EmptyState from "./components/ui/EmptyState";
+import PageHeader from "./components/ui/PageHeader";
+import Select from "./components/ui/Select";
+import { SkeletonTable } from "./components/ui/Skeleton";
+import StatusBadge from "./components/ui/StatusBadge";
 import { api, recordingBlob } from "./lib/api";
 
 function formatSeconds(value = 0) {
@@ -18,25 +27,140 @@ function formatDate(value) {
 function useAgentOptions() {
   const [agents, setAgents] = useState([]);
   useEffect(() => {
-    api("/users").then((payload) => setAgents((payload.users || []).filter((user) => user.roleName !== "Tenant Owner" && user.sipUsername))).catch(() => setAgents([]));
+    api("/users")
+      .then((payload) => setAgents((payload.users || []).filter((user) => user.roleName !== "Tenant Owner" && user.sipUsername)))
+      .catch(() => setAgents([]));
   }, []);
   return agents;
 }
 
-function Filters({ filters, setFilters, onApply, agents, includeCallFilters = false }) {
-  return <form className="call-filter-grid" onSubmit={(event) => { event.preventDefault(); onApply(); }}>
-    <label>From<input type="date" value={filters.from} onChange={(e) => setFilters({ ...filters, from: e.target.value })} /></label>
-    <label>To<input type="date" value={filters.to} onChange={(e) => setFilters({ ...filters, to: e.target.value })} /></label>
-    {agents.length > 0 && <label>Agent<select value={filters.agentId} onChange={(e) => setFilters({ ...filters, agentId: e.target.value })}><option value="">All agents</option>{agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}{agent.extension ? ` · ${agent.extension}` : ""}</option>)}</select></label>}
-    {includeCallFilters && <label>Direction<select value={filters.direction} onChange={(e) => setFilters({ ...filters, direction: e.target.value })}><option value="">All directions</option><option value="INBOUND">Inbound</option><option value="OUTBOUND">Outbound</option></select></label>}
-    {includeCallFilters && <label>Status<select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}><option value="">All statuses</option><option value="COMPLETED">Completed</option><option value="FAILED">Failed</option><option value="ANSWERED">Answered</option><option value="RINGING">Ringing</option></select></label>}
-    <label className="filter-search"><span>Search</span><div className="search-box"><Search size={16} /><input value={filters.search} onChange={(e) => setFilters({ ...filters, search: e.target.value })} placeholder="Number or agent…" /></div></label>
-    <button className="primary-action filter-submit"><Filter size={16} />Apply filters</button>
-  </form>;
+const DIRECTION_OPTIONS = [
+  { value: "", label: "All directions" },
+  { value: "INBOUND", label: "Inbound" },
+  { value: "OUTBOUND", label: "Outbound" }
+];
+
+const STATUS_OPTIONS = [
+  { value: "", label: "All statuses" },
+  { value: "COMPLETED", label: "Completed" },
+  { value: "FAILED", label: "Failed" },
+  { value: "ANSWERED", label: "Answered" },
+  { value: "RINGING", label: "Ringing" }
+];
+
+function fieldLabelClass() {
+  return "flex flex-col gap-1.5 text-xs font-medium text-muted";
+}
+
+function dateInputClass() {
+  return "rounded-xl border border-border bg-surface-2 px-3 py-2.5 text-sm text-text outline-none focus:border-brand focus:ring-2 focus:ring-brand/20";
+}
+
+function Filters({ filters, setFilters, onApply, agents, includeCallFilters = false, loading = false }) {
+  const agentOptions = [
+    { value: "", label: "All agents" },
+    ...agents.map((agent) => ({
+      value: agent.id,
+      label: agent.extension ? `${agent.name} · ${agent.extension}` : agent.name
+    }))
+  ];
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        onApply();
+      }}
+      className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6"
+    >
+      <label className={fieldLabelClass()}>
+        From
+        <input
+          type="date"
+          value={filters.from}
+          onChange={(e) => setFilters({ ...filters, from: e.target.value })}
+          className={dateInputClass()}
+        />
+      </label>
+      <label className={fieldLabelClass()}>
+        To
+        <input
+          type="date"
+          value={filters.to}
+          onChange={(e) => setFilters({ ...filters, to: e.target.value })}
+          className={dateInputClass()}
+        />
+      </label>
+      {agents.length > 0 && (
+        <label className={fieldLabelClass()}>
+          Agent
+          <Select
+            options={agentOptions}
+            value={agentOptions.find((option) => option.value === filters.agentId) || agentOptions[0]}
+            onChange={(option) => setFilters({ ...filters, agentId: option.value })}
+          />
+        </label>
+      )}
+      {includeCallFilters && (
+        <label className={fieldLabelClass()}>
+          Direction
+          <Select
+            options={DIRECTION_OPTIONS}
+            value={DIRECTION_OPTIONS.find((option) => option.value === filters.direction) || DIRECTION_OPTIONS[0]}
+            onChange={(option) => setFilters({ ...filters, direction: option.value })}
+          />
+        </label>
+      )}
+      {includeCallFilters && (
+        <label className={fieldLabelClass()}>
+          Status
+          <Select
+            options={STATUS_OPTIONS}
+            value={STATUS_OPTIONS.find((option) => option.value === filters.status) || STATUS_OPTIONS[0]}
+            onChange={(option) => setFilters({ ...filters, status: option.value })}
+          />
+        </label>
+      )}
+      <label className={`${fieldLabelClass()} col-span-2`}>
+        Search
+        <div className="flex items-center gap-2 rounded-xl border border-border bg-surface-2 px-3 py-2.5 focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20">
+          <Search size={15} className="shrink-0 text-muted" />
+          <input
+            value={filters.search}
+            onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+            placeholder="Number or agent…"
+            className="min-w-0 flex-1 bg-transparent text-sm text-text outline-none"
+          />
+        </div>
+      </label>
+      <div className="col-span-2 flex items-end sm:col-span-3 lg:col-span-1">
+        <Button type="submit" icon={Filter} loading={loading} className="w-full justify-center">
+          Apply
+        </Button>
+      </div>
+    </form>
+  );
 }
 
 function Pagination({ result, load }) {
-  return <div className="pagination"><button disabled={result.page <= 1} onClick={() => load(result.page - 1)}>Previous</button><span>Page {result.page} of {Math.max(1, Math.ceil(result.total / result.pageSize))}</span><button disabled={result.page * result.pageSize >= result.total} onClick={() => load(result.page + 1)}>Next</button></div>;
+  return (
+    <div className="flex items-center justify-end gap-3 border-t border-border px-1 pt-4 text-xs text-muted">
+      <Button size="sm" variant="secondary" disabled={result.page <= 1} onClick={() => load(result.page - 1)}>
+        Previous
+      </Button>
+      <span>
+        Page {result.page} of {Math.max(1, Math.ceil(result.total / result.pageSize))}
+      </span>
+      <Button
+        size="sm"
+        variant="secondary"
+        disabled={result.page * result.pageSize >= result.total}
+        onClick={() => load(result.page + 1)}
+      >
+        Next
+      </Button>
+    </div>
+  );
 }
 
 export function CallLogsPage() {
@@ -46,23 +170,96 @@ export function CallLogsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const load = useCallback(async (page = 1) => {
-    setLoading(true); setError("");
-    try {
-      const query = new URLSearchParams({ page: String(page), pageSize: "25" });
-      Object.entries(filters).forEach(([key, value]) => { if (value) query.set(key, value); });
-      setResult(await api(`/calls?${query.toString()}`));
-    } catch (requestError) { setError(requestError.message); }
-    finally { setLoading(false); }
-  }, [filters]);
+  const load = useCallback(
+    async (page = 1) => {
+      setLoading(true);
+      setError("");
+      try {
+        const query = new URLSearchParams({ page: String(page), pageSize: "25" });
+        Object.entries(filters).forEach(([key, value]) => {
+          if (value) query.set(key, value);
+        });
+        setResult(await api(`/calls?${query.toString()}`));
+      } catch (requestError) {
+        setError(requestError.message);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [filters]
+  );
 
-  useEffect(() => { load(1); }, []);
+  useEffect(() => {
+    load(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  return <div className="page-stack"><div className="page-heading"><div><span className="overline">CONVERSATION HISTORY</span><h1>Call Logs</h1><p>Filter tenant call history by agent, date, direction and outcome.</p></div><button className="secondary-action" onClick={() => load(result.page)}><RefreshCw size={16} />Refresh</button></div>
-    <section className="console-card"><Filters filters={filters} setFilters={setFilters} onApply={() => load(1)} agents={agents} includeCallFilters /></section>
-    {error && <div className="alert error">{error}</div>}
-    <section className="console-card table-card"><div className="card-title"><div><h2>Call records</h2><p>{result.total} matching records</p></div></div><div className="data-table-wrap"><table><thead><tr><th>Started</th><th>Agent</th><th>Direction</th><th>From</th><th>To</th><th>Status</th><th>Talk time</th><th>Disposition</th></tr></thead><tbody>{result.rows.map((call) => <tr key={call.id}><td>{formatDate(call.started_at)}</td><td><strong>{call.agent_name || call.agent_sip_username || "—"}</strong><small className="cell-subtitle">{call.agent_sip_username || ""}</small></td><td><span className="direction-tag">{call.direction}</span></td><td>{call.from_number || "—"}</td><td>{call.to_number || "—"}</td><td><span className={`status-tag ${call.answered_at ? "active" : "neutral"}`}>{call.status}</span></td><td>{formatSeconds(call.billable_sec)}</td><td>{call.disposition || "—"}</td></tr>)}</tbody></table>{loading && <div className="table-loading">Loading call records…</div>}{!loading && !result.rows.length && <div className="empty-block">No matching calls</div>}</div><Pagination result={result} load={load} /></section>
-  </div>;
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        eyebrow="CONVERSATION HISTORY"
+        title="Call Logs"
+        description="Filter tenant call history by agent, date, direction and outcome."
+        actions={
+          <Button variant="secondary" icon={RefreshCw} loading={loading} onClick={() => load(result.page)}>
+            Refresh
+          </Button>
+        }
+      />
+
+      <Card>
+        <Filters filters={filters} setFilters={setFilters} onApply={() => load(1)} agents={agents} includeCallFilters loading={loading} />
+      </Card>
+
+      {error && <div className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>}
+
+      <Card title="Call records" description={`${result.total} matching records`}>
+        <div className="overflow-x-auto">
+          {loading ? (
+            <SkeletonTable rows={6} cols={8} />
+          ) : (
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-border text-[11px] font-semibold uppercase tracking-wide text-muted">
+                  <th className="pb-2 pr-4">Started</th>
+                  <th className="pb-2 pr-4">Agent</th>
+                  <th className="pb-2 pr-4">Direction</th>
+                  <th className="pb-2 pr-4">From</th>
+                  <th className="pb-2 pr-4">To</th>
+                  <th className="pb-2 pr-4">Status</th>
+                  <th className="pb-2 pr-4">Talk time</th>
+                  <th className="pb-2">Disposition</th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.rows.map((call) => (
+                  <tr key={call.id} className="border-b border-border/60 last:border-0">
+                    <td className="py-3 pr-4 text-muted">{formatDate(call.started_at)}</td>
+                    <td className="py-3 pr-4">
+                      <p className="font-medium text-text">{call.agent_name || call.agent_sip_username || "—"}</p>
+                      {call.agent_sip_username && <p className="text-xs text-muted">{call.agent_sip_username}</p>}
+                    </td>
+                    <td className="py-3 pr-4">
+                      <StatusBadge tone="brand">{call.direction}</StatusBadge>
+                    </td>
+                    <td className="py-3 pr-4 text-muted">{call.from_number || "—"}</td>
+                    <td className="py-3 pr-4 text-muted">{call.to_number || "—"}</td>
+                    <td className="py-3 pr-4">
+                      <StatusBadge tone={call.answered_at ? "success" : "neutral"}>{call.status}</StatusBadge>
+                    </td>
+                    <td className="py-3 pr-4 text-muted">{formatSeconds(call.billable_sec)}</td>
+                    <td className="py-3 text-muted">{call.disposition || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {!loading && !result.rows.length && <EmptyState title="No matching calls" />}
+        </div>
+        <Pagination result={result} load={load} />
+      </Card>
+    </div>
+  );
 }
 
 export function RecordingsPage() {
@@ -73,31 +270,141 @@ export function RecordingsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const load = useCallback(async (page = 1) => {
-    setLoading(true); setError("");
-    try {
-      const query = new URLSearchParams({ page: String(page), pageSize: "25" });
-      Object.entries(filters).forEach(([key, value]) => { if (value) query.set(key, value); });
-      setResult(await api(`/recordings?${query.toString()}`));
-    } catch (requestError) { setError(requestError.message); }
-    finally { setLoading(false); }
-  }, [filters]);
+  const load = useCallback(
+    async (page = 1) => {
+      setLoading(true);
+      setError("");
+      try {
+        const query = new URLSearchParams({ page: String(page), pageSize: "25" });
+        Object.entries(filters).forEach(([key, value]) => {
+          if (value) query.set(key, value);
+        });
+        setResult(await api(`/recordings?${query.toString()}`));
+      } catch (requestError) {
+        setError(requestError.message);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [filters]
+  );
 
-  useEffect(() => { load(1); }, []);
-  useEffect(() => () => { if (audio?.url) URL.revokeObjectURL(audio.url); }, [audio]);
+  useEffect(() => {
+    load(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => () => {
+    if (audio?.url) URL.revokeObjectURL(audio.url);
+  }, [audio]);
 
   const play = async (call) => {
     setError("");
     try {
       if (audio?.url) URL.revokeObjectURL(audio.url);
       setAudio({ call, url: await recordingBlob(call.id) });
-    } catch (requestError) { setError(requestError.message); }
+    } catch (requestError) {
+      setError(requestError.message);
+    }
   };
 
-  return <div className="page-stack"><div className="page-heading"><div><span className="overline">CALL MEDIA</span><h1>Recordings</h1><p>Search and play recordings by agent and date without mixing them into call logs.</p></div><button className="secondary-action" onClick={() => load(result.page)}><RefreshCw size={16} />Refresh</button></div>
-    <section className="console-card"><Filters filters={filters} setFilters={setFilters} onApply={() => load(1)} agents={agents} /></section>
-    {error && <div className="alert error">{error}</div>}
-    <section className="console-card table-card"><div className="card-title"><div><h2>Available recordings</h2><p>{result.total} matching recordings</p></div><FileAudio /></div><div className="data-table-wrap"><table><thead><tr><th>Started</th><th>Agent</th><th>Direction</th><th>From</th><th>To</th><th>Talk time</th><th>Recording</th></tr></thead><tbody>{result.rows.map((call) => <tr key={call.id}><td>{formatDate(call.started_at)}</td><td><strong>{call.agent_name || call.agent_sip_username || "—"}</strong><small className="cell-subtitle">{call.agent_sip_username || ""}</small></td><td><span className="direction-tag">{call.direction}</span></td><td>{call.from_number || "—"}</td><td>{call.to_number || "—"}</td><td>{formatSeconds(call.billable_sec)}</td><td><button className="text-button" onClick={() => play(call)}><FileAudio size={15} />Play</button></td></tr>)}</tbody></table>{loading && <div className="table-loading">Loading recordings…</div>}{!loading && !result.rows.length && <div className="empty-block">No matching recordings</div>}</div><Pagination result={result} load={load} /></section>
-    {audio && <div className="audio-drawer"><div><FileAudio /><span><strong>{audio.call.agent_name || audio.call.agent_sip_username || "Recording"}</strong><small>{formatDate(audio.call.started_at)} · {audio.call.from_number} → {audio.call.to_number}</small></span></div><audio src={audio.url} controls autoPlay /><button onClick={() => setAudio(null)} aria-label="Close"><X /></button></div>}
-  </div>;
+  return (
+    <div className="flex flex-col gap-6 pb-24">
+      <PageHeader
+        eyebrow="CALL MEDIA"
+        title="Recordings"
+        description="Search and play recordings by agent and date without mixing them into call logs."
+        actions={
+          <Button variant="secondary" icon={RefreshCw} loading={loading} onClick={() => load(result.page)}>
+            Refresh
+          </Button>
+        }
+      />
+
+      <Card>
+        <Filters filters={filters} setFilters={setFilters} onApply={() => load(1)} agents={agents} loading={loading} />
+      </Card>
+
+      {error && <div className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>}
+
+      <Card title="Available recordings" description={`${result.total} matching recordings`} icon={FileAudio}>
+        <div className="overflow-x-auto">
+          {loading ? (
+            <SkeletonTable rows={6} cols={7} />
+          ) : (
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-border text-[11px] font-semibold uppercase tracking-wide text-muted">
+                  <th className="pb-2 pr-4">Started</th>
+                  <th className="pb-2 pr-4">Agent</th>
+                  <th className="pb-2 pr-4">Direction</th>
+                  <th className="pb-2 pr-4">From</th>
+                  <th className="pb-2 pr-4">To</th>
+                  <th className="pb-2 pr-4">Talk time</th>
+                  <th className="pb-2">Recording</th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.rows.map((call) => (
+                  <tr key={call.id} className="border-b border-border/60 last:border-0">
+                    <td className="py-3 pr-4 text-muted">{formatDate(call.started_at)}</td>
+                    <td className="py-3 pr-4">
+                      <p className="font-medium text-text">{call.agent_name || call.agent_sip_username || "—"}</p>
+                      {call.agent_sip_username && <p className="text-xs text-muted">{call.agent_sip_username}</p>}
+                    </td>
+                    <td className="py-3 pr-4">
+                      <StatusBadge tone="brand">{call.direction}</StatusBadge>
+                    </td>
+                    <td className="py-3 pr-4 text-muted">{call.from_number || "—"}</td>
+                    <td className="py-3 pr-4 text-muted">{call.to_number || "—"}</td>
+                    <td className="py-3 pr-4 text-muted">{formatSeconds(call.billable_sec)}</td>
+                    <td className="py-3">
+                      <Button size="sm" variant="ghost" icon={FileAudio} onClick={() => play(call)}>
+                        Play
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {!loading && !result.rows.length && <EmptyState title="No matching recordings" />}
+        </div>
+        <Pagination result={result} load={load} />
+      </Card>
+
+      <AnimatePresence>
+        {audio && (
+          <motion.div
+            initial={{ y: 80, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 80, opacity: 0 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+            className="fixed inset-x-4 bottom-4 z-40 flex flex-col gap-3 rounded-2xl border border-border bg-surface p-4 shadow-card sm:inset-x-auto sm:right-6 sm:w-[440px]"
+          >
+            <div className="flex items-center gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand/10 text-brand">
+                <FileAudio size={17} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-text">
+                  {audio.call.agent_name || audio.call.agent_sip_username || "Recording"}
+                </p>
+                <p className="truncate text-xs text-muted">
+                  {formatDate(audio.call.started_at)} · {audio.call.from_number} → {audio.call.to_number}
+                </p>
+              </div>
+              <button
+                onClick={() => setAudio(null)}
+                aria-label="Close"
+                className="rounded-lg p-1.5 text-muted hover:bg-surface-2 hover:text-text"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <audio src={audio.url} controls autoPlay className="w-full" />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
 }
