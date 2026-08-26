@@ -15,8 +15,10 @@ import {
   ShieldCheck,
   Table2,
   Trash2,
+  UserCheck,
   UserCog,
   Users,
+  UserX,
   X
 } from "lucide-react";
 
@@ -43,25 +45,184 @@ function groupPermissions(permissions) {
   }, {});
 }
 
+const EMPTY_USER_FORM = { name: "", email: "", password: "", roleId: "", callerIdNumber: "", generateSipAccount: true };
+
+function UserFormModal({ open, onClose, user, roles, dids, onSaved }) {
+  const owner = user?.roleName === "Tenant Owner";
+  const hasSip = Boolean(user?.sipUsername);
+  const [form, setForm] = useState(EMPTY_USER_FORM);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const assignableRoles = useMemo(() => roles.filter((role) => role.active && role.name !== "Tenant Owner"), [roles]);
+  const roleOptions = useMemo(() => assignableRoles.map((role) => ({ value: role.id, label: role.name })), [assignableRoles]);
+  const availableDids = useMemo(
+    () => dids.filter((did) => !did.assigned_user_id || did.assigned_user_id === user?.id),
+    [dids, user?.id]
+  );
+  const didOptions = useMemo(
+    () => [
+      { value: "", label: "No DID" },
+      ...availableDids.map((did) => ({
+        value: did.number,
+        label: did.assigned_user_name ? `${did.number} — ${did.assigned_user_name}` : did.number
+      }))
+    ],
+    [availableDids]
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    setError("");
+    if (user) {
+      setForm({
+        name: user.name || "",
+        email: user.email || "",
+        password: "",
+        roleId: owner ? "" : user.roleId || "",
+        callerIdNumber: owner ? "" : user.callerIdNumber || "",
+        generateSipAccount: Boolean(user.sipUsername)
+      });
+    } else {
+      setForm({
+        ...EMPTY_USER_FORM,
+        roleId: assignableRoles.find((role) => role.name === "Agent")?.id || assignableRoles[0]?.id || ""
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, user]);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      if (user) {
+        const body = owner
+          ? { name: form.name, ...(form.password ? { password: form.password } : {}) }
+          : {
+              name: form.name,
+              roleId: form.roleId,
+              callerIdNumber: form.callerIdNumber,
+              ...(form.password ? { password: form.password } : {})
+            };
+        await api(`/users/${user.id}`, { method: "PATCH", body });
+        notifySuccess(owner ? "Tenant Owner profile updated." : "User updated.");
+      } else {
+        await api("/users", { method: "POST", body: form });
+        notifySuccess("User created. SIP/extension allocation follows the selected provisioning option.");
+      }
+      onSaved();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const didDisabled = user ? !hasSip : !form.generateSipAccount;
+
+  return (
+    <Modal open={open} onClose={onClose} title={user ? (owner ? "Edit Tenant Owner" : "Edit user") : "New user"} width="max-w-lg">
+      <form onSubmit={submit} className="flex flex-col gap-3">
+        <p className="text-xs text-muted">
+          {owner ? "Management profile only — no SIP, DID or seat settings." : "Team membership is managed separately from Team Management."}
+        </p>
+
+        <label className={fieldLabel()}>
+          Full name<span className="text-danger">*</span>
+          <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus required />
+        </label>
+        <label className={fieldLabel()}>
+          Email<span className="text-danger">*</span>
+          <Input
+            type="email"
+            value={form.email}
+            disabled={Boolean(user)}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+            required
+          />
+        </label>
+        <label className={fieldLabel()}>
+          {user ? "New password (optional)" : "App password"}
+          <Input
+            type="password"
+            minLength={user ? undefined : 12}
+            value={form.password}
+            onChange={(e) => setForm({ ...form, password: e.target.value })}
+            required={!user}
+          />
+        </label>
+
+        {!owner && (
+          <>
+            <label className={fieldLabel()}>
+              Role<span className="text-danger">*</span>
+              <Select
+                options={roleOptions}
+                value={roleOptions.find((option) => option.value === form.roleId) || null}
+                onChange={(option) => setForm({ ...form, roleId: option?.value || "" })}
+                placeholder="Select role"
+              />
+            </label>
+            <label className={fieldLabel()}>
+              Assigned DID
+              <Select
+                isDisabled={didDisabled}
+                options={didOptions}
+                value={didOptions.find((option) => option.value === form.callerIdNumber) || didOptions[0]}
+                onChange={(option) => setForm({ ...form, callerIdNumber: option?.value || "" })}
+              />
+            </label>
+            {!user && (
+              <label className="flex items-center gap-2 text-sm text-text">
+                <input
+                  type="checkbox"
+                  checked={form.generateSipAccount}
+                  onChange={(e) =>
+                    setForm({ ...form, generateSipAccount: e.target.checked, callerIdNumber: e.target.checked ? form.callerIdNumber : "" })
+                  }
+                  className="h-4 w-4 shrink-0 rounded border-border-strong accent-[rgb(var(--rn-blue))]"
+                />
+                Provision SIP account + next extension automatically
+              </label>
+            )}
+          </>
+        )}
+
+        {owner && (
+          <div className="flex items-start gap-2 rounded-xl bg-brand/10 px-3.5 py-3 text-xs text-brand">
+            <ShieldCheck size={16} className="mt-0.5 shrink-0" />
+            <span>Tenant Owner stays outside telephony and does not consume a paid user seat.</span>
+          </div>
+        )}
+
+        {error && <div className="rounded-lg bg-danger-soft px-3 py-2 text-xs font-medium text-danger">{error}</div>}
+        <div className="mt-1 flex justify-end gap-2 border-t border-border pt-4">
+          <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" size="sm" loading={busy}>
+            {user ? "Save user" : "Create user"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 export function UsersAdmin({ permissions = [] }) {
+  const canManage = permissions.includes("MANAGE_AGENTS");
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [dids, setDids] = useState([]);
-  const [editingUserId, setEditingUserId] = useState(null);
-  const [editingOwner, setEditingOwner] = useState(false);
-  const [editingHasSip, setEditingHasSip] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const canManage = permissions.includes("MANAGE_AGENTS");
-  const empty = { name: "", email: "", password: "", roleId: "", callerIdNumber: "", generateSipAccount: true };
-  const [form, setForm] = useState(empty);
+  const [modalUser, setModalUser] = useState(undefined); // undefined = closed, null = new, object = editing
+  const [togglingId, setTogglingId] = useState(null);
 
-  const assignableRoles = useMemo(
-    () => roles.filter((role) => role.active && role.name !== "Tenant Owner"),
-    [roles]
-  );
-
-  const load = async () => {
+  const load = useCallback(async () => {
+    setLoading(true);
     setError("");
     try {
       const requests = [api("/users")];
@@ -73,98 +234,160 @@ export function UsersAdmin({ permissions = [] }) {
       setUsers(userPayload.users || []);
       setRoles(rolePayload.roles || []);
       setDids(didPayload.dids || []);
-      if (canManage) {
-        const allowedRoles = (rolePayload.roles || []).filter((role) => role.active && role.name !== "Tenant Owner");
-        setForm((current) => ({
-          ...current,
-          roleId: current.roleId || allowedRoles.find((role) => role.name === "Agent")?.id || allowedRoles[0]?.id || ""
-        }));
-      }
-    } catch (e) { setError(e.message); }
-  };
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [canManage]);
 
-  useEffect(() => { load(); }, [canManage]);
-
-  const resetForm = () => {
-    setEditingUserId(null);
-    setEditingOwner(false);
-    setEditingHasSip(false);
-    setForm(empty);
-  };
-
-  const edit = (user) => {
-    if (!canManage) return;
-    const owner = user.roleName === "Tenant Owner";
-    setEditingUserId(user.id);
-    setEditingOwner(owner);
-    setEditingHasSip(Boolean(user.sipUsername));
-    setForm({
-      name: user.name || "",
-      email: user.email || "",
-      password: "",
-      roleId: owner ? "" : user.roleId || "",
-      callerIdNumber: owner ? "" : user.callerIdNumber || "",
-      generateSipAccount: Boolean(user.sipUsername)
-    });
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const submit = async (event) => {
-    event.preventDefault();
-    if (!canManage) return;
-    setError(""); setNotice("");
-    try {
-      if (editingUserId) {
-        const body = editingOwner
-          ? { name: form.name, ...(form.password ? { password: form.password } : {}) }
-          : {
-              name: form.name,
-              roleId: form.roleId,
-              callerIdNumber: form.callerIdNumber,
-              ...(form.password ? { password: form.password } : {})
-            };
-        await api(`/users/${editingUserId}`, { method: "PATCH", body });
-        setNotice(editingOwner ? "Tenant Owner profile updated." : "User updated successfully.");
-      } else {
-        await api("/users", { method: "POST", body: form });
-        setNotice("User created. SIP/extension allocation follows the selected provisioning option.");
-      }
-      resetForm();
-      await load();
-    } catch (e) { setError(e.message); }
-  };
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const toggleActive = async (user) => {
-    if (!canManage || user.roleName === "Tenant Owner") return;
-    setError("");
+    setTogglingId(user.id);
     try {
       await api(`/users/${user.id}`, { method: "PATCH", body: { active: !user.active } });
+      notifySuccess(user.active ? "User disabled." : "User enabled.");
       await load();
-    } catch (e) { setError(e.message); }
+    } catch (requestError) {
+      notifyError(requestError.message);
+    } finally {
+      setTogglingId(null);
+    }
   };
 
-  const availableDids = dids.filter((did) => !did.assigned_user_id || did.assigned_user_id === editingUserId);
   const billableSeats = users.filter((user) => user.roleName !== "Tenant Owner" && user.active).length;
 
-  return <div className="page-stack">
-    <div className="page-heading"><div><span className="overline">TENANT ACCESS & PROVISIONING</span><h1>Users & Agents</h1><p>Tenant Owner is a management account and is excluded from SIP provisioning and billable seat limits.</p></div><button className="secondary-action" onClick={load}><RefreshCw size={16} />Refresh</button></div>
-    {error && <div className="alert error">{error}</div>}{notice && <div className="alert">{notice}</div>}
-    <div className={canManage ? "admin-grid" : "page-stack"}>
-      {canManage && <section className="console-card"><div className="card-title"><div><h2>{editingUserId ? (editingOwner ? "Edit Tenant Owner" : "Edit user") : "New user"}</h2><p>{editingOwner ? "Management profile only — no SIP, DID or seat settings." : "Team membership is managed separately from Team Management."}</p></div><Users /></div><form className="admin-form" onSubmit={submit}>
-        <label>Full name<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></label>
-        <label>Email<input type="email" value={form.email} disabled={Boolean(editingUserId)} onChange={(e) => setForm({ ...form, email: e.target.value })} required /></label>
-        <label>{editingUserId ? "New password (optional)" : "App password"}<input type="password" minLength={editingUserId ? undefined : 12} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required={!editingUserId} /></label>
-        {!editingOwner && <><label>Role<select value={form.roleId} onChange={(e) => setForm({ ...form, roleId: e.target.value })} required><option value="">Select role</option>{assignableRoles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select></label><label>Assigned DID<select value={form.callerIdNumber} disabled={!editingUserId ? !form.generateSipAccount : !editingHasSip} onChange={(e) => setForm({ ...form, callerIdNumber: e.target.value })}><option value="">No DID</option>{availableDids.map((did) => <option key={did.id} value={did.number}>{did.number}{did.assigned_user_name ? ` — ${did.assigned_user_name}` : ""}</option>)}</select></label>{!editingUserId && <label className="sip-generate-option"><input type="checkbox" checked={form.generateSipAccount} onChange={(e) => setForm({ ...form, generateSipAccount: e.target.checked, callerIdNumber: e.target.checked ? form.callerIdNumber : "" })} /> Provision SIP account + next extension automatically</label>}</>}
-        {editingOwner && <div className="owner-account-note full-span"><ShieldCheck size={17} /><span>Tenant Owner stays outside telephony and does not consume a paid user seat.</span></div>}
-        <button className="primary-action">{editingUserId ? "Save user" : "Create user"}</button>{editingUserId && <button type="button" className="secondary-action" onClick={resetForm}>Cancel</button>}
-      </form></section>}
-      <section className="console-card table-card"><div className="card-title"><div><h2>Workspace Users</h2><p>{canManage ? `${users.length} accounts · ${billableSeats} active billable seats · Tenant Owner excluded` : `${users.length} visible users`}</p></div></div><div className="data-table-wrap"><table><thead><tr><th>User</th><th>Role</th><th>DID</th><th>SIP / Ext</th><th>Teams</th><th>Status</th>{canManage && <th />}</tr></thead><tbody>{users.map((user) => {
-        const owner = user.roleName === "Tenant Owner";
-        const teams = Array.isArray(user.teamNames) ? user.teamNames : [];
-        return <tr key={user.id}><td><strong>{user.name}</strong><small className="cell-subtitle">{user.email}</small></td><td>{user.roleName}{owner && <small className="cell-subtitle">Management account</small>}</td><td>{owner ? "—" : user.callerIdNumber || "—"}</td><td>{owner ? <span className="management-badge">No SIP seat</span> : <>{user.sipUsername || "—"}<small className="cell-subtitle">{user.extension ? `Ext ${user.extension}` : ""}</small></>}</td><td>{owner ? "—" : teams.length ? teams.join(", ") : "Unassigned"}</td><td><span className={`status-tag ${user.active ? "active" : "neutral"}`}>{user.active ? "Active" : "Disabled"}</span></td>{canManage && <td><div className="inline-actions"><button onClick={() => edit(user)}>Edit</button>{!owner && <button onClick={() => toggleActive(user)}>{user.active ? "Disable" : "Enable"}</button>}</div></td>}</tr>;
-      })}</tbody></table></div></section>
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        eyebrow="TENANT ACCESS & PROVISIONING"
+        title="Users & Agents"
+        description="Tenant Owner is a management account and is excluded from SIP provisioning and billable seat limits."
+        actions={
+          <>
+            {canManage && (
+              <Button icon={Plus} onClick={() => setModalUser(null)}>
+                New user
+              </Button>
+            )}
+            <Button variant="secondary" icon={RefreshCw} loading={loading} onClick={load}>
+              Refresh
+            </Button>
+          </>
+        }
+      />
+
+      {error && <div className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>}
+
+      <Card
+        title="Workspace users"
+        description={
+          canManage
+            ? `${users.length} accounts · ${billableSeats} active billable seats · Tenant Owner excluded`
+            : `${users.length} visible users`
+        }
+        icon={Users}
+      >
+        {loading ? (
+          <SkeletonTable rows={6} cols={7} />
+        ) : users.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-border text-[11px] font-semibold uppercase tracking-wide text-muted">
+                  <th className="pb-2 pr-4">User</th>
+                  <th className="pb-2 pr-4">Role</th>
+                  <th className="pb-2 pr-4">DID</th>
+                  <th className="pb-2 pr-4">SIP / Ext</th>
+                  <th className="pb-2 pr-4">Teams</th>
+                  <th className="pb-2 pr-4">Status</th>
+                  {canManage && <th className="pb-2">Actions</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((user) => {
+                  const owner = user.roleName === "Tenant Owner";
+                  const teams = Array.isArray(user.teamNames) ? user.teamNames : [];
+                  return (
+                    <tr key={user.id} className="border-b border-border/60 last:border-0">
+                      <td className="py-3 pr-4">
+                        <p className="font-medium text-text">{user.name}</p>
+                        <p className="text-xs text-muted">{user.email}</p>
+                      </td>
+                      <td className="py-3 pr-4 text-muted">
+                        {user.roleName}
+                        {owner && <span className="block text-xs text-muted">Management account</span>}
+                      </td>
+                      <td className="py-3 pr-4 text-muted">{owner ? "—" : user.callerIdNumber || "—"}</td>
+                      <td className="py-3 pr-4 text-muted">
+                        {owner ? (
+                          <StatusBadge tone="neutral">No SIP seat</StatusBadge>
+                        ) : (
+                          <>
+                            {user.sipUsername || "—"}
+                            {user.extension && <span className="block text-xs text-muted">Ext {user.extension}</span>}
+                          </>
+                        )}
+                      </td>
+                      <td className="py-3 pr-4 text-muted">{owner ? "—" : teams.length ? teams.join(", ") : "Unassigned"}</td>
+                      <td className="py-3 pr-4">
+                        <StatusBadge tone={user.active ? "success" : "neutral"}>{user.active ? "Active" : "Disabled"}</StatusBadge>
+                      </td>
+                      {canManage && (
+                        <td className="py-3">
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => setModalUser(user)}
+                              className="rounded-lg p-1.5 text-muted hover:bg-surface-2 hover:text-text"
+                              aria-label={`Edit ${user.name}`}
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            {!owner && (
+                              <button
+                                onClick={() => toggleActive(user)}
+                                disabled={togglingId === user.id}
+                                className={`rounded-lg p-1.5 disabled:opacity-40 ${
+                                  user.active ? "text-muted hover:bg-danger-soft hover:text-danger" : "text-muted hover:bg-success-soft hover:text-success"
+                                }`}
+                                aria-label={user.active ? `Disable ${user.name}` : `Enable ${user.name}`}
+                                title={user.active ? "Disable user" : "Enable user"}
+                              >
+                                {user.active ? <UserX size={14} /> : <UserCheck size={14} />}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyState icon={Users} title="No users yet" />
+        )}
+      </Card>
+
+      {canManage && (
+        <UserFormModal
+          open={modalUser !== undefined}
+          onClose={() => setModalUser(undefined)}
+          user={modalUser}
+          roles={roles}
+          dids={dids}
+          onSaved={() => {
+            setModalUser(undefined);
+            load();
+          }}
+        />
+      )}
     </div>
-  </div>;
+  );
 }
 
 function RoleFormModal({ open, onClose, role, grouped, onSaved }) {
