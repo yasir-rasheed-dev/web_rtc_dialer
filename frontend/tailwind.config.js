@@ -12,8 +12,8 @@ export default {
         surface: "rgb(var(--rn-surface) / <alpha-value>)",
         "surface-2": "rgb(var(--rn-surface-2) / <alpha-value>)",
         "surface-3": "rgb(var(--rn-surface-3) / <alpha-value>)",
-        border: "rgb(var(--rn-border) / <alpha-value>)",
-        "border-strong": "rgb(var(--rn-border-strong) / <alpha-value>)",
+        border: "var(--rn-border)",
+        "border-strong": "var(--rn-border-strong)",
         text: "rgb(var(--rn-text) / <alpha-value>)",
         muted: "rgb(var(--rn-muted) / <alpha-value>)",
         brand: {

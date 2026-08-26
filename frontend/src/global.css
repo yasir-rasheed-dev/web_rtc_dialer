@@ -9,3 +9,48 @@
 */
 @tailwind components;
 @tailwind utilities;
+
+/*
+  Reconciled design tokens (Phase 1). These are namespaced --rn-* so they
+  coexist with the legacy --bg/--surface/... (styles.css) and
+  --console-bg/--console-surface/... (console.css) tokens without
+  colliding — those get retired page by page as each component migrates
+  to Tailwind. Colors are stored as space-separated RGB triplets so
+  Tailwind's `rgb(var(--rn-x) / <alpha-value>)` utilities can apply
+  opacity on top (e.g. bg-brand/40).
+*/
+:root {
+  color-scheme: light;
+
+  --rn-bg: 246 248 251;
+  --rn-surface: 255 255 255;
+  --rn-surface-2: 248 250 252;
+  --rn-surface-3: 241 245 249;
+  --rn-border: rgba(15, 23, 42, 0.1);
+  --rn-border-strong: rgba(15, 23, 42, 0.18);
+  --rn-text: 15 23 42;
+  --rn-muted: 100 116 139;
+  --rn-blue: 37 99 235;
+  --rn-green: 5 150 105;
+  --rn-red: 220 38 38;
+  --rn-amber: 217 119 6;
+  --rn-shadow: rgba(15, 23, 42, 0.08);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --rn-bg: 7 17 31;
+  --rn-surface: 13 25 41;
+  --rn-surface-2: 17 31 49;
+  --rn-surface-3: 23 38 58;
+  --rn-border: rgba(148, 163, 184, 0.16);
+  --rn-border-strong: rgba(148, 163, 184, 0.28);
+  --rn-text: 231 237 247;
+  --rn-muted: 145 160 181;
+  --rn-blue: 46 140 255;
+  --rn-green: 45 212 165;
+  --rn-red: 255 101 119;
+  --rn-amber: 246 189 88;
+  --rn-shadow: rgba(0, 0, 0, 0.28);
+}

@@ -1,13 +1,21 @@
+/*
+  These legacy --console-* tokens now derive from the reconciled --rn-*
+  theme tokens defined in global.css (Phase 1 of the UI redesign), so the
+  whole admin console responds to the theme toggle without every rule in
+  this file needing to change. --console-orange has no --rn- equivalent
+  (kept as-is) to preserve exact dark-mode parity for the one accent that
+  used it.
+*/
 :root {
-  --console-bg: #07111e;
-  --console-surface: #0d1b2b;
-  --console-surface-2: #112238;
-  --console-border: #20344a;
-  --console-text: #edf5ff;
-  --console-muted: #8094aa;
-  --console-blue: #2f8cff;
-  --console-green: #21d6a5;
-  --console-red: #ff6376;
+  --console-bg: rgb(var(--rn-bg));
+  --console-surface: rgb(var(--rn-surface));
+  --console-surface-2: rgb(var(--rn-surface-2));
+  --console-border: var(--rn-border-strong);
+  --console-text: rgb(var(--rn-text));
+  --console-muted: rgb(var(--rn-muted));
+  --console-blue: rgb(var(--rn-blue));
+  --console-green: rgb(var(--rn-green));
+  --console-red: rgb(var(--rn-red));
   --console-orange: #ffae57;
 }
 
