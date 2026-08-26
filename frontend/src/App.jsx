@@ -54,11 +54,11 @@ const LazyCallLogsPage = lazy(() => import("./pages/calls/CallLogsPage"));
 const LazyRecordingsPage = lazy(() => import("./pages/calls/RecordingsPage"));
 const LazyReportsHub = lazy(() => import("./pages/reports/ReportsHub"));
 const LazyTeamChat = lazy(() => import("./TeamChat"));
-const LazyContactsPage = lazy(() => import("./TenantManagement").then((m) => ({ default: m.ContactsPage })));
-const LazyDidsPage = lazy(() => import("./TenantManagement").then((m) => ({ default: m.DidsPage })));
-const LazyRolesAdmin = lazy(() => import("./TenantManagement").then((m) => ({ default: m.RolesAdmin })));
-const LazyUsagePage = lazy(() => import("./TenantManagement").then((m) => ({ default: m.UsagePage })));
-const LazyUsersAdmin = lazy(() => import("./TenantManagement").then((m) => ({ default: m.UsersAdmin })));
+const LazyContactsPage = lazy(() => import("./pages/contacts/ContactsPage"));
+const LazyDidsPage = lazy(() => import("./pages/dids/DidsPage"));
+const LazyRolesAdmin = lazy(() => import("./pages/roles/RolesAdmin"));
+const LazyUsagePage = lazy(() => import("./pages/usage/UsagePage"));
+const LazyUsersAdmin = lazy(() => import("./pages/users/UsersAdmin"));
 const LazySuperAdminApp = lazy(() => import("./SuperAdminApp"));
 
 const NAVIGATION = [
