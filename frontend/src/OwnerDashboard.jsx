@@ -15,6 +15,14 @@ import {
   UserRoundX,
   Voicemail
 } from "lucide-react";
+
+import Button from "./components/ui/Button";
+import Card from "./components/ui/Card";
+import EmptyState from "./components/ui/EmptyState";
+import PageHeader from "./components/ui/PageHeader";
+import Select from "./components/ui/Select";
+import { SkeletonCards } from "./components/ui/Skeleton";
+import StatusBadge from "./components/ui/StatusBadge";
 import { api } from "./lib/api";
 
 function todayValue() {
@@ -35,8 +43,39 @@ function liveDuration(startedAt, now) {
   return hours ? `${hours}:${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}` : `${minutes}:${String(rest).padStart(2, "0")}`;
 }
 
+const STAT_TONES = {
+  blue: "bg-brand/10 text-brand",
+  green: "bg-success-soft text-success",
+  purple: "bg-violet-500/10 text-violet-500",
+  orange: "bg-warning-soft text-warning",
+  slate: "bg-surface-3 text-muted"
+};
+
 function StatCard({ label, value, detail, icon: Icon, tone = "blue" }) {
-  return <article className={`owner-stat-card ${tone}`}><span className="owner-stat-icon"><Icon size={19} /></span><div><small>{label}</small><strong>{Number(value || 0)}</strong><p>{detail}</p></div></article>;
+  return (
+    <Card className="flex items-start gap-3.5 !p-4">
+      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${STAT_TONES[tone] || STAT_TONES.blue}`}>
+        <Icon size={18} />
+      </span>
+      <div className="min-w-0">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">{label}</p>
+        <p className="mt-1 text-2xl font-bold tracking-tight text-text">{Number(value || 0)}</p>
+        <p className="mt-0.5 text-xs text-muted">{detail}</p>
+      </div>
+    </Card>
+  );
+}
+
+function SectionCaption({ eyebrow, title, note }) {
+  return (
+    <div className="flex items-end justify-between gap-4">
+      <div>
+        <span className="text-[11px] font-extrabold tracking-[0.16em] text-brand">{eyebrow}</span>
+        <h2 className="mt-1 text-lg font-bold text-text">{title}</h2>
+      </div>
+      {note && <span className="text-xs text-muted">{note}</span>}
+    </div>
+  );
 }
 
 export default function OwnerDashboard({ tenant, user, amiConnected, socketLiveCalls = [] }) {
@@ -61,9 +100,13 @@ export default function OwnerDashboard({ tenant, user, amiConnected, socketLiveC
     }
   }, [filters.from, filters.to, filters.agentId]);
 
-  useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    const interval = window.setInterval(() => { load(); }, 15000);
+    load();
+  }, [load]);
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      load();
+    }, 15000);
     return () => window.clearInterval(interval);
   }, [load]);
   useEffect(() => {
@@ -72,56 +115,156 @@ export default function OwnerDashboard({ tenant, user, amiConnected, socketLiveC
   }, []);
 
   const agentMap = useMemo(() => new Map((payload?.agents || []).map((agent) => [agent.id, agent])), [payload?.agents]);
-  const fallbackMap = useMemo(() => new Map((payload?.agents || []).map((agent) => [agent.sipUsername, agent])), [payload?.agents]);
-  const baseLiveCalls = socketLiveCalls.length ? socketLiveCalls : (payload?.liveCalls || []);
+  const fallbackMap = useMemo(
+    () => new Map((payload?.agents || []).map((agent) => [agent.sipUsername, agent])),
+    [payload?.agents]
+  );
+  const baseLiveCalls = socketLiveCalls.length ? socketLiveCalls : payload?.liveCalls || [];
   const liveCalls = baseLiveCalls.filter((call) => !filters.agentId || call.agentUserId === filters.agentId);
   const status = payload?.agentStatus || {};
   const metrics = payload?.callMetrics || {};
 
-  return <div className="page-stack owner-dashboard-page">
-    <div className="page-heading owner-heading">
-      <div><span className="overline">TENANT OWNER CONTROL CENTER</span><h1>{tenant?.name || "Workspace"} overview</h1><p>{user?.name} · management view without a SIP seat</p></div>
-      <div className="owner-heading-actions"><span className={`system-pill ${amiConnected ? "ok" : "bad"}`}><Signal size={15} />AMI {amiConnected ? "connected" : "offline"}</span><button className="secondary-action" onClick={load} disabled={loading}><RefreshCw className={loading ? "spin" : ""} size={16} />Refresh</button></div>
+  const agentOptions = [
+    { value: "", label: "All agents" },
+    ...(payload?.agents || []).map((agent) => ({
+      value: agent.id,
+      label: agent.extension ? `${agent.name} · ${agent.extension}` : agent.name
+    }))
+  ];
+
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        eyebrow="TENANT OWNER CONTROL CENTER"
+        title={`${tenant?.name || "Workspace"} overview`}
+        description={`${user?.name} · management view without a SIP seat`}
+        actions={
+          <>
+            <StatusBadge tone={amiConnected ? "success" : "danger"} icon={Signal}>
+              AMI {amiConnected ? "connected" : "offline"}
+            </StatusBadge>
+            <Button variant="secondary" icon={RefreshCw} loading={loading} onClick={load}>
+              Refresh
+            </Button>
+          </>
+        }
+      />
+
+      <Card>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:items-end lg:grid-cols-[repeat(3,minmax(0,220px))_1fr]">
+          <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
+            From
+            <input
+              type="date"
+              value={filters.from}
+              onChange={(e) => setFilters({ ...filters, from: e.target.value })}
+              className="rounded-xl border border-border bg-surface-2 px-3 py-2.5 text-sm text-text outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+            />
+          </label>
+          <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
+            To
+            <input
+              type="date"
+              value={filters.to}
+              onChange={(e) => setFilters({ ...filters, to: e.target.value })}
+              className="rounded-xl border border-border bg-surface-2 px-3 py-2.5 text-sm text-text outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+            />
+          </label>
+          <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
+            Agent
+            <Select
+              options={agentOptions}
+              value={agentOptions.find((option) => option.value === filters.agentId) || agentOptions[0]}
+              onChange={(option) => setFilters({ ...filters, agentId: option.value })}
+            />
+          </label>
+          <div className="flex items-center gap-2 text-xs text-muted sm:justify-end">
+            <Clock3 size={16} />
+            <span>{filters.from === filters.to ? filters.from : `${filters.from} → ${filters.to}`}</span>
+          </div>
+        </div>
+      </Card>
+
+      {error && <div className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>}
+
+      {!payload && !error ? (
+        <SkeletonCards count={5} />
+      ) : (
+        <>
+          <div className="flex flex-col gap-4">
+            <SectionCaption eyebrow="AGENT AVAILABILITY" title="Current agent status" note={`${status.total || 0} tracked agents`} />
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+              <StatCard label="Ready" value={status.ready} detail="Available for calls" icon={UserRoundCheck} tone="green" />
+              <StatCard label="Active" value={status.active} detail="Working / signed in" icon={UserCheck} />
+              <StatCard label="Inactive" value={status.inactive} detail="Offline or disabled" icon={UserRoundX} tone="slate" />
+              <StatCard label="On call" value={status.onCall} detail="Ringing or connected" icon={Headphones} tone="purple" />
+              <StatCard label="Paused" value={status.paused} detail="Temporarily unavailable" icon={CirclePause} tone="orange" />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-4">
+            <SectionCaption eyebrow="CALL ACTIVITY" title="Call outcomes" note="Filtered by date and agent" />
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+              <StatCard label="Dialed" value={metrics.dialed} detail="Outbound attempts" icon={PhoneOutgoing} />
+              <StatCard label="Missed" value={metrics.missed} detail="Unanswered inbound" icon={PhoneMissed} tone="orange" />
+              <StatCard label="Voicemails" value={metrics.voicemails} detail="Marked voicemail" icon={Voicemail} tone="purple" />
+              <StatCard label="Connected" value={metrics.connected} detail="Answered calls" icon={PhoneCall} tone="green" />
+              <StatCard label="Not connected" value={metrics.not_connected} detail="Unanswered outbound" icon={Activity} tone="slate" />
+              <StatCard label="Inbound" value={metrics.inbound} detail="Incoming calls" icon={PhoneIncoming} />
+              <StatCard label="Outbound" value={metrics.outbound} detail="Outgoing calls" icon={PhoneOutgoing} tone="purple" />
+            </div>
+          </div>
+        </>
+      )}
+
+      <Card
+        title="Live calls"
+        description="Real-time calls across this workspace. Monitoring actions are not shown here."
+        actions={<StatusBadge tone="danger">{liveCalls.length} LIVE</StatusBadge>}
+      >
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-border text-[11px] font-semibold uppercase tracking-wide text-muted">
+                <th className="pb-2 pr-4">Agent</th>
+                <th className="pb-2 pr-4">Teams</th>
+                <th className="pb-2 pr-4">Direction</th>
+                <th className="pb-2 pr-4">From</th>
+                <th className="pb-2 pr-4">To</th>
+                <th className="pb-2 pr-4">Status</th>
+                <th className="pb-2 pr-4">Duration</th>
+                <th className="pb-2">Started</th>
+              </tr>
+            </thead>
+            <tbody>
+              {liveCalls.map((call) => {
+                const agent = agentMap.get(call.agentUserId) || fallbackMap.get(call.agent);
+                const teams = call.teamNames?.length ? call.teamNames : agent?.teamNames || [];
+                return (
+                  <tr key={call.linkedid} className="border-b border-border/60 last:border-0">
+                    <td className="py-3 pr-4">
+                      <p className="font-medium text-text">{call.agentName || agent?.name || call.agent || "Unassigned"}</p>
+                      <p className="text-xs text-muted">{agent?.extension || call.agentExtension || ""}</p>
+                    </td>
+                    <td className="py-3 pr-4 text-muted">{teams.length ? teams.join(", ") : "—"}</td>
+                    <td className="py-3 pr-4">
+                      <StatusBadge tone="brand">{call.direction}</StatusBadge>
+                    </td>
+                    <td className="py-3 pr-4 text-muted">{call.from || "—"}</td>
+                    <td className="py-3 pr-4 text-muted">{call.to || "—"}</td>
+                    <td className="py-3 pr-4">
+                      <StatusBadge tone="success">{call.status}</StatusBadge>
+                    </td>
+                    <td className="py-3 pr-4 text-muted">{liveDuration(call.startedAt, now)}</td>
+                    <td className="py-3 text-muted">{formatDate(call.startedAt)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {!liveCalls.length && <EmptyState title="No live calls right now" />}
+        </div>
+      </Card>
     </div>
-
-    <section className="console-card owner-filter-card">
-      <div className="filter-row owner-filter-row">
-        <label>From<input type="date" value={filters.from} onChange={(e) => setFilters({ ...filters, from: e.target.value })} /></label>
-        <label>To<input type="date" value={filters.to} onChange={(e) => setFilters({ ...filters, to: e.target.value })} /></label>
-        <label>Agent<select value={filters.agentId} onChange={(e) => setFilters({ ...filters, agentId: e.target.value })}><option value="">All agents</option>{(payload?.agents || []).map((agent) => <option key={agent.id} value={agent.id}>{agent.name}{agent.extension ? ` · ${agent.extension}` : ""}</option>)}</select></label>
-        <div className="filter-range-caption"><Clock3 size={16} /><span>{filters.from === filters.to ? filters.from : `${filters.from} → ${filters.to}`}</span></div>
-      </div>
-    </section>
-
-    {error && <div className="alert error">{error}</div>}
-
-    <div className="section-caption"><div><span className="overline">AGENT AVAILABILITY</span><h2>Current agent status</h2></div><span>{status.total || 0} tracked agents</span></div>
-    <div className="owner-stat-grid five">
-      <StatCard label="Ready" value={status.ready} detail="Available for calls" icon={UserRoundCheck} tone="green" />
-      <StatCard label="Active" value={status.active} detail="Working / signed in" icon={UserCheck} />
-      <StatCard label="Inactive" value={status.inactive} detail="Offline or disabled" icon={UserRoundX} tone="slate" />
-      <StatCard label="On call" value={status.onCall} detail="Ringing or connected" icon={Headphones} tone="purple" />
-      <StatCard label="Paused" value={status.paused} detail="Temporarily unavailable" icon={CirclePause} tone="orange" />
-    </div>
-
-    <div className="section-caption"><div><span className="overline">CALL ACTIVITY</span><h2>Call outcomes</h2></div><span>Filtered by date and agent</span></div>
-    <div className="owner-stat-grid seven">
-      <StatCard label="Dialed" value={metrics.dialed} detail="Outbound attempts" icon={PhoneOutgoing} />
-      <StatCard label="Missed" value={metrics.missed} detail="Unanswered inbound" icon={PhoneMissed} tone="orange" />
-      <StatCard label="Voicemails" value={metrics.voicemails} detail="Marked voicemail" icon={Voicemail} tone="purple" />
-      <StatCard label="Connected" value={metrics.connected} detail="Answered calls" icon={PhoneCall} tone="green" />
-      <StatCard label="Not connected" value={metrics.not_connected} detail="Unanswered outbound" icon={Activity} tone="slate" />
-      <StatCard label="Inbound" value={metrics.inbound} detail="Incoming calls" icon={PhoneIncoming} />
-      <StatCard label="Outbound" value={metrics.outbound} detail="Outgoing calls" icon={PhoneOutgoing} tone="purple" />
-    </div>
-
-    <section className="console-card table-card owner-live-card">
-      <div className="card-title"><div><h2>Live calls</h2><p>Real-time calls across this workspace. Monitoring actions are not shown here.</p></div><span className="live-dot">{liveCalls.length} LIVE</span></div>
-      <div className="data-table-wrap"><table><thead><tr><th>Agent</th><th>Teams</th><th>Direction</th><th>From</th><th>To</th><th>Status</th><th>Duration</th><th>Started</th></tr></thead><tbody>{liveCalls.map((call) => {
-        const agent = agentMap.get(call.agentUserId) || fallbackMap.get(call.agent);
-        const teams = call.teamNames?.length ? call.teamNames : agent?.teamNames || [];
-        return <tr key={call.linkedid}><td><strong>{call.agentName || agent?.name || call.agent || "Unassigned"}</strong><small className="cell-subtitle">{agent?.extension || call.agentExtension || ""}</small></td><td>{teams.length ? teams.join(", ") : "—"}</td><td><span className="direction-tag">{call.direction}</span></td><td>{call.from || "—"}</td><td>{call.to || "—"}</td><td><span className="status-tag active">{call.status}</span></td><td>{liveDuration(call.startedAt, now)}</td><td>{formatDate(call.startedAt)}</td></tr>;
-      })}</tbody></table>{!liveCalls.length && <div className="empty-block">No live calls right now</div>}</div>
-    </section>
-  </div>;
+  );
 }

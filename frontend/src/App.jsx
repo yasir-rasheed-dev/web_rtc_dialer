@@ -617,7 +617,7 @@ function Sidebar({ navigation, page, setPage, sidebarOpen, setSidebarOpen, sessi
                   setSidebarOpen(false);
                 }}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                  active ? "bg-brand/10 text-brand" : "text-muted hover:bg-surface-2 hover:text-text"
+                  active ? "bg-brand/10 text-brand" : "text-text/70 hover:bg-surface-2 hover:text-text"
                 }`}
               >
                 <Icon size={17} />
