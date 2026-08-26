@@ -11,6 +11,7 @@ import {
   Headphones,
   LayoutDashboard,
   LogOut,
+  MessageCircle,
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
@@ -36,7 +37,9 @@ import { SkeletonCards } from "./components/ui/Skeleton";
 import StatusBadge from "./components/ui/StatusBadge";
 import ThemeToggle from "./components/ui/ThemeToggle";
 import { notifyError, notifySuccess } from "./lib/toast";
+import { confirmModal } from "./lib/modal";
 import { api, getToken, recordingBlob, setToken } from "./lib/api";
+import { useTeamChatUnreadCount } from "./lib/teamChatBadge";
 
 // Softphone stays eagerly imported and permanently mounted (see TenantApp) so
 // an in-progress SIP call never drops when the agent navigates to another
@@ -49,6 +52,8 @@ const LazyOwnerDashboard = lazy(() => import("./OwnerDashboard"));
 const LazyTeamsAdmin = lazy(() => import("./TeamsAdmin"));
 const LazyCallLogsPage = lazy(() => import("./CallPages").then((m) => ({ default: m.CallLogsPage })));
 const LazyRecordingsPage = lazy(() => import("./CallPages").then((m) => ({ default: m.RecordingsPage })));
+const LazyReportsHub = lazy(() => import("./ReportsPages").then((m) => ({ default: m.ReportsHub })));
+const LazyTeamChat = lazy(() => import("./TeamChat"));
 const LazyContactsPage = lazy(() => import("./TenantManagement").then((m) => ({ default: m.ContactsPage })));
 const LazyDidsPage = lazy(() => import("./TenantManagement").then((m) => ({ default: m.DidsPage })));
 const LazyRolesAdmin = lazy(() => import("./TenantManagement").then((m) => ({ default: m.RolesAdmin })));
@@ -58,6 +63,7 @@ const LazySuperAdminApp = lazy(() => import("./SuperAdminApp"));
 
 const NAVIGATION = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, permissions: ["VIEW_DASHBOARD"] },
+  { id: "team-chat", label: "Team Chat", icon: MessageCircle, permissions: ["VIEW_DASHBOARD"] },
   { id: "dialer", label: "Agent dialer", icon: PhoneCall, permissions: ["VIEW_DIALER"] },
   {
     id: "auto-dialer",
@@ -90,12 +96,6 @@ const AGENT_STATUS_OPTIONS = [
   { value: "READY", label: "Ready" },
   { value: "PAUSED", label: "Paused" },
   { value: "WRAP_UP", label: "Wrap up" }
-];
-
-const DAYS_OPTIONS = [
-  { value: 7, label: "Last 7 days" },
-  { value: 30, label: "Last 30 days" },
-  { value: 90, label: "Last 90 days" }
 ];
 
 let socketClientLoader;
@@ -146,22 +146,146 @@ function Login({ onAuthenticated }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // "credentials" -> "2fa-setup" (first-ever enrollment, shows a QR to
+  // scan) or "2fa-verify" (already enrolled, just needs a code) -> done.
+  const [stage, setStage] = useState("credentials");
+  const [twoFactor, setTwoFactor] = useState(null); // { pendingToken, secret?, otpauthUrl?, qr? }
+  const [code, setCode] = useState("");
+
+  const finish = (payload) => {
+    setToken(payload.token);
+    localStorage.setItem("ringnex.workspace", workspace);
+    onAuthenticated(payload);
+  };
+
+  const attemptLogin = async (forceLogout = false) => {
+    const payload = await api("/auth/login", { method: "POST", body: { workspace, email, password, forceLogout } });
+    if (payload.requiresSetup) {
+      setTwoFactor(payload);
+      setStage("2fa-setup");
+      return;
+    }
+    if (payload.requires2fa) {
+      setTwoFactor(payload);
+      setStage("2fa-verify");
+      return;
+    }
+    finish(payload);
+  };
 
   const submit = async (event) => {
     event.preventDefault();
     setBusy(true);
     setError("");
     try {
-      const payload = await api("/auth/login", { method: "POST", body: { workspace, email, password } });
-      setToken(payload.token);
-      localStorage.setItem("ringnex.workspace", workspace);
-      onAuthenticated(payload);
+      await attemptLogin(false);
+    } catch (requestError) {
+      if (requestError.code === "SESSION_ACTIVE") {
+        const confirmed = await confirmModal({
+          title: "Already signed in elsewhere",
+          message: "This account is already signed in on another device or browser. Sign out that session and continue here?",
+          confirmText: "Sign out other session",
+          danger: true
+        });
+        if (confirmed) {
+          try {
+            await attemptLogin(true);
+          } catch (retryError) {
+            setError(retryError.message);
+          }
+        }
+      } else {
+        setError(requestError.message);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitTwoFactor = async (event) => {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const endpoint = stage === "2fa-setup" ? "/auth/2fa/setup-confirm" : "/auth/2fa/verify";
+      const payload = await api(endpoint, { method: "POST", body: { pendingToken: twoFactor.pendingToken, code } });
+      finish(payload);
     } catch (requestError) {
       setError(requestError.message);
     } finally {
       setBusy(false);
     }
   };
+
+  const backToCredentials = () => {
+    setStage("credentials");
+    setTwoFactor(null);
+    setCode("");
+    setError("");
+  };
+
+  if (stage === "2fa-setup" || stage === "2fa-verify") {
+    return (
+      <main className="grid min-h-screen place-content-center bg-bg px-6">
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, ease: "easeOut" }}
+          className="w-full max-w-sm rounded-2xl border border-border bg-surface p-8 shadow-card"
+        >
+          <div className="mb-5 flex items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand">
+              <ShieldCheck size={20} />
+            </span>
+            <div>
+              <p className="text-sm font-bold text-text">
+                {stage === "2fa-setup" ? "Set up two-factor authentication" : "Two-factor authentication"}
+              </p>
+              <p className="text-xs text-muted">
+                {stage === "2fa-setup" ? "Required by your workspace for this account" : "Enter the code from your authenticator app"}
+              </p>
+            </div>
+          </div>
+
+          {stage === "2fa-setup" && (
+            <div className="mb-5 flex flex-col items-center gap-3 rounded-xl border border-border bg-surface-2 p-4">
+              <p className="text-center text-xs text-muted">
+                Scan this with Google Authenticator (or any TOTP app), then enter the 6-digit code it shows.
+              </p>
+              {twoFactor?.qr && <img src={twoFactor.qr} alt="2FA QR code" className="h-40 w-40 rounded-lg bg-white p-2" />}
+              {twoFactor?.secret && (
+                <p className="break-all rounded-md bg-surface-3 px-2 py-1 text-center font-mono text-[11px] text-text">
+                  {twoFactor.secret}
+                </p>
+              )}
+            </div>
+          )}
+
+          <form onSubmit={submitTwoFactor} className="flex flex-col gap-4">
+            <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
+              6-digit code
+              <Input
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                placeholder="123456"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                autoFocus
+                required
+              />
+            </label>
+            {error && <div className="rounded-lg bg-danger-soft px-3 py-2 text-xs font-medium text-danger">{error}</div>}
+            <Button type="submit" loading={busy} icon={ShieldCheck} className="w-full justify-center">
+              {stage === "2fa-setup" ? "Verify & enable" : "Verify"}
+            </Button>
+            <button type="button" onClick={backToCredentials} className="text-center text-xs font-medium text-muted hover:text-text">
+              Back to sign in
+            </button>
+          </form>
+        </motion.div>
+      </main>
+    );
+  }
 
   return (
     <main className="relative grid min-h-screen grid-cols-1 bg-bg lg:grid-cols-[480px_1fr]">
@@ -377,9 +501,28 @@ function Dashboard({ user, tenant, liveCalls, amiConnected }) {
   );
 }
 
-function Supervisor({ liveCalls, presence, amiConnected, permissions }) {
+const AGENT_STATUS_TONE = {
+  READY: "success",
+  ON_CALL: "brand",
+  PAUSED: "warning",
+  WRAP_UP: "brand",
+  OFFLINE: "neutral"
+};
+
+function Supervisor({ liveCalls, presence, agents = [], liveAgentStatus = {}, amiConnected, permissions }) {
   const [busyAction, setBusyAction] = useState(null);
   const can = (key) => permissions.includes(key);
+
+  // Real-time roster: on-call beats the explicit "agent:status" push
+  // (READY/PAUSED/WRAP_UP/OFFLINE), which beats the value from the last
+  // /supervisor/live fetch — same precedence OwnerDashboard uses.
+  const roster = agents.map((agent) => {
+    const onCall = liveCalls.some(
+      (call) => call.agentUserId === agent.id && ["RINGING", "ANSWERED", "HELD"].includes(call.status)
+    );
+    const status = onCall ? "ON_CALL" : liveAgentStatus[agent.id] || agent.status || "OFFLINE";
+    return { ...agent, status };
+  });
 
   const monitor = async (linkedid, mode) => {
     setBusyAction(`${linkedid}:${mode}`);
@@ -423,6 +566,36 @@ function Supervisor({ liveCalls, presence, amiConnected, permissions }) {
           tone="orange"
         />
       </div>
+
+      <Card title="Agent status" description="Live status for agents assigned to your teams — updates instantly, no refresh needed.">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-border text-[11px] font-semibold uppercase tracking-wide text-muted">
+                <th className="pb-2 pr-4">Agent</th>
+                <th className="pb-2 pr-4">Extension</th>
+                <th className="pb-2 pr-4">Teams</th>
+                <th className="pb-2">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {roster.map((agent) => (
+                <tr key={agent.id} className="border-b border-border/60 last:border-0">
+                  <td className="py-3 pr-4 text-text">{agent.name}</td>
+                  <td className="py-3 pr-4 text-muted">{agent.extension || "—"}</td>
+                  <td className="py-3 pr-4 text-muted">{agent.teamNames?.length ? agent.teamNames.join(", ") : "—"}</td>
+                  <td className="py-3">
+                    <StatusBadge tone={AGENT_STATUS_TONE[agent.status] || "neutral"}>
+                      {agent.status.replace("_", " ")}
+                    </StatusBadge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!roster.length && <EmptyState title="No agents assigned to your teams yet" />}
+        </div>
+      </Card>
 
       <Card title="Active calls" description="Buttons are shown only when the assigned role permits that monitoring mode.">
         <div className="overflow-x-auto">
@@ -492,85 +665,10 @@ function Supervisor({ liveCalls, presence, amiConnected, permissions }) {
   );
 }
 
-function Reports() {
-  const [days, setDays] = useState(30);
-  const [report, setReport] = useState(null);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    api(`/reports/kpis?days=${days}`).then(setReport).catch((e) => setError(e.message));
-  }, [days]);
-
-  const summary = report?.summary || {};
-
-  return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        eyebrow="PERFORMANCE INTELLIGENCE"
-        title="Reports & KPIs"
-        description="Tenant-scoped operational metrics calculated from Asterisk call events."
-        actions={
-          <Select
-            className="w-44"
-            isSearchable={false}
-            options={DAYS_OPTIONS}
-            value={DAYS_OPTIONS.find((option) => option.value === days)}
-            onChange={(option) => setDays(option.value)}
-          />
-        }
-      />
-
-      {error && <div className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>}
-
-      <div className="grid gap-4 sm:grid-cols-3">
-        <KpiCard
-          label="Answer rate"
-          value={`${summary.answer_rate || 0}%`}
-          detail={`${summary.completed_calls || 0} completed`}
-          icon={ShieldCheck}
-          tone="green"
-        />
-        <KpiCard label="Talk time" value={formatSeconds(summary.total_talk_sec)} detail="Total connected" icon={Clock3} />
-        <KpiCard label="Failed" value={summary.failed_calls || 0} detail="Review routing/CDR" icon={Activity} tone="orange" />
-      </div>
-
-      <Card title="Agent performance" description="Volume and handling time by agent">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-border text-[11px] font-semibold uppercase tracking-wide text-muted">
-                <th className="pb-2 pr-4">Agent</th>
-                <th className="pb-2 pr-4">Calls</th>
-                <th className="pb-2 pr-4">Completed</th>
-                <th className="pb-2 pr-4">Answer rate</th>
-                <th className="pb-2 pr-4">Total talk</th>
-                <th className="pb-2">Average talk</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(report?.agents || []).map((row) => (
-                <tr key={row.agent} className="border-b border-border/60 last:border-0">
-                  <td className="py-3 pr-4 font-semibold text-text">{row.agent}</td>
-                  <td className="py-3 pr-4 text-muted">{row.calls}</td>
-                  <td className="py-3 pr-4 text-muted">{row.completed}</td>
-                  <td className="py-3 pr-4 text-muted">{row.calls ? Math.round((row.completed / row.calls) * 100) : 0}%</td>
-                  <td className="py-3 pr-4 text-muted">{formatSeconds(row.talk_sec)}</td>
-                  <td className="py-3 text-muted">{formatSeconds(row.avg_talk_sec)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {!report?.agents?.length && <EmptyState title="No performance data yet" />}
-        </div>
-      </Card>
-    </div>
-  );
-}
-
 const SIDEBAR_WIDTH = 250;
 const SIDEBAR_WIDTH_COLLAPSED = 76;
 
-function Sidebar({ navigation, page, setPage, sidebarOpen, setSidebarOpen, session, amiConnected, collapsed, setCollapsed }) {
+function Sidebar({ navigation, page, setPage, sidebarOpen, setSidebarOpen, session, amiConnected, collapsed, setCollapsed, badges = {} }) {
   return (
     <>
       <AnimatePresence>
@@ -611,6 +709,7 @@ function Sidebar({ navigation, page, setPage, sidebarOpen, setSidebarOpen, sessi
         <div className="flex flex-1 flex-col divide-y divide-border/60 overflow-y-auto overflow-x-hidden">
           {navigation.map(({ id, label, icon: Icon }) => {
             const active = page === id;
+            const badgeCount = badges[id] || 0;
             return (
               <button
                 key={id}
@@ -630,8 +729,22 @@ function Sidebar({ navigation, page, setPage, sidebarOpen, setSidebarOpen, sessi
                     className="absolute inset-0 rounded-lg bg-brand/[0.08]"
                   />
                 )}
-                <Icon size={16} className="relative shrink-0" strokeWidth={2} />
-                {!collapsed && <span className="relative flex-1 text-left">{label}</span>}
+                <span className="relative shrink-0">
+                  <Icon size={16} strokeWidth={2} />
+                  {collapsed && badgeCount > 0 && (
+                    <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-danger" />
+                  )}
+                </span>
+                {!collapsed && (
+                  <span className="relative flex flex-1 items-center justify-between gap-2 text-left">
+                    {label}
+                    {badgeCount > 0 && (
+                      <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-danger px-1.5 text-[10px] font-bold text-white">
+                        {badgeCount > 99 ? "99+" : badgeCount}
+                      </span>
+                    )}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -713,6 +826,13 @@ function TenantApp() {
   const [presence, setPresence] = useState([]);
   const [amiConnected, setAmiConnected] = useState(false);
   const [agentStatus, setAgentStatus] = useState("OFFLINE");
+  // Live per-agent business status (READY/PAUSED/WRAP_UP/OFFLINE) keyed by
+  // userId, pushed in real time via the "agent:status" socket event — lets
+  // the Owner and Supervisor dashboards reflect a status change instantly
+  // instead of waiting for their next poll.
+  const [liveAgentStatus, setLiveAgentStatus] = useState({});
+  const [supervisorAgents, setSupervisorAgents] = useState([]);
+  const teamChatUnread = useTeamChatUnreadCount(session);
 
   useEffect(() => {
     localStorage.setItem("ringnex.sidebarCollapsed", collapsed ? "1" : "0");
@@ -748,6 +868,17 @@ function TenantApp() {
         socket.on("presence:update", (item) =>
           setPresence((items) => [...items.filter((entry) => entry.agent !== item.agent), item])
         );
+        socket.on("agent:status", (item) =>
+          setLiveAgentStatus((map) => ({ ...map, [item.userId]: item.status }))
+        );
+        // Pushed by the server the instant a newer login elsewhere
+        // supersedes this session — sign out here immediately rather than
+        // waiting for the next API call to hit the revoked-session 401.
+        socket.on("auth:force-logout", (item) => {
+          notifyError(item?.message || "You were signed out because this account logged in on another device.");
+          setToken("");
+          setSession(null);
+        });
       })
       .catch(() => setAmiConnected(false));
     return () => {
@@ -762,6 +893,7 @@ function TenantApp() {
       .then((state) => {
         setLiveCalls(state.calls || []);
         setPresence(state.presence || []);
+        setSupervisorAgents(state.agents || []);
         setAmiConnected(Boolean(state.ami));
       })
       .catch(() => undefined);
@@ -802,6 +934,7 @@ function TenantApp() {
 
   const renderPage = () => {
     if (page === "dialer") return null;
+    if (page === "team-chat") return <LazyTeamChat session={session} />;
     if (page === "auto-dialer") {
       return <LazyAutoDialer permissions={session.permissions || []} sipReady={!ownerAccount && Boolean(session.sip)} />;
     }
@@ -813,20 +946,28 @@ function TenantApp() {
         <Supervisor
           liveCalls={liveCalls}
           presence={presence}
+          agents={supervisorAgents}
+          liveAgentStatus={liveAgentStatus}
           amiConnected={amiConnected}
           permissions={session.permissions || []}
         />
       );
     }
-    if (page === "reports") return <Reports />;
+    if (page === "reports") return <LazyReportsHub />;
     if (page === "users") return <LazyUsersAdmin permissions={session.permissions || []} />;
     if (page === "teams") return <LazyTeamsAdmin />;
     if (page === "roles") return <LazyRolesAdmin permissions={session.permissions || []} />;
-    if (page === "dids") return <LazyDidsPage />;
+    if (page === "dids") return <LazyDidsPage permissions={session.permissions || []} />;
     if (page === "usage") return <LazyUsagePage />;
     if (ownerAccount) {
       return (
-        <LazyOwnerDashboard tenant={session.tenant} user={session.user} amiConnected={amiConnected} socketLiveCalls={liveCalls} />
+        <LazyOwnerDashboard
+          tenant={session.tenant}
+          user={session.user}
+          amiConnected={amiConnected}
+          socketLiveCalls={liveCalls}
+          liveAgentStatus={liveAgentStatus}
+        />
       );
     }
     return <Dashboard user={session.user} tenant={session.tenant} liveCalls={liveCalls} amiConnected={amiConnected} />;
@@ -846,6 +987,7 @@ function TenantApp() {
         amiConnected={amiConnected}
         collapsed={collapsed}
         setCollapsed={setCollapsed}
+        badges={{ "team-chat": teamChatUnread }}
       />
       <div
         className="console-content transition-[margin-left] duration-200 lg:!ml-[var(--rn-sidebar-w)]"

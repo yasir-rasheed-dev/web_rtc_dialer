@@ -69,18 +69,18 @@ function Filters({ filters, setFilters, onApply, agents, includeCallFilters = fa
         event.preventDefault();
         onApply();
       }}
-      className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6"
+      className="flex flex-wrap items-end gap-3"
     >
-      <label className={fieldLabelClass()}>
+      <label className={`${fieldLabelClass()} w-[150px]`}>
         From
         <DatePicker value={filters.from} onChange={(value) => setFilters({ ...filters, from: value })} />
       </label>
-      <label className={fieldLabelClass()}>
+      <label className={`${fieldLabelClass()} w-[150px]`}>
         To
         <DatePicker value={filters.to} onChange={(value) => setFilters({ ...filters, to: value })} />
       </label>
       {agents.length > 0 && (
-        <label className={fieldLabelClass()}>
+        <label className={`${fieldLabelClass()} w-[190px]`}>
           Agent
           <Select
             options={agentOptions}
@@ -90,7 +90,7 @@ function Filters({ filters, setFilters, onApply, agents, includeCallFilters = fa
         </label>
       )}
       {includeCallFilters && (
-        <label className={fieldLabelClass()}>
+        <label className={`${fieldLabelClass()} w-[170px]`}>
           Direction
           <Select
             options={DIRECTION_OPTIONS}
@@ -100,7 +100,7 @@ function Filters({ filters, setFilters, onApply, agents, includeCallFilters = fa
         </label>
       )}
       {includeCallFilters && (
-        <label className={fieldLabelClass()}>
+        <label className={`${fieldLabelClass()} w-[170px]`}>
           Status
           <Select
             options={STATUS_OPTIONS}
@@ -109,7 +109,7 @@ function Filters({ filters, setFilters, onApply, agents, includeCallFilters = fa
           />
         </label>
       )}
-      <label className={`${fieldLabelClass()} col-span-2`}>
+      <label className={`${fieldLabelClass()} min-w-[220px] flex-1`}>
         Search
         <div className="flex items-center gap-2 rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 transition-colors focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20">
           <Search size={15} className="shrink-0 text-muted" />
@@ -121,11 +121,9 @@ function Filters({ filters, setFilters, onApply, agents, includeCallFilters = fa
           />
         </div>
       </label>
-      <div className="col-span-2 flex items-end sm:col-span-3 lg:col-span-1">
-        <Button type="submit" icon={Filter} loading={loading} className="w-full justify-center">
-          Apply
-        </Button>
-      </div>
+      <Button type="submit" icon={Filter} loading={loading}>
+        Apply
+      </Button>
     </form>
   );
 }

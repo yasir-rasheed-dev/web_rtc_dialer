@@ -11,8 +11,8 @@ import ReactSelect from "react-select";
 const baseStyles = {
   control: (base, state) => ({
     ...base,
-    minHeight: 42,
-    borderRadius: 12,
+    minHeight: 30,
+    borderRadius: 8,
     borderWidth: 1,
     borderStyle: "solid",
     backgroundColor: "rgb(var(--rn-surface-2))",
@@ -22,12 +22,12 @@ const baseStyles = {
     transition: "border-color 150ms ease, box-shadow 150ms ease",
     ":hover": { borderColor: state.isFocused ? "rgb(var(--rn-blue))" : "var(--rn-border-strong)" }
   }),
-  valueContainer: (base) => ({ ...base, padding: "2px 14px" }),
-  indicatorsContainer: (base) => ({ ...base, paddingRight: 8 }),
+  valueContainer: (base) => ({ ...base, padding: "0 10px", fontSize: 13 }),
+  indicatorsContainer: (base) => ({ ...base, paddingRight: 4 }),
   indicatorSeparator: () => ({ display: "none" }),
   menu: (base) => ({
     ...base,
-    borderRadius: 12,
+    borderRadius: 10,
     overflow: "hidden",
     backgroundColor: "rgb(var(--rn-surface))",
     border: "1px solid var(--rn-border)",
@@ -43,8 +43,9 @@ const baseStyles = {
   menuList: (base) => ({ ...base, padding: 4 }),
   option: (base, state) => ({
     ...base,
-    borderRadius: 8,
-    fontSize: 14,
+    borderRadius: 6,
+    fontSize: 13,
+    padding: "6px 10px",
     backgroundColor: state.isSelected
       ? "rgb(var(--rn-blue) / 0.16)"
       : state.isFocused
@@ -53,13 +54,13 @@ const baseStyles = {
     color: "rgb(var(--rn-text))",
     cursor: "pointer"
   }),
-  singleValue: (base) => ({ ...base, color: "rgb(var(--rn-text))" }),
-  input: (base) => ({ ...base, color: "rgb(var(--rn-text))" }),
-  placeholder: (base) => ({ ...base, color: "rgb(var(--rn-muted))" }),
-  dropdownIndicator: (base) => ({ ...base, color: "rgb(var(--rn-muted))", padding: 4 }),
-  clearIndicator: (base) => ({ ...base, color: "rgb(var(--rn-muted))", padding: 4 }),
-  multiValue: (base) => ({ ...base, borderRadius: 8, backgroundColor: "rgb(var(--rn-blue) / 0.14)" }),
-  multiValueLabel: (base) => ({ ...base, color: "rgb(var(--rn-text))" })
+  singleValue: (base) => ({ ...base, color: "rgb(var(--rn-text))", fontSize: 13 }),
+  input: (base) => ({ ...base, color: "rgb(var(--rn-text))", margin: 0, padding: 0, fontSize: 13 }),
+  placeholder: (base) => ({ ...base, color: "rgb(var(--rn-muted))", fontSize: 13 }),
+  dropdownIndicator: (base) => ({ ...base, color: "rgb(var(--rn-muted))", padding: 4, svg: { width: 16, height: 16 } }),
+  clearIndicator: (base) => ({ ...base, color: "rgb(var(--rn-muted))", padding: 4, svg: { width: 14, height: 14 } }),
+  multiValue: (base) => ({ ...base, borderRadius: 6, backgroundColor: "rgb(var(--rn-blue) / 0.14)" }),
+  multiValueLabel: (base) => ({ ...base, color: "rgb(var(--rn-text))", fontSize: 12, padding: "2px 4px" })
 };
 
 /**

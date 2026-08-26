@@ -10,6 +10,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "emoji-picker-react": "^4.19.1",
+    "firebase": "^12.18.0",
     "framer-motion": "^13.1.1",
     "lucide-react": "0.468.0",
     "react": "18.3.1",

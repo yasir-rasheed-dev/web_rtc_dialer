@@ -31,11 +31,11 @@ import Modal from "./components/ui/Modal";
 import Toggle from "./components/ui/Toggle";
 import PageHeader from "./components/ui/PageHeader";
 import Select from "./components/ui/Select";
-import { Skeleton, SkeletonTable } from "./components/ui/Skeleton";
+import { Skeleton, SkeletonCards, SkeletonTable } from "./components/ui/Skeleton";
 import StatusBadge from "./components/ui/StatusBadge";
 import { confirmModal } from "./lib/modal";
 import { notifyError, notifySuccess } from "./lib/toast";
-import { api } from "./lib/api";
+import { api, completeCommioOrder, reserveCommioNumber, searchCommioNumbers } from "./lib/api";
 
 function groupPermissions(permissions) {
   return permissions.reduce((groups, item) => {
@@ -45,7 +45,16 @@ function groupPermissions(permissions) {
   }, {});
 }
 
-const EMPTY_USER_FORM = { name: "", email: "", password: "", roleId: "", callerIdNumber: "", generateSipAccount: true };
+const EMPTY_USER_FORM = {
+  name: "",
+  email: "",
+  password: "",
+  roleId: "",
+  callerIdNumber: "",
+  generateSipAccount: true,
+  totpRequired: false,
+  restrictIp: ""
+};
 
 function UserFormModal({ open, onClose, user, roles, dids, onSaved }) {
   const owner = user?.roleName === "Tenant Owner";
@@ -81,7 +90,9 @@ function UserFormModal({ open, onClose, user, roles, dids, onSaved }) {
         password: "",
         roleId: owner ? "" : user.roleId || "",
         callerIdNumber: owner ? "" : user.callerIdNumber || "",
-        generateSipAccount: Boolean(user.sipUsername)
+        generateSipAccount: Boolean(user.sipUsername),
+        totpRequired: Boolean(user.totpRequired),
+        restrictIp: user.restrictIp || ""
       });
     } else {
       setForm({
@@ -98,12 +109,14 @@ function UserFormModal({ open, onClose, user, roles, dids, onSaved }) {
     setError("");
     try {
       if (user) {
+        const security = { totpRequired: form.totpRequired, restrictIp: form.restrictIp };
         const body = owner
-          ? { name: form.name, ...(form.password ? { password: form.password } : {}) }
+          ? { name: form.name, ...security, ...(form.password ? { password: form.password } : {}) }
           : {
               name: form.name,
               roleId: form.roleId,
               callerIdNumber: form.callerIdNumber,
+              ...security,
               ...(form.password ? { password: form.password } : {})
             };
         await api(`/users/${user.id}`, { method: "PATCH", body });
@@ -196,6 +209,31 @@ function UserFormModal({ open, onClose, user, roles, dids, onSaved }) {
             <span>Tenant Owner stays outside telephony and does not consume a paid user seat.</span>
           </div>
         )}
+
+        <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface-2 px-3.5 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Login security</p>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-text">Require 2FA (Google Authenticator)</p>
+              <p className="text-xs text-muted">
+                {user?.totpRequired && !user?.totpConfirmed
+                  ? "Enabled — will scan a QR code on next sign-in."
+                  : user?.totpRequired
+                  ? "Enabled and enrolled."
+                  : "Off — password only."}
+              </p>
+            </div>
+            <Toggle checked={form.totpRequired} onChange={(value) => setForm({ ...form, totpRequired: value })} label="Require 2FA" />
+          </div>
+          <label className={fieldLabel()}>
+            Restrict login to IP address
+            <Input
+              value={form.restrictIp}
+              onChange={(e) => setForm({ ...form, restrictIp: e.target.value.trim() })}
+              placeholder="Leave blank for no restriction"
+            />
+          </label>
+        </div>
 
         {error && <div className="rounded-lg bg-danger-soft px-3 py-2 text-xs font-medium text-danger">{error}</div>}
         <div className="mt-1 flex justify-end gap-2 border-t border-border pt-4">
@@ -1300,18 +1338,435 @@ export function ContactsPage({ permissions = [] }) {
   );
 }
 
-export function DidsPage() {
+function formatDidDisplay(number) {
+  const digits = String(number || "").replace(/\D/g, "");
+  const local = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+  if (local.length !== 10) return number;
+  return `+1 (${local.slice(0, 3)}) ${local.slice(3, 6)}-${local.slice(6)}`;
+}
+
+const DID_SEARCH_TYPES = [
+  { value: "domestic", label: "Local number" },
+  { value: "tollfree", label: "Toll-free" }
+];
+
+function BuyNumberModal({ open, onClose, onPurchased }) {
+  const [searchType, setSearchType] = useState("domestic");
+  const [npa, setNpa] = useState("");
+  const [state, setState] = useState("");
+  const [rateCenter, setRateCenter] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [results, setResults] = useState(null);
+  const [searchError, setSearchError] = useState("");
+
+  const [selected, setSelected] = useState(null);
+  const [reserving, setReserving] = useState(false);
+  const [reserveError, setReserveError] = useState("");
+  const [reservation, setReservation] = useState(null); // { orderId, did, price }
+
+  const [confirming, setConfirming] = useState(false);
+
+  const reset = () => {
+    setSearchType("domestic");
+    setNpa("");
+    setState("");
+    setRateCenter("");
+    setResults(null);
+    setSearchError("");
+    setSelected(null);
+    setReserveError("");
+    setReservation(null);
+  };
+
+  const close = () => {
+    reset();
+    onClose();
+  };
+
+  const search = async (event) => {
+    event.preventDefault();
+    setSearching(true);
+    setSearchError("");
+    setResults(null);
+    try {
+      const params = { searchType, quantity: 10 };
+      if (searchType === "domestic") {
+        if (npa.trim()) params.npa = npa.trim();
+        if (state.trim()) params.state = state.trim();
+        if (rateCenter.trim()) params.rateCenter = rateCenter.trim();
+      } else if (npa.trim()) {
+        params.npa = npa.trim();
+      }
+      const numbers = await searchCommioNumbers(params);
+      setResults(numbers);
+    } catch (requestError) {
+      setSearchError(requestError.message);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const reserve = async (number) => {
+    setSelected(number);
+    setReserving(true);
+    setReserveError("");
+    setReservation(null);
+    try {
+      const payload = await reserveCommioNumber(number.did);
+      if (!payload.price) {
+        setReserveError("Number reserved, but the price could not be confirmed. Please try again rather than purchase blind.");
+        return;
+      }
+      setReservation(payload);
+    } catch (requestError) {
+      setReserveError(requestError.message);
+    } finally {
+      setReserving(false);
+    }
+  };
+
+  const confirmPurchase = async () => {
+    if (!reservation) return;
+    setConfirming(true);
+    try {
+      const result = await completeCommioOrder(reservation.orderId);
+      notifySuccess(`Purchased ${formatDidDisplay(reservation.did)}`);
+      if (result.routingAssigned === false) {
+        notifyError(`Number purchased, but inbound routing could not be assigned automatically: ${result.routingError || "unknown error"}. Contact support to finish setup.`);
+      }
+      onPurchased();
+      close();
+    } catch (requestError) {
+      notifyError(requestError.message);
+    } finally {
+      setConfirming(false);
+    }
+  };
+
+  return (
+    <Modal open={open} onClose={close} title="Buy a phone number" width="max-w-2xl">
+      {!reservation ? (
+        <div className="flex flex-col gap-5">
+          <form onSubmit={search} className="flex flex-wrap items-end gap-3">
+            <label className="flex w-[170px] flex-col gap-1.5 text-xs font-medium text-muted">
+              Type
+              <Select
+                options={DID_SEARCH_TYPES}
+                value={DID_SEARCH_TYPES.find((option) => option.value === searchType)}
+                onChange={(option) => setSearchType(option.value)}
+              />
+            </label>
+            <label className="flex w-[120px] flex-col gap-1.5 text-xs font-medium text-muted">
+              Area code
+              <Input value={npa} onChange={(e) => setNpa(e.target.value.replace(/\D/g, "").slice(0, 3))} placeholder="919" />
+            </label>
+            {searchType === "domestic" && (
+              <>
+                <label className="flex w-[90px] flex-col gap-1.5 text-xs font-medium text-muted">
+                  State
+                  <Input value={state} onChange={(e) => setState(e.target.value.toUpperCase().slice(0, 2))} placeholder="NC" />
+                </label>
+                <label className="flex min-w-[160px] flex-1 flex-col gap-1.5 text-xs font-medium text-muted">
+                  Rate center
+                  <Input value={rateCenter} onChange={(e) => setRateCenter(e.target.value)} placeholder="RALEIGH" />
+                </label>
+              </>
+            )}
+            <Button type="submit" icon={Search} loading={searching}>
+              Search
+            </Button>
+          </form>
+
+          {searchError && <div className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">{searchError}</div>}
+          {reserveError && <div className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">{reserveError}</div>}
+
+          {results && (
+            <div className="flex flex-col gap-2">
+              {results.length === 0 ? (
+                <EmptyState title="No numbers found" description="Try a different area code, state, or rate center." />
+              ) : (
+                results.map((number) => (
+                  <div
+                    key={number.did}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface-2 px-4 py-3"
+                  >
+                    <div>
+                      <p className="font-semibold text-text">{formatDidDisplay(number.did)}</p>
+                      <p className="text-xs text-muted">
+                        {[number.rateCenter, number.state].filter(Boolean).join(", ") || "—"}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      loading={reserving && selected?.did === number.did}
+                      disabled={reserving}
+                      onClick={() => reserve(number)}
+                    >
+                      Select
+                    </Button>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-5">
+          <div className="rounded-xl border border-border bg-surface-2 p-4">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted">Number</p>
+            <p className="mt-1 text-lg font-bold text-text">{formatDidDisplay(reservation.did)}</p>
+          </div>
+          <div className="rounded-xl border border-border bg-surface-2 p-4">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted">Price</p>
+            <div className="mt-2 flex flex-col gap-1 text-sm text-text">
+              <div className="flex justify-between"><span className="text-muted">Subtotal</span><span>${Number(reservation.price.subtotal ?? 0).toFixed(2)}</span></div>
+              <div className="flex justify-between"><span className="text-muted">Taxes</span><span>${Number(reservation.price.taxes ?? 0).toFixed(2)}</span></div>
+              <div className="flex justify-between border-t border-border pt-1 font-semibold"><span>Total</span><span>${Number(reservation.price.total ?? 0).toFixed(2)}</span></div>
+            </div>
+          </div>
+          <p className="text-xs text-muted">
+            Confirming will charge your Commio account and automatically configure inbound routing for this number.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setReservation(null)} disabled={confirming}>
+              Back
+            </Button>
+            <Button onClick={confirmPurchase} loading={confirming}>
+              Confirm & Buy
+            </Button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+export function DidsPage({ permissions = [] }) {
   const [dids, setDids] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  useEffect(() => { api("/dids").then((payload) => setDids(payload.dids || [])).catch((e) => setError(e.message)); }, []);
-  return <div className="page-stack"><div className="page-heading"><div><span className="overline">PHONE NUMBER INVENTORY</span><h1>DIDs</h1><p>Only numbers assigned to this workspace by the Product Owner are visible here.</p></div></div>{error && <div className="alert error">{error}</div>}<section className="console-card table-card"><div className="card-title"><div><h2>Assigned Numbers</h2><p>{dids.length} numbers</p></div><Phone /></div><div className="data-table-wrap"><table><thead><tr><th>Number</th><th>Label</th><th>Assigned user</th><th>Status</th></tr></thead><tbody>{dids.map((did) => <tr key={did.id}><td><strong>{did.number}</strong></td><td>{did.label || "—"}</td><td>{did.assigned_user_name || "Available"}</td><td><span className={`status-tag ${did.status === "ASSIGNED" ? "active" : "neutral"}`}>{did.status}</span></td></tr>)}</tbody></table></div></section></div>;
+  const [buyOpen, setBuyOpen] = useState(false);
+  const canPurchase = permissions.includes("PURCHASE_DIDS");
+
+  const load = useCallback(() => {
+    setLoading(true);
+    setError("");
+    return api("/dids")
+      .then((payload) => setDids(payload.dids || []))
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        eyebrow="PHONE NUMBER INVENTORY"
+        title="Phone Numbers"
+        description="Numbers available to this workspace, ready to assign to an agent."
+        actions={
+          <>
+            <Button variant="secondary" icon={RefreshCw} loading={loading} onClick={load}>
+              Refresh
+            </Button>
+            {canPurchase && (
+              <Button icon={Plus} onClick={() => setBuyOpen(true)}>
+                Buy Number
+              </Button>
+            )}
+          </>
+        }
+      />
+
+      {error && <div className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>}
+
+      <Card title="Numbers" description={`${dids.length} numbers`} icon={Phone}>
+        <div className="overflow-x-auto">
+          {loading ? (
+            <SkeletonTable rows={6} cols={4} />
+          ) : (
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-border text-[11px] font-semibold uppercase tracking-wide text-muted">
+                  <th className="pb-2 pr-4">Number</th>
+                  <th className="pb-2 pr-4">Label</th>
+                  <th className="pb-2 pr-4">Assigned user</th>
+                  <th className="pb-2">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dids.map((did) => (
+                  <tr key={did.id} className="border-b border-border/60 last:border-0">
+                    <td className="py-3 pr-4 font-semibold text-text">{formatDidDisplay(did.number)}</td>
+                    <td className="py-3 pr-4 text-muted">{did.label || "—"}</td>
+                    <td className="py-3 pr-4 text-muted">{did.assigned_user_name || "Available"}</td>
+                    <td className="py-3">
+                      <StatusBadge tone={did.status === "ASSIGNED" ? "success" : "neutral"}>{did.status}</StatusBadge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {!loading && !dids.length && <EmptyState title="No numbers yet" description={canPurchase ? "Buy a number to get started." : "Ask your workspace owner to add a number."} />}
+        </div>
+      </Card>
+
+      {canPurchase && <BuyNumberModal open={buyOpen} onClose={() => setBuyOpen(false)} onPurchased={load} />}
+    </div>
+  );
+}
+
+function shiftMonth(monthStr, delta) {
+  const [year, month] = monthStr.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1 + delta, 1));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function formatMonthLabel(monthStr) {
+  const [year, month] = monthStr.split("-").map(Number);
+  return new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(new Date(Date.UTC(year, month - 1, 1)));
+}
+
+function UsageBar({ label, used, limit }) {
+  const hasLimit = limit !== null && limit !== undefined;
+  const pct = hasLimit && limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+  const over = hasLimit && used > limit;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-muted">{label}</span>
+        <span className="font-semibold text-text">
+          {used.toLocaleString()} {hasLimit ? `/ ${Number(limit).toLocaleString()} min` : "min (unlimited)"}
+        </span>
+      </div>
+      {hasLimit && (
+        <div className="h-2 w-full overflow-hidden rounded-full bg-surface-2">
+          <div
+            className={`h-full rounded-full ${over ? "bg-danger" : "bg-brand"}`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function UsagePage() {
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const [month, setMonth] = useState(currentMonth);
   const [payload, setPayload] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  useEffect(() => { api("/usage").then(setPayload).catch((e) => setError(e.message)); }, []);
+
+  const load = useCallback((targetMonth) => {
+    setLoading(true);
+    setError("");
+    return api(`/usage?month=${targetMonth}`)
+      .then(setPayload)
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    load(month);
+  }, [month, load]);
+
   const usage = payload?.usage || {};
   const limits = payload?.limits || {};
-  return <div className="page-stack"><div className="page-heading"><div><span className="overline">SUBSCRIPTION USAGE</span><h1>Usage & Billing</h1><p>Tenant-local minutes, seats and carrier reconciliation.</p></div></div>{error && <div className="alert error">{error}</div>}<div className="kpi-grid"><article className="kpi-card blue"><span className="kpi-icon"><Users size={19} /></span><div><small>Active seats</small><strong>{payload?.activeUsers || 0}</strong><p>Limit {limits.maxUsers ?? "Unlimited"} · Owner excluded</p></div></article><article className="kpi-card green"><span className="kpi-icon"><Phone size={19} /></span><div><small>Outbound minutes</small><strong>{usage.outboundMinutes || 0}</strong><p>Limit {limits.outboundMinutes ?? "Unlimited"}</p></div></article><article className="kpi-card purple"><span className="kpi-icon"><Phone size={19} /></span><div><small>Inbound minutes</small><strong>{usage.inboundMinutes || 0}</strong><p>Limit {limits.inboundMinutes ?? "Unlimited"}</p></div></article><article className="kpi-card orange"><span className="kpi-icon"><CreditCard size={19} /></span><div><small>Seat estimate</small><strong>${Number(payload?.estimatedSeatRevenue || 0).toFixed(2)}</strong><p>${Number(payload?.pricePerUser || 0).toFixed(2)} / user</p></div></article></div><section className="console-card"><div className="card-title"><div><h2>Carrier reconciliation</h2><p>Commio CDR cost rows will populate this view once the account-specific CDR adapter is configured.</p></div></div><div className="usage-summary"><div><span>Carrier billable minutes</span><strong>{usage.carrierBillableMinutes || 0}</strong></div><div><span>Carrier cost</span><strong>${Number(usage.carrierCost || 0).toFixed(2)}</strong></div><div><span>Calls</span><strong>{usage.calls || 0}</strong></div></div></section></div>;
+  const seatBill = Number(payload?.estimatedSeatRevenue || 0);
+  const isCurrentMonth = month === currentMonth;
+
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        eyebrow="SUBSCRIPTION USAGE"
+        title="Usage & Billing"
+        description={payload?.planName ? `Plan: ${payload.planName}` : "Minutes, seats and monthly billing for this workspace."}
+        actions={
+          <div className="flex items-center gap-2 rounded-xl border border-border bg-surface-2 px-2 py-1.5">
+            <Button size="sm" variant="ghost" onClick={() => setMonth((m) => shiftMonth(m, -1))}>
+              ←
+            </Button>
+            <span className="min-w-[130px] text-center text-sm font-semibold text-text">{formatMonthLabel(month)}</span>
+            <Button size="sm" variant="ghost" disabled={isCurrentMonth} onClick={() => setMonth((m) => shiftMonth(m, 1))}>
+              →
+            </Button>
+          </div>
+        }
+      />
+
+      {error && <div className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>}
+
+      {loading ? (
+        <SkeletonCards count={4} />
+      ) : (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Card>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted">Active seats</p>
+              <p className="mt-1 text-2xl font-bold text-text">{payload?.activeUsers || 0}</p>
+              <p className="mt-1 text-xs text-muted">Limit {limits.maxUsers ?? "Unlimited"} · owner excluded</p>
+            </Card>
+            <Card>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted">Price per user</p>
+              <p className="mt-1 text-2xl font-bold text-text">${Number(payload?.pricePerUser || 0).toFixed(2)}</p>
+              <p className="mt-1 text-xs text-muted">per month</p>
+            </Card>
+            <Card>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted">Calls this month</p>
+              <p className="mt-1 text-2xl font-bold text-text">{usage.calls || 0}</p>
+              <p className="mt-1 text-xs text-muted">{formatMonthLabel(month)}</p>
+            </Card>
+            <Card>
+              <p className="text-xs font-medium uppercase tracking-wide text-brand">Estimated bill</p>
+              <p className="mt-1 text-2xl font-bold text-brand">${seatBill.toFixed(2)}</p>
+              <p className="mt-1 text-xs text-muted">{payload?.activeUsers || 0} seats × ${Number(payload?.pricePerUser || 0).toFixed(2)}</p>
+            </Card>
+          </div>
+
+          <Card title="Minutes usage" description="Included in your plan for this billing month">
+            <div className="flex flex-col gap-4">
+              <UsageBar label="Outbound minutes" used={usage.outboundMinutes || 0} limit={limits.outboundMinutes} />
+              <UsageBar label="Inbound minutes" used={usage.inboundMinutes || 0} limit={limits.inboundMinutes} />
+            </div>
+          </Card>
+
+          <Card title="Monthly bill breakdown" description={formatMonthLabel(month)}>
+            <div className="flex flex-col divide-y divide-border text-sm">
+              <div className="flex items-center justify-between py-2.5">
+                <span className="text-muted">Seats ({payload?.activeUsers || 0} × ${Number(payload?.pricePerUser || 0).toFixed(2)})</span>
+                <span className="font-semibold text-text">${seatBill.toFixed(2)}</span>
+              </div>
+              <div className="flex items-center justify-between py-2.5 text-base font-bold">
+                <span className="text-text">Total</span>
+                <span className="text-brand">${seatBill.toFixed(2)}</span>
+              </div>
+            </div>
+          </Card>
+
+          <Card title="Carrier reconciliation" description="Commio CDR cost rows will populate this view once the account-specific CDR adapter is configured.">
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div>
+                <p className="text-xs text-muted">Carrier billable minutes</p>
+                <p className="mt-1 text-lg font-semibold text-text">{usage.carrierBillableMinutes || 0}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted">Carrier cost</p>
+                <p className="mt-1 text-lg font-semibold text-text">${Number(usage.carrierCost || 0).toFixed(2)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted">Calls</p>
+                <p className="mt-1 text-lg font-semibold text-text">{usage.calls || 0}</p>
+              </div>
+            </div>
+          </Card>
+        </>
+      )}
+    </div>
+  );
 }

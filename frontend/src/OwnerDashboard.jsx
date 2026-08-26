@@ -83,7 +83,7 @@ function SectionCaption({ eyebrow, title, note }) {
   );
 }
 
-export default function OwnerDashboard({ tenant, user, amiConnected, socketLiveCalls = [] }) {
+export default function OwnerDashboard({ tenant, user, amiConnected, socketLiveCalls = [], liveAgentStatus = {} }) {
   const initialDate = todayValue();
   const [filters, setFilters] = useState({ from: initialDate, to: initialDate, agentId: "" });
   const [payload, setPayload] = useState(null);
@@ -119,14 +119,35 @@ export default function OwnerDashboard({ tenant, user, amiConnected, socketLiveC
     return () => window.clearInterval(interval);
   }, []);
 
-  const agentMap = useMemo(() => new Map((payload?.agents || []).map((agent) => [agent.id, agent])), [payload?.agents]);
-  const fallbackMap = useMemo(
-    () => new Map((payload?.agents || []).map((agent) => [agent.sipUsername, agent])),
-    [payload?.agents]
-  );
   const baseLiveCalls = socketLiveCalls.length ? socketLiveCalls : payload?.liveCalls || [];
   const liveCalls = baseLiveCalls.filter((call) => !filters.agentId || call.agentUserId === filters.agentId);
-  const status = payload?.agentStatus || {};
+
+  // Live overlay: on-call is derived from the real-time call feed, an
+  // explicit status push (READY/PAUSED/WRAP_UP/OFFLINE) comes from the
+  // "agent:status" socket event — both update instantly instead of
+  // waiting for the next 15s /dashboard/owner poll.
+  const agents = useMemo(() => {
+    const list = payload?.agents || [];
+    return list.map((agent) => {
+      const onCall = baseLiveCalls.some(
+        (call) => call.agentUserId === agent.id && ["RINGING", "ANSWERED", "HELD"].includes(call.status)
+      );
+      const status = onCall ? "ON_CALL" : liveAgentStatus[agent.id] || agent.status;
+      return { ...agent, status };
+    });
+  }, [payload?.agents, baseLiveCalls, liveAgentStatus]);
+
+  const agentMap = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents]);
+  const fallbackMap = useMemo(() => new Map(agents.map((agent) => [agent.sipUsername, agent])), [agents]);
+
+  const status = useMemo(() => ({
+    total: agents.length,
+    ready: agents.filter((agent) => agent.active && agent.status === "READY").length,
+    active: agents.filter((agent) => agent.active && agent.status !== "OFFLINE").length,
+    inactive: agents.filter((agent) => !agent.active || agent.status === "OFFLINE").length,
+    onCall: agents.filter((agent) => agent.status === "ON_CALL").length,
+    paused: agents.filter((agent) => agent.active && agent.status === "PAUSED").length
+  }), [agents]);
   const metrics = payload?.callMetrics || {};
 
   const agentOptions = [

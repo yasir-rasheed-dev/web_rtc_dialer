@@ -27,16 +27,16 @@ describe("phone utilities", () => {
     expect(formatDuration(65)).toBe("01:05");
   });
 
-  it("adds +1 to a bare 10-digit US number before dialing", () => {
-    expect(formatForDialing("7127307170")).toBe("+17127307170");
+  it("adds a 1 prefix to a bare 10-digit US number before dialing", () => {
+    expect(formatForDialing("7127307170")).toBe("17127307170");
   });
 
-  it("adds + to an 11-digit number that already has the 1 prefix", () => {
-    expect(formatForDialing("17127307170")).toBe("+17127307170");
+  it("leaves an 11-digit number that already has the 1 prefix as bare digits", () => {
+    expect(formatForDialing("17127307170")).toBe("17127307170");
   });
 
-  it("leaves an already-E.164 number untouched", () => {
-    expect(formatForDialing("+17127307170")).toBe("+17127307170");
+  it("strips the + from an E.164 number — the dialplan's _X. pattern only matches strings starting with a digit", () => {
+    expect(formatForDialing("+17127307170")).toBe("17127307170");
   });
 
   it("leaves a short internal extension untouched", () => {

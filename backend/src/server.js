@@ -9,15 +9,19 @@ import { Server as SocketServer } from "socket.io";
 import { config } from "./config.js";
 import { db, healthcheck, audit } from "./db.js";
 import {
+  decryptSecret,
   decryptSipSecret,
+  encryptSecret,
   encryptSipSecret,
   hashPassword,
   sanitizeUser,
+  signPendingToken,
   signToken,
   signSuperAdminToken,
   verifyPassword,
   verifyToken
 } from "./security.js";
+import { generateTotpSecret, totpQrCodeDataUrl, verifyTotpCode } from "./totp.js";
 import { AmiClient } from "./ami.js";
 import { CallTracker } from "./callTracker.js";
 import { provisionTenantSipAccount, deprovisionSipAccount } from "./sipProvisioning.js";
@@ -36,6 +40,10 @@ import {
 } from "./saas.js";
 import { PERMISSIONS } from "./permissions.js";
 import createCampaignRoutes from "./campaignRoutes.js";
+import createCommioRoutes from "./commioRoutes.js";
+import * as commio from "./commio.js";
+import createTeamChatRoutes from "./teamChatRoutes.js";
+import { fileURLToPath } from "node:url";
 import {
   DEFAULT_TEAM_PRIVILEGES,
   TEAM_PRIVILEGES,
@@ -113,6 +121,21 @@ function isSupervisor(user) {
 function normalizeDateFilter(value) {
   const text = String(value || "").trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null;
+}
+
+// Resolves a "YYYY-MM" query param into UTC month boundaries, defaulting to
+// the current month when absent/invalid. Shared by the tenant usage page
+// and the Super Admin Commio-cost page so "month filter" means the same
+// thing in both places.
+function resolveBillingMonth(value) {
+  const text = String(value || "").trim();
+  const match = /^(\d{4})-(\d{2})$/.exec(text);
+  const now = new Date();
+  const year = match ? Number(match[1]) : now.getUTCFullYear();
+  const monthIndex = match ? Number(match[2]) - 1 : now.getUTCMonth();
+  const start = new Date(Date.UTC(year, monthIndex, 1));
+  const end = new Date(Date.UTC(year, monthIndex + 1, 1));
+  return { start, end, month: `${start.getUTCFullYear()}-${String(start.getUTCMonth() + 1).padStart(2, "0")}` };
 }
 
 async function safeAstDbDelete(family, key) {
@@ -390,8 +413,9 @@ async function loadTenantUser(userId) {
     `SELECT u.id, u.tenant_id, u.email, u.name, u.role, u.role_id,
             u.sip_username, u.sip_secret_ciphertext, u.extension, u.caller_id_number,
             u.team_name, u.status, u.active,
+            u.current_session_id, u.totp_required, u.totp_secret_ciphertext, u.totp_confirmed_at, u.restrict_ip,
             r.name AS role_name, r.active AS role_active,
-            t.name AS tenant_name, t.workspace, t.status AS tenant_status,
+            t.name AS tenant_name, t.workspace, t.status AS tenant_status, t.plan_id,
             t.features_json, t.price_per_user, t.max_users, t.outbound_minutes, t.inbound_minutes,
             t.extension_start, t.next_extension, t.timezone
        FROM users u
@@ -419,6 +443,14 @@ export const authenticate = asyncRoute(async (req, res, next) => {
   if (claims.scope !== "tenant") return res.status(401).json({ error: "Invalid tenant session" });
   const user = await loadTenantUser(claims.sub);
   if (!user) return res.status(401).json({ error: "Account or workspace is disabled" });
+  // A newer login elsewhere rotates current_session_id — any older token
+  // (including this one, if it's the stale device) stops working the
+  // moment that happens. NULL means no session has been established under
+  // this scheme yet (e.g. legacy token from before the migration), so we
+  // don't lock those out.
+  if (user.current_session_id && claims.sid !== user.current_session_id) {
+    return res.status(401).json({ error: "SESSION_REVOKED", message: "You were signed out because this account logged in on another device." });
+  }
   req.user = user;
   req.tenant = {
     id: user.tenant_id,
@@ -492,6 +524,15 @@ app.get("/api/health", asyncRoute(async (_req, res) => {
   res.json({ ok: database, database, ami: amiConnected, time: new Date().toISOString() });
 }));
 app.use("/api/campaigns", createCampaignRoutes(authenticate));
+app.use("/api/dids/commio", createCommioRoutes(authenticate));
+app.use("/api/team-chat", createTeamChatRoutes(authenticate));
+// Chat attachments — filenames are random UUIDs (see teamChatRoutes.js), so
+// this is safe to serve statically without going through the JWT-auth
+// layer (an <img>/<a> tag can't attach an Authorization header anyway).
+// Mounted under /api so it rides the same reverse-proxy/dev-proxy rule as
+// every other backend route — a sibling /uploads path isn't proxied by
+// vite.config.js (or, in prod, nginx configs that only forward /api).
+app.use("/api/uploads/team-chat", express.static(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "uploads/team-chat")));
 // ---------------------------
 // Super Admin / Product Owner
 // ---------------------------
@@ -539,7 +580,7 @@ app.get("/api/super-admin/overview", authenticateSuperAdmin, asyncRoute(async (_
   );
   const [tenants] = await db.execute(
     `SELECT t.id,t.name,t.workspace,t.status,t.price_per_user,t.max_users,t.outbound_minutes,t.inbound_minutes,
-            t.extension_start,t.timezone,p.name AS plan_name,
+            t.extension_start,t.timezone,t.commio_routing_profile_id,t.commio_routing_profile_name,p.name AS plan_name,
             COUNT(CASE WHEN COALESCE(ur.name,'')<>'Tenant Owner' THEN u.id END) AS users,
             COALESCE(SUM(CASE WHEN COALESCE(ur.name,'')<>'Tenant Owner' AND u.active=1 THEN 1 ELSE 0 END),0) AS active_users
        FROM tenants t
@@ -640,6 +681,17 @@ app.post("/api/super-admin/tenants", authenticateSuperAdmin, asyncRoute(async (r
     return res.status(400).json({ error: "Extension start number must be at least 100" });
   }
 
+  const routingProfileMode = req.body.routingProfileMode === "existing" ? "existing" : "new";
+  let existingRoutingProfileId = null;
+  let existingRoutingProfileName = null;
+  if (routingProfileMode === "existing") {
+    existingRoutingProfileId = Number(req.body.routingProfileId);
+    if (!Number.isInteger(existingRoutingProfileId) || existingRoutingProfileId <= 0) {
+      return res.status(400).json({ error: "Pick an existing Commio routing profile" });
+    }
+    existingRoutingProfileName = String(req.body.routingProfileName || "").trim() || null;
+  }
+
   let plan = null;
   if (req.body.planId) {
     const [planRows] = await db.execute("SELECT * FROM pricing_plans WHERE id=? AND active=1 LIMIT 1", [req.body.planId]);
@@ -667,8 +719,8 @@ app.post("/api/super-admin/tenants", authenticateSuperAdmin, asyncRoute(async (r
     await connection.execute(
       `INSERT INTO tenants
         (id,name,workspace,status,plan_id,price_per_user,max_users,outbound_minutes,inbound_minutes,features_json,
-         extension_start,next_extension,timezone,country,billing_cycle)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         extension_start,next_extension,timezone,country,billing_cycle,commio_routing_profile_id,commio_routing_profile_name)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         id,
         name,
@@ -684,7 +736,9 @@ app.post("/api/super-admin/tenants", authenticateSuperAdmin, asyncRoute(async (r
         extensionStart,
         String(req.body.timezone || "UTC"),
         String(req.body.country || "").trim() || null,
-        req.body.billingCycle === "ANNIVERSARY" ? "ANNIVERSARY" : "CALENDAR_MONTH"
+        req.body.billingCycle === "ANNIVERSARY" ? "ANNIVERSARY" : "CALENDAR_MONTH",
+        existingRoutingProfileId,
+        existingRoutingProfileName
       ]
     );
 
@@ -714,7 +768,24 @@ app.post("/api/super-admin/tenants", authenticateSuperAdmin, asyncRoute(async (r
       console.error("Tenant Asterisk status sync failed:", error.message);
     }
 
-    res.status(201).json({ id, workspace, ownerEmail });
+    let commioRoutingProfileId = existingRoutingProfileId;
+    let commioRoutingProfileError = null;
+    if (routingProfileMode === "new") {
+      try {
+        commioRoutingProfileId = await commio.createRoutingProfile(name);
+        await db.execute(
+          "UPDATE tenants SET commio_routing_profile_id=?,commio_routing_profile_name=? WHERE id=?",
+          [commioRoutingProfileId, name, id]
+        );
+      } catch (error) {
+        // Non-fatal — the tenant is fully created either way; Super Admin
+        // can set/retry the routing profile id later via PATCH.
+        commioRoutingProfileError = error.message;
+        console.error("Commio routing profile creation failed for new tenant:", error.message);
+      }
+    }
+
+    res.status(201).json({ id, workspace, ownerEmail, commioRoutingProfileId, commioRoutingProfileError });
   } catch (error) {
     await connection.rollback();
     throw error;
@@ -754,6 +825,42 @@ app.patch("/api/super-admin/tenants/:id", authenticateSuperAdmin, asyncRoute(asy
   res.status(204).end();
 }));
 
+// Sets (or retries creating) this tenant's Commio inbound routing profile —
+// used both to fix a setup whose creation-time profile call failed, and to
+// change/assign one for a tenant that never had one. Same "existing id vs.
+// create new" choice as the tenant-creation flow.
+app.post("/api/super-admin/tenants/:id/commio-routing-profile", authenticateSuperAdmin, asyncRoute(async (req, res) => {
+  const [rows] = await db.execute("SELECT id,name FROM tenants WHERE id=? LIMIT 1", [req.params.id]);
+  const tenant = rows[0];
+  if (!tenant) return res.status(404).json({ error: "Tenant not found" });
+
+  let routingProfileId;
+  let routingProfileName;
+  if (req.body.routingProfileMode === "existing") {
+    routingProfileId = Number(req.body.routingProfileId);
+    if (!Number.isInteger(routingProfileId) || routingProfileId <= 0) {
+      return res.status(400).json({ error: "Pick an existing Commio routing profile" });
+    }
+    routingProfileName = String(req.body.routingProfileName || "").trim() || null;
+  } else {
+    routingProfileId = await commio.createRoutingProfile(tenant.name);
+    routingProfileName = tenant.name;
+  }
+
+  await db.execute(
+    "UPDATE tenants SET commio_routing_profile_id=?,commio_routing_profile_name=? WHERE id=?",
+    [routingProfileId, routingProfileName, tenant.id]
+  );
+  res.json({ commioRoutingProfileId: routingProfileId, commioRoutingProfileName: routingProfileName });
+}));
+
+// Existing Commio routing profiles (name + id) for the "use existing" picker
+// on both the create-setup and per-tenant routing-profile forms.
+app.get("/api/super-admin/commio/routing-profiles", authenticateSuperAdmin, asyncRoute(async (_req, res) => {
+  const profiles = await commio.listRoutingProfiles();
+  res.json({ profiles });
+}));
+
 app.post("/api/super-admin/tenants/:id/dids", authenticateSuperAdmin, asyncRoute(async (req, res) => {
   const number = normalizeDid(req.body.number);
   if (!number) return res.status(400).json({ error: "Valid DID is required" });
@@ -786,9 +893,91 @@ app.get("/api/super-admin/tenants/:id/usage", authenticateSuperAdmin, asyncRoute
   });
 }));
 
+// Actual Commio cost for one tenant: real per-DID outbound call cost (from
+// Commio's CDR API, live — not a local estimate) plus each DID's known
+// purchase cost (captured from the price quote at buy time). Super Admin
+// only — this fans out one Commio API call per DID the tenant owns, which
+// is fine for an admin-triggered per-tenant lookup but not something to
+// expose to tenant users directly.
+app.get("/api/super-admin/tenants/:id/commio-cost", authenticateSuperAdmin, asyncRoute(async (req, res) => {
+  const [[tenant]] = await db.execute("SELECT id,name,workspace FROM tenants WHERE id=? LIMIT 1", [req.params.id]);
+  if (!tenant) return res.status(404).json({ error: "Tenant not found" });
+
+  const { start, end, month } = resolveBillingMonth(req.query.month);
+  const dateStart = start.toISOString().slice(0, 10);
+  // Commio's dateEnd is inclusive (their docs give same-day examples like
+  // dateStart=dateEnd=2020-09-17), so this must be the month's last actual
+  // day, not the exclusive next-month boundary `end` uses everywhere else.
+  const dateEnd = new Date(end.getTime() - 86400000).toISOString().slice(0, 10);
+
+  const [dids] = await db.execute(
+    "SELECT number, monthly_cost FROM tenant_dids WHERE tenant_id=? LIMIT 50",
+    [tenant.id]
+  );
+
+  const byNumber = [];
+  for (const did of dids) {
+    let outbound = { cost: 0, calls: 0 };
+    try {
+      outbound = await commio.getOutboundCdrCost({ dateStart, dateEnd, didFrom: did.number });
+    } catch (error) {
+      // A single number's CDR lookup failing (e.g. Commio rate limit) shouldn't
+      // blank out the whole tenant's cost report — just flag it per-row.
+      byNumber.push({ number: did.number, purchaseCost: Number(did.monthly_cost || 0), outboundCost: null, calls: null, error: error.message });
+      continue;
+    }
+    byNumber.push({ number: did.number, purchaseCost: Number(did.monthly_cost || 0), outboundCost: outbound.cost, calls: outbound.calls });
+  }
+
+  const outboundCost = byNumber.reduce((sum, row) => sum + (row.outboundCost || 0), 0);
+  const flatDidCost = byNumber.reduce((sum, row) => sum + (row.purchaseCost || 0), 0);
+
+  res.json({
+    month,
+    tenant,
+    outboundCost,
+    flatDidCost,
+    totalCost: outboundCost + flatDidCost,
+    byNumber
+  });
+}));
+
 // ---------------------------
 // Tenant authentication
 // ---------------------------
+// Finalizes a login (no 2FA required, or 2FA just passed): rotates the
+// session lock so any older token for this user stops working, and kicks
+// whatever socket was connected under the old session so that device finds
+// out immediately instead of waiting for its next API call to 401.
+async function finalizeLogin(user, req) {
+  const sessionId = crypto.randomUUID();
+  await db.execute("UPDATE users SET current_session_id=?, last_login_at=UTC_TIMESTAMP() WHERE id=?", [sessionId, user.id]);
+  io.to(`user:${user.id}`).emit("auth:force-logout", {
+    message: "You were signed out because this account logged in on another device."
+  });
+  io.in(`user:${user.id}`).disconnectSockets(true);
+  const tokenUser = { ...user, current_session_id: sessionId };
+  await audit(user.id, "AUTH_LOGIN", "user", user.id, { ip: req.ip }, user.tenant_id);
+  return { token: signToken(tokenUser), ...authPayload(tokenUser) };
+}
+
+const totpAttempts = new Map();
+function checkTotpRateLimit(res, key) {
+  const attempt = totpAttempts.get(key) || { count: 0, resetAt: Date.now() + 15 * 60 * 1000 };
+  if (Date.now() > attempt.resetAt) {
+    attempt.count = 0;
+    attempt.resetAt = Date.now() + 15 * 60 * 1000;
+  }
+  if (attempt.count >= 8) {
+    res.setHeader("Retry-After", Math.ceil((attempt.resetAt - Date.now()) / 1000));
+    res.status(429).json({ error: "Too many authenticator attempts; try again later" });
+    return false;
+  }
+  attempt.count += 1;
+  totpAttempts.set(key, attempt);
+  return true;
+}
+
 app.post("/api/auth/login", asyncRoute(async (req, res) => {
   const attemptKey = `${req.ip}:${String(req.body.workspace || "legacy").toLowerCase()}`;
   const attempt = loginAttempts.get(attemptKey) || { count: 0, resetAt: Date.now() + 15 * 60 * 1000 };
@@ -804,6 +993,7 @@ app.post("/api/auth/login", asyncRoute(async (req, res) => {
   const workspace = normalizeWorkspace(req.body.workspace || "legacy");
   const email = String(req.body.email || "").trim().toLowerCase();
   const password = String(req.body.password || "");
+  const forceLogout = req.body.forceLogout === true;
   const [rows] = await db.execute(
     `SELECT u.id,u.password_hash
        FROM users u JOIN tenants t ON t.id=u.tenant_id
@@ -817,16 +1007,85 @@ app.post("/api/auth/login", asyncRoute(async (req, res) => {
     loginAttempts.set(attemptKey, attempt);
     return res.status(401).json({ error: "Invalid workspace, email or password" });
   }
-
   loginAttempts.delete(attemptKey);
-  await db.execute("UPDATE users SET last_login_at=UTC_TIMESTAMP() WHERE id=?", [user.id]);
-  await audit(user.id, "AUTH_LOGIN", "user", user.id, { ip: req.ip, workspace }, user.tenant_id);
-  res.json({ token: signToken(user), ...authPayload(user) });
+
+  if (user.restrict_ip && user.restrict_ip !== req.ip) {
+    await audit(user.id, "AUTH_IP_BLOCKED", "user", user.id, { ip: req.ip, allowed: user.restrict_ip }, user.tenant_id);
+    return res.status(403).json({ error: "IP_RESTRICTED", message: "This account can only sign in from an approved IP address." });
+  }
+
+  // Reported, not acted on yet — the other session is only actually killed
+  // once this login fully authenticates (password + 2FA if enabled), inside
+  // finalizeLogin. That keeps a password alone from being enough to force
+  // out someone else's session on a 2FA-protected account.
+  if (user.current_session_id && !forceLogout) {
+    return res.status(409).json({ error: "SESSION_ACTIVE", message: "This account is already signed in on another device." });
+  }
+
+  if (user.totp_required) {
+    if (user.totp_confirmed_at) {
+      const pendingToken = signPendingToken({ sub: user.id, scope: "2fa-verify", forceLogout });
+      return res.json({ requires2fa: true, pendingToken });
+    }
+    // Reuse the secret from a previous unconfirmed attempt instead of
+    // minting a new one on every /login call — otherwise a second login
+    // attempt (retyped password, a second tab, a retry) silently
+    // invalidates a QR code the agent already scanned.
+    let secret = user.totp_secret_ciphertext ? decryptSecret(user.totp_secret_ciphertext) : null;
+    if (!secret) {
+      secret = generateTotpSecret();
+      await db.execute("UPDATE users SET totp_secret_ciphertext=? WHERE id=?", [encryptSecret(secret), user.id]);
+    }
+    const { otpauthUrl, qr } = await totpQrCodeDataUrl(secret, user.email, "Ringnex");
+    const pendingToken = signPendingToken({ sub: user.id, scope: "2fa-setup", forceLogout });
+    return res.json({ requiresSetup: true, pendingToken, secret, otpauthUrl, qr });
+  }
+
+  res.json(await finalizeLogin(user, req));
 }));
+
+async function completeTotpChallenge(req, res, expectedScope) {
+  const pendingToken = String(req.body.pendingToken || "");
+  const code = String(req.body.code || "").trim();
+  let claims;
+  try {
+    claims = verifyToken(pendingToken);
+  } catch {
+    return res.status(401).json({ error: "This authenticator session expired — please log in again." });
+  }
+  if (claims.scope !== expectedScope) return res.status(401).json({ error: "Invalid authenticator session" });
+
+  if (!checkTotpRateLimit(res, `${req.ip}:${claims.sub}`)) return;
+
+  const user = await loadTenantUser(claims.sub);
+  if (!user || !user.totp_required) return res.status(401).json({ error: "Invalid authenticator session" });
+
+  const [[row]] = await db.execute("SELECT totp_secret_ciphertext FROM users WHERE id=?", [user.id]);
+  const secret = row?.totp_secret_ciphertext ? decryptSecret(row.totp_secret_ciphertext) : null;
+  if (!secret || !verifyTotpCode(secret, code)) {
+    return res.status(401).json({ error: "Incorrect authenticator code" });
+  }
+
+  if (expectedScope === "2fa-setup") {
+    await db.execute("UPDATE users SET totp_confirmed_at=UTC_TIMESTAMP() WHERE id=?", [user.id]);
+  }
+
+  // The session-lock decision (force logout the other device or not) was
+  // already made and rate-limited-checked back in /auth/login — carried
+  // through unused here on purpose, finalizeLogin always performs the
+  // rotation once we reach it, since /auth/login already refused to hand
+  // out a pendingToken at all when a conflicting session existed and
+  // forceLogout wasn't set.
+  res.json(await finalizeLogin(user, req));
+}
+
+app.post("/api/auth/2fa/setup-confirm", asyncRoute((req, res) => completeTotpChallenge(req, res, "2fa-setup")));
+app.post("/api/auth/2fa/verify", asyncRoute((req, res) => completeTotpChallenge(req, res, "2fa-verify")));
 
 app.get("/api/auth/session", authenticate, (req, res) => res.json(authPayload(req.user)));
 
 app.post("/api/auth/logout", authenticate, asyncRoute(async (req, res) => {
+  await db.execute("UPDATE users SET current_session_id=NULL WHERE id=?", [req.user.id]);
   await audit(req.user.id, "AUTH_LOGOUT", "user", req.user.id, { ip: req.ip }, req.user.tenant_id);
   res.status(204).end();
 }));
@@ -963,6 +1222,7 @@ app.get("/api/users", authenticate, requirePermission("VIEW_AGENTS", "MANAGE_AGE
   const [rows] = await db.execute(
     `SELECT u.id,u.tenant_id,u.email,u.name,u.role,u.role_id,u.sip_username,u.extension,u.caller_id_number,
             u.team_name,u.status,u.active,u.last_login_at,u.created_at,r.name AS role_name,
+            u.totp_required,u.totp_confirmed_at,u.restrict_ip,
             (SELECT GROUP_CONCAT(t.name ORDER BY t.name SEPARATOR '||')
                FROM team_members tm JOIN teams t ON t.id=tm.team_id AND t.tenant_id=tm.tenant_id
               WHERE tm.tenant_id=u.tenant_id AND tm.user_id=u.id AND tm.active=1 AND t.active=1) AS team_names
@@ -975,7 +1235,10 @@ app.get("/api/users", authenticate, requirePermission("VIEW_AGENTS", "MANAGE_AGE
   res.json({
     users: rows.map((row) => ({
       ...sanitizeUser(row),
-      teamNames: row.team_names ? String(row.team_names).split("||").filter(Boolean) : []
+      teamNames: row.team_names ? String(row.team_names).split("||").filter(Boolean) : [],
+      totpRequired: Boolean(row.totp_required),
+      totpConfirmed: Boolean(row.totp_confirmed_at),
+      restrictIp: row.restrict_ip || ""
     }))
   });
 }));
@@ -988,6 +1251,8 @@ app.post("/api/users", authenticate, requirePermission("MANAGE_AGENTS"), asyncRo
   const roleId = String(req.body.roleId || "").trim();
   const teamName = String(req.body.teamName || "Default").trim() || "Default";
   const generateSipAccount = req.body.generateSipAccount === true || String(req.body.generateSipAccount || "").toLowerCase() === "true";
+  const totpRequired = req.body.totpRequired === true || String(req.body.totpRequired || "").toLowerCase() === "true";
+  const restrictIp = String(req.body.restrictIp || "").trim() || null;
   if (!email || !name || !roleId) return res.status(400).json({ error: "Name, email and role are required" });
 
   const [roleRows] = await db.execute("SELECT * FROM roles WHERE id=? AND tenant_id=? AND active=1 LIMIT 1", [roleId, req.user.tenant_id]);
@@ -1024,8 +1289,8 @@ app.post("/api/users", authenticate, requirePermission("MANAGE_AGENTS"), asyncRo
 
     await db.execute(
       `INSERT INTO users
-        (id,tenant_id,email,name,role,role_id,password_hash,sip_username,sip_secret_ciphertext,extension,caller_id_number,team_name,status,active)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'OFFLINE',1)`,
+        (id,tenant_id,email,name,role,role_id,password_hash,sip_username,sip_secret_ciphertext,extension,caller_id_number,team_name,status,active,totp_required,restrict_ip)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'OFFLINE',1,?,?)`,
       [
         id,
         req.user.tenant_id,
@@ -1038,7 +1303,9 @@ app.post("/api/users", authenticate, requirePermission("MANAGE_AGENTS"), asyncRo
         generatedSip?.sipPassword ? encryptSipSecret(generatedSip.sipPassword) : null,
         extension,
         callerIdNumber,
-        teamName
+        teamName,
+        totpRequired ? 1 : 0,
+        restrictIp
       ]
     );
     userInserted = true;
@@ -1156,6 +1423,13 @@ app.patch("/api/users/:id", authenticate, requirePermission("MANAGE_AGENTS"), as
     }
   }
 
+  const totpRequired = req.body.totpRequired === undefined
+    ? Number(current.totp_required) === 1
+    : (req.body.totpRequired === true || String(req.body.totpRequired).toLowerCase() === "true");
+  // Turning 2FA off wipes the enrollment — re-enabling it later always
+  // starts a fresh QR scan rather than silently reusing an old secret.
+  const totpTurnedOff = Number(current.totp_required) === 1 && !totpRequired;
+
   const updates = {
     name: req.body.name ?? current.name,
     role_id: roleId,
@@ -1163,7 +1437,11 @@ app.patch("/api/users/:id", authenticate, requirePermission("MANAGE_AGENTS"), as
     caller_id_number: callerIdNumber,
     team_name: req.body.teamName ?? current.team_name,
     active: req.body.active === undefined ? current.active : Number(Boolean(req.body.active)),
-    password_hash: req.body.password ? await hashPassword(String(req.body.password)) : current.password_hash
+    password_hash: req.body.password ? await hashPassword(String(req.body.password)) : current.password_hash,
+    totp_required: totpRequired ? 1 : 0,
+    totp_secret_ciphertext: totpTurnedOff ? null : current.totp_secret_ciphertext,
+    totp_confirmed_at: totpTurnedOff ? null : current.totp_confirmed_at,
+    restrict_ip: req.body.restrictIp === undefined ? current.restrict_ip : (String(req.body.restrictIp || "").trim() || null)
   };
 
   if (!Number(current.active) && Number(updates.active) && !isTenantOwnerRoleName(current.role_name)) {
@@ -1171,7 +1449,8 @@ app.patch("/api/users/:id", authenticate, requirePermission("MANAGE_AGENTS"), as
   }
 
   await db.execute(
-    `UPDATE users SET name=?,role=?,role_id=?,caller_id_number=?,team_name=?,active=?,password_hash=?
+    `UPDATE users SET name=?,role=?,role_id=?,caller_id_number=?,team_name=?,active=?,password_hash=?,
+            totp_required=?,totp_secret_ciphertext=?,totp_confirmed_at=?,restrict_ip=?
       WHERE id=? AND tenant_id=?`,
     [
       updates.name,
@@ -1181,6 +1460,10 @@ app.patch("/api/users/:id", authenticate, requirePermission("MANAGE_AGENTS"), as
       updates.team_name,
       updates.active,
       updates.password_hash,
+      updates.totp_required,
+      updates.totp_secret_ciphertext,
+      updates.totp_confirmed_at,
+      updates.restrict_ip,
       current.id,
       req.user.tenant_id
     ]
@@ -1709,9 +1992,10 @@ app.delete("/api/contacts/:id", authenticate, requirePermission("DELETE_CONTACTS
 // ---------------------------
 // Calls, recordings, reports
 // ---------------------------
-app.get("/api/calls", authenticate, requirePermission("VIEW_CALL_LOGS"), asyncRoute(async (req, res) => {
-  const page = Math.max(1, Number(req.query.page) || 1);
-  const pageSize = Math.min(100, Math.max(10, Number(req.query.pageSize) || 25));
+// Shared by GET /api/calls (paginated list) and GET /api/calls/export (full
+// CSV/XLSX/PDF download) so the two never drift apart on what "matching
+// this filter set" means.
+async function buildCallsFilter(req) {
   const scope = await callAccessScope(req.user, "VIEW_TEAM_CALL_LOGS");
   const params = [req.user.tenant_id];
   let where = "WHERE c.tenant_id=?";
@@ -1728,22 +2012,172 @@ app.get("/api/calls", authenticate, requirePermission("VIEW_CALL_LOGS"), asyncRo
   const status = String(req.query.status || "").toUpperCase();
   if (status) { where += " AND c.status=?"; params.push(status.slice(0, 32)); }
 
+  // "Connected" = the call was actually answered (has an answered_at
+  // timestamp), regardless of the exact carrier/Asterisk status string.
+  const connected = String(req.query.connected || "").toLowerCase();
+  if (connected === "true") where += " AND c.answered_at IS NOT NULL";
+  else if (connected === "false") where += " AND c.answered_at IS NULL";
+
+  const durationMin = Number(req.query.durationMin);
+  if (Number.isFinite(durationMin) && durationMin > 0) { where += " AND c.billable_sec>=?"; params.push(Math.trunc(durationMin)); }
+  const durationMax = Number(req.query.durationMax);
+  if (Number.isFinite(durationMax) && durationMax > 0) { where += " AND c.billable_sec<=?"; params.push(Math.trunc(durationMax)); }
+
   if (req.query.search) {
     where += " AND (c.from_number LIKE ? OR c.to_number LIKE ? OR c.agent_sip_username LIKE ? OR u.name LIKE ?)";
     const term = `%${String(req.query.search).slice(0, 64)}%`;
     params.push(term, term, term, term);
   }
 
-  const fromSql = "FROM calls c LEFT JOIN users u ON u.id=c.agent_user_id AND u.tenant_id=c.tenant_id";
-  const [[count]] = await db.execute(`SELECT COUNT(*) AS total ${fromSql} ${where}`, params);
+  return { where, params };
+}
+
+const CALLS_SELECT_FIELDS =
+  "c.id,c.linkedid,c.agent_user_id,c.agent_sip_username,u.name AS agent_name,c.direction,c.from_number,c.to_number,c.status," +
+  "c.disposition,c.started_at,c.answered_at,c.ended_at,c.duration_sec,c.billable_sec,c.hangup_cause,c.recording_name";
+const CALLS_FROM_SQL = "FROM calls c LEFT JOIN users u ON u.id=c.agent_user_id AND u.tenant_id=c.tenant_id";
+
+app.get("/api/calls", authenticate, requirePermission("VIEW_CALL_LOGS", "VIEW_REPORTS"), asyncRoute(async (req, res) => {
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const pageSize = Math.min(100, Math.max(10, Number(req.query.pageSize) || 25));
+  const { where, params } = await buildCallsFilter(req);
+
+  const [[count]] = await db.execute(`SELECT COUNT(*) AS total ${CALLS_FROM_SQL} ${where}`, params);
   const [rows] = await db.execute(
-    `SELECT c.id,c.linkedid,c.agent_user_id,c.agent_sip_username,u.name AS agent_name,c.direction,c.from_number,c.to_number,c.status,
-            c.disposition,c.started_at,c.answered_at,c.ended_at,c.duration_sec,c.billable_sec,
-            c.hangup_cause,c.recording_name
-       ${fromSql} ${where} ORDER BY c.started_at DESC LIMIT ? OFFSET ?`,
+    `SELECT ${CALLS_SELECT_FIELDS} ${CALLS_FROM_SQL} ${where} ORDER BY c.started_at DESC LIMIT ? OFFSET ?`,
     [...params, pageSize, (page - 1) * pageSize]
   );
   res.json({ rows, page, pageSize, total: Number(count.total || 0) });
+}));
+
+// ---------------------------
+// Call report export (CSV / XLSX / PDF)
+// ---------------------------
+//
+// All three stream the response instead of building it fully in memory
+// first, so a multi-million-row tenant doesn't OOM the process — and so the
+// frontend can show a real download-progress percentage instead of a fake
+// spinner. CSV/PDF report row-count progress via the X-Total-Rows header
+// (the client counts newlines/rows as they arrive); XLSX can't be
+// generated row-by-row (it's a zip container SheetJS builds as a whole
+// workbook), so for that one format alone we build the full buffer first —
+// Content-Length is then exact and the client tracks bytes instead of rows.
+app.get("/api/calls/export", authenticate, requirePermission("VIEW_REPORTS", "VIEW_CALL_LOGS"), asyncRoute(async (req, res) => {
+  const format = String(req.query.format || "csv").toLowerCase();
+  if (!["csv", "xlsx", "pdf"].includes(format)) {
+    return res.status(400).json({ error: "format must be csv, xlsx or pdf" });
+  }
+
+  const { where, params } = await buildCallsFilter(req);
+  const [[count]] = await db.execute(`SELECT COUNT(*) AS total ${CALLS_FROM_SQL} ${where}`, params);
+  const total = Number(count.total || 0);
+  const BATCH_SIZE = 2000;
+  const filenameBase = `call-report-${new Date().toISOString().slice(0, 10)}`;
+
+  async function* rowBatches() {
+    for (let offset = 0; offset < total; offset += BATCH_SIZE) {
+      const [rows] = await db.execute(
+        `SELECT ${CALLS_SELECT_FIELDS} ${CALLS_FROM_SQL} ${where} ORDER BY c.started_at DESC LIMIT ? OFFSET ?`,
+        [...params, BATCH_SIZE, offset]
+      );
+      yield rows;
+    }
+  }
+
+  const csvCell = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+  const rowToFields = (row) => [
+    row.to_number || "",
+    row.from_number || "",
+    row.billable_sec || 0,
+    row.answered_at ? "Connected" : "Not connected",
+    row.started_at ? new Date(row.started_at).toISOString() : "",
+    row.agent_name || row.agent_sip_username || "",
+    row.direction || "",
+    row.disposition || ""
+  ];
+
+  if (format === "csv") {
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filenameBase}.csv"`);
+    res.setHeader("X-Total-Rows", String(total));
+    res.setHeader("Access-Control-Expose-Headers", "X-Total-Rows");
+    res.write("To,From,Duration (sec),Status,Time,Agent,Direction,Disposition\n");
+    for await (const rows of rowBatches()) {
+      const chunk = rows.map((row) => rowToFields(row).map(csvCell).join(",")).join("\n");
+      res.write(chunk + (rows.length ? "\n" : ""));
+    }
+    return res.end();
+  }
+
+  if (format === "pdf") {
+    const PDFDocument = (await import("pdfkit")).default;
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${filenameBase}.pdf"`);
+    res.setHeader("X-Total-Rows", String(total));
+    res.setHeader("Access-Control-Expose-Headers", "X-Total-Rows");
+
+    const doc = new PDFDocument({ margin: 30, size: "A4", layout: "landscape", bufferPages: true });
+    doc.pipe(res);
+    const headers = ["To", "From", "Duration", "Status", "Time", "Agent", "Direction", "Disposition"];
+    const colWidths = [90, 90, 60, 80, 130, 100, 70, 100];
+    const startX = doc.page.margins.left;
+    let y = doc.page.margins.top;
+
+    function drawHeader() {
+      doc.font("Helvetica-Bold").fontSize(9);
+      let x = startX;
+      headers.forEach((label, i) => {
+        doc.text(label, x, y, { width: colWidths[i] });
+        x += colWidths[i];
+      });
+      y += 16;
+      doc.moveTo(startX, y).lineTo(startX + colWidths.reduce((a, b) => a + b, 0), y).strokeColor("#cccccc").stroke();
+      y += 4;
+      doc.font("Helvetica").fontSize(8);
+    }
+
+    doc.text(`Call Report — ${total} record${total === 1 ? "" : "s"}`, startX, y);
+    y += 20;
+    drawHeader();
+
+    for await (const rows of rowBatches()) {
+      for (const row of rows) {
+        if (y > doc.page.height - doc.page.margins.bottom - 20) {
+          doc.addPage();
+          y = doc.page.margins.top;
+          drawHeader();
+        }
+        let x = startX;
+        rowToFields(row).forEach((value, i) => {
+          doc.text(String(value), x, y, { width: colWidths[i], ellipsis: true });
+          x += colWidths[i];
+        });
+        y += 14;
+      }
+    }
+    doc.end();
+    return undefined;
+  }
+
+  // xlsx — SheetJS has no row-streaming write mode, so this format builds
+  // the full workbook in memory and reports progress via Content-Length /
+  // bytes-received on the client instead of the row-count header.
+  const XLSX = (await import("xlsx")).default;
+  const allRows = [];
+  for await (const rows of rowBatches()) {
+    for (const row of rows) allRows.push(rowToFields(row));
+  }
+  const sheet = XLSX.utils.aoa_to_sheet([
+    ["To", "From", "Duration (sec)", "Status", "Time", "Agent", "Direction", "Disposition"],
+    ...allRows
+  ]);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, "Calls");
+  const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", `attachment; filename="${filenameBase}.xlsx"`);
+  res.setHeader("Content-Length", String(buffer.length));
+  res.end(buffer);
 }));
 
 app.patch("/api/calls/:id", authenticate, requirePermission("EDIT_CALL_DISPOSITION"), asyncRoute(async (req, res) => {
@@ -1969,11 +2403,17 @@ app.get("/api/reports/kpis", authenticate, requirePermission("VIEW_DASHBOARD", "
 }));
 
 app.get("/api/usage", authenticate, requirePermission("VIEW_USAGE", "VIEW_BILLING"), asyncRoute(async (req, res) => {
-  const usage = await tenantUsageSummary(req.user.tenant_id);
+  const { start, end, month } = resolveBillingMonth(req.query.month);
+  const usage = await tenantUsageSummary(req.user.tenant_id, start, end);
   const activeUsers = await tenantSeatCount(req.user.tenant_id, true);
+  const [[plan]] = req.user.plan_id
+    ? await db.execute(`SELECT name FROM pricing_plans WHERE id=? LIMIT 1`, [req.user.plan_id])
+    : [[null]];
   res.json({
+    month,
     usage,
     activeUsers,
+    planName: plan?.name || null,
     pricePerUser: Number(req.user.price_per_user || 0),
     estimatedSeatRevenue: activeUsers * Number(req.user.price_per_user || 0),
     limits: {
@@ -2086,7 +2526,40 @@ app.get("/api/supervisor/live", authenticate, requirePermission("MONITOR_CALLS",
     calls = calls.filter((call) => allowed.has(call.agentUserId));
     presence = presence.filter((item) => allowed.has(item.userId));
   }
-  res.json({ calls, presence, ami: amiConnected });
+
+  // Agent roster with live status — mirrors /api/dashboard/owner's `agents`
+  // shape so the supervisor floor view can show each assigned agent's
+  // current status (READY/PAUSED/WRAP_UP/OFFLINE), not just call/presence
+  // events with no name attached.
+  const rosterParams = [req.user.tenant_id];
+  let rosterWhere = `WHERE u.tenant_id=? AND u.sip_username IS NOT NULL AND COALESCE(r.name,'')<>'Tenant Owner'`;
+  if (scope.type === "agents") {
+    if (!scope.agentIds.length) rosterWhere += " AND 1=0";
+    else {
+      rosterWhere += ` AND u.id IN (${scope.agentIds.map(() => "?").join(",")})`;
+      rosterParams.push(...scope.agentIds);
+    }
+  }
+  const [rosterRows] = await db.execute(
+    `SELECT u.id,u.name,u.sip_username,u.extension,u.status,u.active,
+            (SELECT GROUP_CONCAT(t.name ORDER BY t.name SEPARATOR '||')
+               FROM team_members tm JOIN teams t ON t.id=tm.team_id AND t.tenant_id=tm.tenant_id
+              WHERE tm.tenant_id=u.tenant_id AND tm.user_id=u.id AND tm.active=1 AND t.active=1) AS team_names
+       FROM users u LEFT JOIN roles r ON r.id=u.role_id AND r.tenant_id=u.tenant_id
+       ${rosterWhere} ORDER BY u.name ASC`,
+    rosterParams
+  );
+  const agents = rosterRows.map((agent) => ({
+    id: agent.id,
+    name: agent.name,
+    sipUsername: agent.sip_username,
+    extension: agent.extension,
+    status: agent.status,
+    active: Boolean(agent.active),
+    teamNames: agent.team_names ? String(agent.team_names).split("||").filter(Boolean) : []
+  }));
+
+  res.json({ calls, presence, agents, ami: amiConnected });
 }));
 
 app.post("/api/supervisor/monitor", authenticate, requirePermission("MONITOR_CALLS"), asyncRoute(async (req, res) => {
@@ -2132,6 +2605,7 @@ io.use(async (socket, next) => {
     if (claims.scope !== "tenant") return next(new Error("Unauthorized"));
     const user = await loadTenantUser(claims.sub);
     if (!user) return next(new Error("Unauthorized"));
+    if (user.current_session_id && claims.sid !== user.current_session_id) return next(new Error("Unauthorized"));
     socket.user = user;
     next();
   } catch {
@@ -2142,6 +2616,10 @@ io.use(async (socket, next) => {
 io.on("connection", async (socket) => {
   const user = socket.user;
   let calls = tracker.list(user.tenant_id);
+  // Per-user room — lets finalizeLogin() reach exactly this device's
+  // socket(s) with an immediate "auth:force-logout" push when a newer
+  // login elsewhere supersedes this session.
+  socket.join(`user:${user.id}`);
 
   try {
     if (isSupervisor(user)) {

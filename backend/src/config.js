@@ -58,5 +58,21 @@ export const config = Object.freeze({
   recordingRoot: path.resolve(
     process.env.RECORDING_ROOT || "/opt/ringnex-webrtc/var/spool/asterisk/monitor"
   ),
-  recordingRetentionDays: integer("RECORDING_RETENTION_DAYS", 90)
+  recordingRetentionDays: integer("RECORDING_RETENTION_DAYS", 90),
+  // Not `required()`: absent on deployments that don't use DID purchasing.
+  // commio.js checks these itself and fails the request (not server boot)
+  // if a purchase route is actually hit without them configured.
+  commio: {
+    baseUrl: process.env.COMMIO_API_BASE_URL || "https://api.thinq.com",
+    username: process.env.COMMIO_CDR_API_USERNAME || "",
+    token: process.env.COMMIO_CDR_API_TOKEN || "",
+    accountId: process.env.COMMIO_ACCOUNT_ID || "",
+    // Fixed physical Asterisk trunk endpoint — the same for every tenant on
+    // this box, so this is the only piece of routing config that's still a
+    // static env value. What's no longer static is the routing PROFILE id
+    // itself: each tenant now gets its own (tenants.commio_routing_profile_id),
+    // pointing at this same trunk, instead of everyone sharing one profile.
+    trunkHost: process.env.COMMIO_TRUNK_HOST || "5.78.77.240",
+    trunkPort: process.env.COMMIO_TRUNK_PORT || "5071"
+  }
 });

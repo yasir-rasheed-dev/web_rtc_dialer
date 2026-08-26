@@ -26,6 +26,11 @@ export const PERMISSIONS = Object.freeze([
   { key: "VIEW_USAGE", name: "View Usage", category: "Admin Dashboard" },
   { key: "VIEW_DIDS", name: "View Phone Numbers / DIDs", category: "Admin Dashboard" },
   { key: "MANAGE_DIDS", name: "Assign Phone Numbers / DIDs", category: "Admin Dashboard" },
+  // Deliberately separate from MANAGE_DIDS (which only assigns numbers
+  // already owned): this gates spending real money against the tenant's
+  // Commio account, so it must never be bundled into a broader permission
+  // OR-list or granted to any role by default other than Owner/Admin.
+  { key: "PURCHASE_DIDS", name: "Purchase Phone Numbers (Commio)", category: "Admin Dashboard" },
   { key: "MONITOR_CALLS", name: "Live Call Monitoring", category: "Supervisor" },
   { key: "LISTEN_LIVE_CALLS", name: "Listen Live Calls", category: "Supervisor" },
   { key: "WHISPER_CALLS", name: "Whisper", category: "Supervisor" },

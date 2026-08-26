@@ -4,5 +4,6 @@
 node_modules/
 storage/recordings/*
 !storage/recordings/.gitkeep
+src/uploads/
 dist/
 *.log

@@ -11,6 +11,21 @@
 @tailwind utilities;
 
 /*
+  Hide scrollbars app-wide (sidebar, modals, message lists, tables, ...) —
+  the bulky native OS scrollbar clashes with the premium UI. Scrolling
+  itself is untouched, only the visible track/thumb chrome is removed.
+*/
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+*::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/*
   Reconciled design tokens (Phase 1). These are namespaced --rn-* so they
   coexist with the legacy --bg/--surface/... (styles.css) and
   --console-bg/--console-surface/... (console.css) tokens without

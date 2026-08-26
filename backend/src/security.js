@@ -21,11 +21,24 @@ export function signToken(user) {
       scope: "tenant",
       tenantId: user.tenant_id,
       roleId: user.role_id || null,
-      name: user.name
+      name: user.name,
+      // Ties this token to one active login — authenticate() rejects any
+      // token whose sid no longer matches users.current_session_id, which
+      // is how a newer login on another device revokes this one instantly.
+      sid: user.current_session_id || null
     },
     config.jwtSecret,
     { expiresIn: config.jwtExpiresIn, issuer: "ringnex-dialer" }
   );
+}
+
+// Short-lived token that carries a partially-authenticated login (password
+// verified, 2FA still outstanding) between /auth/login and /auth/2fa/*.
+// Never usable against any authenticated route — verifyToken callers key
+// off `scope`, and "2fa-setup"/"2fa-verify" are rejected everywhere except
+// the 2FA endpoints themselves.
+export function signPendingToken(payload, expiresIn = "10m") {
+  return jwt.sign(payload, config.jwtSecret, { expiresIn, issuer: "ringnex-dialer" });
 }
 
 export function signSuperAdminToken(admin) {
@@ -48,6 +61,12 @@ export function encryptSipSecret(value) {
   const tag = cipher.getAuthTag();
   return `v1.${iv.toString("base64url")}.${tag.toString("base64url")}.${ciphertext.toString("base64url")}`;
 }
+
+// Generic aliases — encryptSipSecret/decryptSipSecret are plain AES-256-GCM
+// value encryption with nothing SIP-specific in the implementation; reused
+// here for TOTP secrets under names that don't imply telephony.
+export const encryptSecret = encryptSipSecret;
+export const decryptSecret = decryptSipSecret;
 
 export function decryptSipSecret(payload) {
   if (!payload) return "";
