@@ -16,15 +16,15 @@ import {
   Voicemail
 } from "lucide-react";
 
-import Button from "./components/ui/Button";
-import Card from "./components/ui/Card";
-import DatePicker from "./components/ui/DatePicker";
-import EmptyState from "./components/ui/EmptyState";
-import PageHeader from "./components/ui/PageHeader";
-import Select from "./components/ui/Select";
-import { SkeletonCards } from "./components/ui/Skeleton";
-import StatusBadge from "./components/ui/StatusBadge";
-import { api } from "./lib/api";
+import Button from "../../components/ui/Button";
+import Card from "../../components/ui/Card";
+import DatePicker from "../../components/ui/DatePicker";
+import EmptyState from "../../components/ui/EmptyState";
+import PageHeader from "../../components/ui/PageHeader";
+import Select from "../../components/ui/Select";
+import { SkeletonCards } from "../../components/ui/Skeleton";
+import StatusBadge from "../../components/ui/StatusBadge";
+import { api } from "../../lib/api";
 
 function todayValue() {
   return new Date().toISOString().slice(0, 10);

@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import App from "./Softphone";
 
-vi.mock("./lib/sipClient", () => ({
+vi.mock("../../lib/sipClient", () => ({
   RingnexSipClient: vi.fn()
 }));
 

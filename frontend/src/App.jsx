@@ -45,10 +45,10 @@ import { useTeamChatUnreadCount } from "./lib/teamChatBadge";
 // an in-progress SIP call never drops when the agent navigates to another
 // page. Everything else below is lazy-loaded to keep the initial bundle lean.
 import GlobalCallOverlay from "./components/ui/GlobalCallOverlay";
-import Softphone from "./Softphone";
+import Softphone from "./pages/softphone/Softphone";
 
 const LazyAutoDialer = lazy(() => import("./AutoDialer"));
-const LazyOwnerDashboard = lazy(() => import("./OwnerDashboard"));
+const LazyOwnerDashboard = lazy(() => import("./pages/owner-dashboard/OwnerDashboard"));
 const LazyTeamsAdmin = lazy(() => import("./TeamsAdmin"));
 const LazyCallLogsPage = lazy(() => import("./CallPages").then((m) => ({ default: m.CallLogsPage })));
 const LazyRecordingsPage = lazy(() => import("./CallPages").then((m) => ({ default: m.RecordingsPage })));
