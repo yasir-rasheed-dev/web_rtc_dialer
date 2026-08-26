@@ -18,6 +18,7 @@ import {
 
 import Button from "./components/ui/Button";
 import Card from "./components/ui/Card";
+import DatePicker from "./components/ui/DatePicker";
 import EmptyState from "./components/ui/EmptyState";
 import PageHeader from "./components/ui/PageHeader";
 import Select from "./components/ui/Select";
@@ -53,14 +54,18 @@ const STAT_TONES = {
 
 function StatCard({ label, value, detail, icon: Icon, tone = "blue" }) {
   return (
-    <Card className="flex items-start gap-3.5 !p-4">
-      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${STAT_TONES[tone] || STAT_TONES.blue}`}>
+    <Card animate={false} className="group flex items-start gap-3.5 !p-4 transition-colors hover:border-border-strong">
+      <span
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-transform duration-200 group-hover:scale-105 ${
+          STAT_TONES[tone] || STAT_TONES.blue
+        }`}
+      >
         <Icon size={18} />
       </span>
       <div className="min-w-0">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">{label}</p>
         <p className="mt-1 text-2xl font-bold tracking-tight text-text">{Number(value || 0)}</p>
-        <p className="mt-0.5 text-xs text-muted">{detail}</p>
+        <p className="mt-0.5 truncate text-xs text-muted">{detail}</p>
       </div>
     </Card>
   );
@@ -150,25 +155,15 @@ export default function OwnerDashboard({ tenant, user, amiConnected, socketLiveC
         }
       />
 
-      <Card>
+      <Card animate={false}>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:items-end lg:grid-cols-[repeat(3,minmax(0,220px))_1fr]">
           <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
             From
-            <input
-              type="date"
-              value={filters.from}
-              onChange={(e) => setFilters({ ...filters, from: e.target.value })}
-              className="rounded-xl border border-border bg-surface-2 px-3 py-2.5 text-sm text-text outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-            />
+            <DatePicker value={filters.from} onChange={(value) => setFilters({ ...filters, from: value })} />
           </label>
           <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
             To
-            <input
-              type="date"
-              value={filters.to}
-              onChange={(e) => setFilters({ ...filters, to: e.target.value })}
-              className="rounded-xl border border-border bg-surface-2 px-3 py-2.5 text-sm text-text outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-            />
+            <DatePicker value={filters.to} onChange={(value) => setFilters({ ...filters, to: value })} />
           </label>
           <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
             Agent
@@ -178,9 +173,11 @@ export default function OwnerDashboard({ tenant, user, amiConnected, socketLiveC
               onChange={(option) => setFilters({ ...filters, agentId: option.value })}
             />
           </label>
-          <div className="flex items-center gap-2 text-xs text-muted sm:justify-end">
-            <Clock3 size={16} />
-            <span>{filters.from === filters.to ? filters.from : `${filters.from} → ${filters.to}`}</span>
+          <div className="flex items-center gap-2 sm:justify-end">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-3 px-3 py-1.5 text-xs font-medium text-muted">
+              <Clock3 size={14} />
+              {filters.from === filters.to ? filters.from : `${filters.from} → ${filters.to}`}
+            </span>
           </div>
         </div>
       </Card>

@@ -4,7 +4,9 @@ import { FileAudio, Filter, RefreshCw, Search, X } from "lucide-react";
 
 import Button from "./components/ui/Button";
 import Card from "./components/ui/Card";
+import DatePicker from "./components/ui/DatePicker";
 import EmptyState from "./components/ui/EmptyState";
+import { FIELD_CLASS } from "./components/ui/Input";
 import PageHeader from "./components/ui/PageHeader";
 import Select from "./components/ui/Select";
 import { SkeletonTable } from "./components/ui/Skeleton";
@@ -52,10 +54,6 @@ function fieldLabelClass() {
   return "flex flex-col gap-1.5 text-xs font-medium text-muted";
 }
 
-function dateInputClass() {
-  return "rounded-xl border border-border bg-surface-2 px-3 py-2.5 text-sm text-text outline-none focus:border-brand focus:ring-2 focus:ring-brand/20";
-}
-
 function Filters({ filters, setFilters, onApply, agents, includeCallFilters = false, loading = false }) {
   const agentOptions = [
     { value: "", label: "All agents" },
@@ -75,21 +73,11 @@ function Filters({ filters, setFilters, onApply, agents, includeCallFilters = fa
     >
       <label className={fieldLabelClass()}>
         From
-        <input
-          type="date"
-          value={filters.from}
-          onChange={(e) => setFilters({ ...filters, from: e.target.value })}
-          className={dateInputClass()}
-        />
+        <DatePicker value={filters.from} onChange={(value) => setFilters({ ...filters, from: value })} />
       </label>
       <label className={fieldLabelClass()}>
         To
-        <input
-          type="date"
-          value={filters.to}
-          onChange={(e) => setFilters({ ...filters, to: e.target.value })}
-          className={dateInputClass()}
-        />
+        <DatePicker value={filters.to} onChange={(value) => setFilters({ ...filters, to: value })} />
       </label>
       {agents.length > 0 && (
         <label className={fieldLabelClass()}>
@@ -123,7 +111,7 @@ function Filters({ filters, setFilters, onApply, agents, includeCallFilters = fa
       )}
       <label className={`${fieldLabelClass()} col-span-2`}>
         Search
-        <div className="flex items-center gap-2 rounded-xl border border-border bg-surface-2 px-3 py-2.5 focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20">
+        <div className="flex items-center gap-2 rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 transition-colors focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20">
           <Search size={15} className="shrink-0 text-muted" />
           <input
             value={filters.search}

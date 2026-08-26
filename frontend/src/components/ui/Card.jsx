@@ -14,9 +14,7 @@ export default function Card({ title, description, icon: Icon, actions, animate 
   return (
     <Wrapper
       {...motionProps}
-      className={
-        "rounded-2xl border border-border bg-surface p-5 shadow-card sm:p-6 " + className
-      }
+      className={"rounded-2xl border border-border bg-surface p-5 sm:p-6 " + className}
     >
       {(title || description || Icon || actions) && (
         <div className="mb-4 flex items-start justify-between gap-4">

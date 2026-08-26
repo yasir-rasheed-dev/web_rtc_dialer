@@ -29,6 +29,7 @@ import {
 import Button from "./components/ui/Button";
 import Card from "./components/ui/Card";
 import EmptyState from "./components/ui/EmptyState";
+import Input from "./components/ui/Input";
 import PageHeader from "./components/ui/PageHeader";
 import Select from "./components/ui/Select";
 import { SkeletonCards } from "./components/ui/Skeleton";
@@ -191,35 +192,26 @@ function Login({ onAuthenticated }) {
           <form onSubmit={submit} className="mt-8 flex flex-col gap-4">
             <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
               Workspace
-              <input
+              <Input
                 value={workspace}
                 onChange={(e) => setWorkspace(e.target.value.toLowerCase())}
                 placeholder="abc-towing"
                 autoComplete="organization"
                 required
-                className="rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-sm text-text outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
               />
             </label>
             <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
               Email
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                autoComplete="username"
-                required
-                className="rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-sm text-text outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-              />
+              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required />
             </label>
             <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
               Password
-              <input
+              <Input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
                 required
-                className="rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-sm text-text outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
               />
             </label>
             {error && <div className="rounded-lg bg-danger-soft px-3 py-2 text-xs font-medium text-danger">{error}</div>}
