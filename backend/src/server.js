@@ -1517,7 +1517,7 @@ app.get("/api/contacts", authenticate, requirePermission("VIEW_CONTACTS"), async
   const search = String(req.query.search || "").slice(0, 80);
   const term = `%${search}%`;
   const [rows] = await db.execute(
-    `SELECT id,first_name,last_name,company,phone,email,notes,created_at,updated_at
+    `SELECT id,first_name,last_name,nickname,company,job_title,birthdate,website,source,phone,email,notes,created_at,updated_at
        FROM contacts
       WHERE tenant_id=? AND (?='' OR first_name LIKE ? OR last_name LIKE ? OR company LIKE ? OR phone LIKE ? OR email LIKE ?)
       ORDER BY first_name,last_name LIMIT 500`,
@@ -1526,49 +1526,184 @@ app.get("/api/contacts", authenticate, requirePermission("VIEW_CONTACTS"), async
   res.json({ contacts: rows });
 }));
 
+// Full detail for the edit modal — the list endpoint above stays flat/fast
+// (just the primary phone/email) so the grid/table don't pay for an N+1
+// phones/addresses fetch; only opening a contact for editing loads them.
+app.get("/api/contacts/:id", authenticate, requirePermission("VIEW_CONTACTS"), asyncRoute(async (req, res) => {
+  const [[contact]] = await db.execute(
+    `SELECT id,first_name,last_name,nickname,company,job_title,birthdate,website,source,phone,email,notes,created_at,updated_at
+       FROM contacts WHERE id=? AND tenant_id=? LIMIT 1`,
+    [req.params.id, req.user.tenant_id]
+  );
+  if (!contact) return res.status(404).json({ error: "Contact not found" });
+
+  const [phones] = await db.execute(
+    `SELECT id,number,label,is_primary FROM contact_phones WHERE contact_id=? AND tenant_id=? ORDER BY is_primary DESC, created_at ASC`,
+    [req.params.id, req.user.tenant_id]
+  );
+  const [addresses] = await db.execute(
+    `SELECT id,label,line1,line2,city,state,postal_code,country FROM contact_addresses WHERE contact_id=? AND tenant_id=? ORDER BY created_at ASC`,
+    [req.params.id, req.user.tenant_id]
+  );
+
+  res.json({ contact, phones, addresses });
+}));
+
 app.post("/api/contacts", authenticate, requirePermission("CREATE_CONTACTS"), asyncRoute(async (req, res) => {
   const firstName = String(req.body.firstName || "").trim();
   if (!firstName) return res.status(400).json({ error: "First name is required" });
+
+  const phones = Array.isArray(req.body.phones)
+    ? req.body.phones.filter((phone) => String(phone?.number || "").trim())
+    : [];
+  const addresses = Array.isArray(req.body.addresses)
+    ? req.body.addresses.filter((address) => address && (address.line1 || address.city))
+    : [];
+  const primaryPhone = phones[0] ? String(phones[0].number).trim() : null;
+
   const id = crypto.randomUUID();
-  await db.execute(
-    `INSERT INTO contacts (id,tenant_id,owner_user_id,first_name,last_name,company,phone,email,notes)
-     VALUES (?,?,?,?,?,?,?,?,?)`,
-    [
-      id, req.user.tenant_id, req.user.id, firstName,
-      String(req.body.lastName || "").trim() || null,
-      String(req.body.company || "").trim() || null,
-      String(req.body.phone || "").trim() || null,
-      String(req.body.email || "").trim().toLowerCase() || null,
-      String(req.body.notes || "").slice(0, 4000) || null
-    ]
-  );
-  res.status(201).json({ id });
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    await connection.execute(
+      `INSERT INTO contacts
+         (id,tenant_id,owner_user_id,first_name,last_name,nickname,company,job_title,birthdate,website,source,phone,email,notes)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [
+        id, req.user.tenant_id, req.user.id, firstName,
+        String(req.body.lastName || "").trim() || null,
+        String(req.body.nickname || "").trim() || null,
+        String(req.body.company || "").trim() || null,
+        String(req.body.jobTitle || "").trim() || null,
+        req.body.birthdate || null,
+        String(req.body.website || "").trim() || null,
+        String(req.body.source || "OTHER").trim() || "OTHER",
+        primaryPhone,
+        String(req.body.email || "").trim().toLowerCase() || null,
+        String(req.body.notes || "").slice(0, 4000) || null
+      ]
+    );
+
+    for (const [index, phone] of phones.entries()) {
+      await connection.execute(
+        `INSERT INTO contact_phones (id,tenant_id,contact_id,number,label,is_primary) VALUES (?,?,?,?,?,?)`,
+        [crypto.randomUUID(), req.user.tenant_id, id, String(phone.number).trim(), phone.label || "MOBILE", index === 0 ? 1 : 0]
+      );
+    }
+    for (const address of addresses) {
+      await connection.execute(
+        `INSERT INTO contact_addresses (id,tenant_id,contact_id,label,line1,line2,city,state,postal_code,country)
+         VALUES (?,?,?,?,?,?,?,?,?,?)`,
+        [
+          crypto.randomUUID(), req.user.tenant_id, id, address.label || "OTHER",
+          address.line1 || null, address.line2 || null, address.city || null,
+          address.state || null, address.postalCode || null, address.country || null
+        ]
+      );
+    }
+
+    await connection.commit();
+    res.status(201).json({ id });
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }));
 
 app.patch("/api/contacts/:id", authenticate, requirePermission("EDIT_CONTACTS"), asyncRoute(async (req, res) => {
   const [rows] = await db.execute("SELECT * FROM contacts WHERE id=? AND tenant_id=? LIMIT 1", [req.params.id, req.user.tenant_id]);
   const contact = rows[0];
   if (!contact) return res.status(404).json({ error: "Contact not found" });
-  await db.execute(
-    `UPDATE contacts SET first_name=?,last_name=?,company=?,phone=?,email=?,notes=? WHERE id=? AND tenant_id=?`,
-    [
-      req.body.firstName ?? contact.first_name,
-      req.body.lastName ?? contact.last_name,
-      req.body.company ?? contact.company,
-      req.body.phone ?? contact.phone,
-      req.body.email ?? contact.email,
-      req.body.notes ?? contact.notes,
-      contact.id,
-      req.user.tenant_id
-    ]
-  );
-  res.status(204).end();
+
+  const phones = Array.isArray(req.body.phones)
+    ? req.body.phones.filter((phone) => String(phone?.number || "").trim())
+    : undefined;
+  const addresses = Array.isArray(req.body.addresses)
+    ? req.body.addresses.filter((address) => address && (address.line1 || address.city))
+    : undefined;
+  const primaryPhone = phones ? (phones[0] ? String(phones[0].number).trim() : null) : undefined;
+
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    await connection.execute(
+      `UPDATE contacts
+          SET first_name=?,last_name=?,nickname=?,company=?,job_title=?,birthdate=?,website=?,source=?,phone=?,email=?,notes=?
+        WHERE id=? AND tenant_id=?`,
+      [
+        req.body.firstName ?? contact.first_name,
+        req.body.lastName ?? contact.last_name,
+        req.body.nickname ?? contact.nickname,
+        req.body.company ?? contact.company,
+        req.body.jobTitle ?? contact.job_title,
+        req.body.birthdate ?? contact.birthdate,
+        req.body.website ?? contact.website,
+        req.body.source ?? contact.source,
+        primaryPhone !== undefined ? primaryPhone : contact.phone,
+        req.body.email ?? contact.email,
+        req.body.notes ?? contact.notes,
+        contact.id,
+        req.user.tenant_id
+      ]
+    );
+
+    if (phones !== undefined) {
+      await connection.execute(`DELETE FROM contact_phones WHERE contact_id=? AND tenant_id=?`, [contact.id, req.user.tenant_id]);
+      for (const [index, phone] of phones.entries()) {
+        await connection.execute(
+          `INSERT INTO contact_phones (id,tenant_id,contact_id,number,label,is_primary) VALUES (?,?,?,?,?,?)`,
+          [crypto.randomUUID(), req.user.tenant_id, contact.id, String(phone.number).trim(), phone.label || "MOBILE", index === 0 ? 1 : 0]
+        );
+      }
+    }
+    if (addresses !== undefined) {
+      await connection.execute(`DELETE FROM contact_addresses WHERE contact_id=? AND tenant_id=?`, [contact.id, req.user.tenant_id]);
+      for (const address of addresses) {
+        await connection.execute(
+          `INSERT INTO contact_addresses (id,tenant_id,contact_id,label,line1,line2,city,state,postal_code,country)
+           VALUES (?,?,?,?,?,?,?,?,?,?)`,
+          [
+            crypto.randomUUID(), req.user.tenant_id, contact.id, address.label || "OTHER",
+            address.line1 || null, address.line2 || null, address.city || null,
+            address.state || null, address.postalCode || null, address.country || null
+          ]
+        );
+      }
+    }
+
+    await connection.commit();
+    res.status(204).end();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }));
 
 app.delete("/api/contacts/:id", authenticate, requirePermission("DELETE_CONTACTS"), asyncRoute(async (req, res) => {
-  const [result] = await db.execute("DELETE FROM contacts WHERE id=? AND tenant_id=?", [req.params.id, req.user.tenant_id]);
-  if (!result.affectedRows) return res.status(404).json({ error: "Contact not found" });
-  res.status(204).end();
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [result] = await connection.execute("DELETE FROM contacts WHERE id=? AND tenant_id=?", [req.params.id, req.user.tenant_id]);
+    if (!result.affectedRows) {
+      await connection.rollback();
+      return res.status(404).json({ error: "Contact not found" });
+    }
+    await connection.execute("DELETE FROM contact_phones WHERE contact_id=? AND tenant_id=?", [req.params.id, req.user.tenant_id]);
+    await connection.execute("DELETE FROM contact_addresses WHERE contact_id=? AND tenant_id=?", [req.params.id, req.user.tenant_id]);
+    await connection.commit();
+    res.status(204).end();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }));
 
 // ---------------------------
