@@ -52,7 +52,7 @@ const LazyOwnerDashboard = lazy(() => import("./pages/owner-dashboard/OwnerDashb
 const LazyTeamsAdmin = lazy(() => import("./TeamsAdmin"));
 const LazyCallLogsPage = lazy(() => import("./pages/calls/CallLogsPage"));
 const LazyRecordingsPage = lazy(() => import("./pages/calls/RecordingsPage"));
-const LazyReportsHub = lazy(() => import("./ReportsPages").then((m) => ({ default: m.ReportsHub })));
+const LazyReportsHub = lazy(() => import("./pages/reports/ReportsHub"));
 const LazyTeamChat = lazy(() => import("./TeamChat"));
 const LazyContactsPage = lazy(() => import("./TenantManagement").then((m) => ({ default: m.ContactsPage })));
 const LazyDidsPage = lazy(() => import("./TenantManagement").then((m) => ({ default: m.DidsPage })));
