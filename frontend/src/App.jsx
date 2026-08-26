@@ -820,7 +820,7 @@ function TenantApp() {
     if (page === "reports") return <Reports />;
     if (page === "users") return <LazyUsersAdmin permissions={session.permissions || []} />;
     if (page === "teams") return <LazyTeamsAdmin />;
-    if (page === "roles") return <LazyRolesAdmin />;
+    if (page === "roles") return <LazyRolesAdmin permissions={session.permissions || []} />;
     if (page === "dids") return <LazyDidsPage />;
     if (page === "usage") return <LazyUsagePage />;
     if (ownerAccount) {
