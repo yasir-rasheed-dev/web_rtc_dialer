@@ -1,19 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Eye, Pencil, Plus, RefreshCw, Trash2, UserPlus, UsersRound, X } from "lucide-react";
 
-import Button from "./components/ui/Button";
-import Card from "./components/ui/Card";
-import EmptyState from "./components/ui/EmptyState";
-import Input from "./components/ui/Input";
-import Modal from "./components/ui/Modal";
-import PageHeader from "./components/ui/PageHeader";
-import Select from "./components/ui/Select";
-import { SkeletonTable } from "./components/ui/Skeleton";
-import StatusBadge from "./components/ui/StatusBadge";
-import Toggle from "./components/ui/Toggle";
-import { api } from "./lib/api";
-import { confirmModal } from "./lib/modal";
-import { notifyError, notifySuccess } from "./lib/toast";
+import Button from "../../components/ui/Button";
+import Card from "../../components/ui/Card";
+import EmptyState from "../../components/ui/EmptyState";
+import Input from "../../components/ui/Input";
+import Modal from "../../components/ui/Modal";
+import PageHeader from "../../components/ui/PageHeader";
+import Select from "../../components/ui/Select";
+import { SkeletonTable } from "../../components/ui/Skeleton";
+import StatusBadge from "../../components/ui/StatusBadge";
+import Toggle from "../../components/ui/Toggle";
+import { api } from "../../lib/api";
+import { confirmModal } from "../../lib/modal";
+import { notifyError, notifySuccess } from "../../lib/toast";
 
 const TEXTAREA_CLASS =
   "w-full rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-sm text-text outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/20";
