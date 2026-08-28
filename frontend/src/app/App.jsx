@@ -21,6 +21,7 @@ import Header from "../components/layout/Header";
 import { SkeletonCards } from "../components/ui/Skeleton";
 import { notifyError } from "../lib/toast";
 import { api, getToken, setToken } from "../lib/api";
+import { API_BASE } from "../lib/apiConfig";
 import { hasAny } from "../lib/permissions";
 import { useTeamChatUnreadCount } from "../lib/teamChatBadge";
 import Login from "../pages/login/Login";
@@ -83,7 +84,7 @@ function ensureSocketClient() {
   if (socketClientLoader) return socketClientLoader;
   socketClientLoader = new Promise((resolve, reject) => {
     const script = document.createElement("script");
-    script.src = "/socket.io/socket.io.js";
+    script.src = `${API_BASE}/socket.io/socket.io.js`;
     script.async = true;
     script.onload = resolve;
     script.onerror = () => reject(new Error("Real-time client could not be loaded"));
@@ -138,7 +139,13 @@ function TenantApp() {
     ensureSocketClient()
       .then(() => {
         if (cancelled) return;
-        socket = window.io({ path: "/socket.io", auth: { token: getToken() } });
+        // With no API_BASE (normal web build), omitting the URL connects to
+        // the current page's origin — unchanged from before. The Electron
+        // build sets API_BASE to the hosted backend's absolute origin, since
+        // the app itself is served from a different ("app://…") origin.
+        socket = API_BASE
+          ? window.io(API_BASE, { path: "/socket.io", auth: { token: getToken() } })
+          : window.io({ path: "/socket.io", auth: { token: getToken() } });
         socket.on("system:state", (state) => {
           setAmiConnected(Boolean(state.ami));
           setLiveCalls(state.calls || []);

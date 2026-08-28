@@ -1,3 +1,5 @@
+import { API_BASE } from "./apiConfig";
+
 const TOKEN_KEY = "ringnex.console.token";
 const SUPER_TOKEN_KEY = "ringnex.superadmin.token";
 
@@ -23,7 +25,7 @@ async function request(path, options = {}, token = "") {
   const headers = { Accept: "application/json", ...(options.headers || {}) };
   if (token) headers.Authorization = `Bearer ${token}`;
   if (options.body && !(options.body instanceof FormData)) headers["Content-Type"] = "application/json";
-  const response = await fetch(`/api${path}`, {
+  const response = await fetch(`${API_BASE}/api${path}`, {
     ...options,
     headers,
     body: options.body && !(options.body instanceof FormData) ? JSON.stringify(options.body) : options.body
@@ -72,7 +74,7 @@ export async function exportCallReport({ direction, filters = {}, format, onProg
     if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
   });
 
-  const response = await fetch(`/api/calls/export?${query.toString()}`, {
+  const response = await fetch(`${API_BASE}/api/calls/export?${query.toString()}`, {
     headers: { Authorization: `Bearer ${getToken()}` }
   });
   if (!response.ok) {
@@ -123,7 +125,7 @@ export async function exportCallReport({ direction, filters = {}, format, onProg
 }
 
 export async function recordingBlob(callId) {
-  const response = await fetch(`/api/recordings/${encodeURIComponent(callId)}`, {
+  const response = await fetch(`${API_BASE}/api/recordings/${encodeURIComponent(callId)}`, {
     headers: { Authorization: `Bearer ${getToken()}` }
   });
   if (!response.ok) {

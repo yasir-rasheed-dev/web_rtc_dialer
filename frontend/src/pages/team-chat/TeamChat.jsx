@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ref, push, onValue, serverTimestamp, set, off, update } from "firebase/database";
 import { db, signInToFirebase } from "../../lib/firebase";
 import { api, getToken } from "../../lib/api";
+import { API_BASE } from "../../lib/apiConfig";
 import { useTheme } from "../../contexts/ThemeContext";
 import { confirmModal } from "../../lib/modal";
 import { notifyError } from "../../lib/toast";
@@ -585,7 +586,7 @@ export default function TeamChat({ session }) {
       };
       xhr.onerror = () => { setAttachments((prev) => prev.map((f) => f.id === entry.id ? { ...f, status: "error" } : f)); resolve(null); };
       xhr.onabort = () => { setAttachments((prev) => prev.map((f) => f.id === entry.id ? { ...f, status: "cancelled" } : f)); resolve(null); };
-      xhr.open("POST", "/api/team-chat/upload");
+      xhr.open("POST", `${API_BASE}/api/team-chat/upload`);
       const token = getToken();
       if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
       xhr.send(fd);

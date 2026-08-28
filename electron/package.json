@@ -1,0 +1,51 @@
+{
+  "name": "ringnex-desktop",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Ringnex Contact Center — desktop shell (wraps the existing web frontend; talks to your hosted backend over the network).",
+  "main": "main.js",
+  "scripts": {
+    "build:frontend": "npm --prefix ../frontend run build:electron",
+    "prepare-frontend": "node scripts/copy-frontend.js",
+    "start": "npm run build:frontend && npm run prepare-frontend && electron .",
+    "start:quick": "electron .",
+    "predist": "npm run build:frontend && npm run prepare-frontend",
+    "dist": "electron-builder",
+    "dist:win": "npm run predist && electron-builder --win",
+    "dist:mac": "npm run predist && electron-builder --mac"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "co.ringnex.desktop",
+    "productName": "Ringnex",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "app/**/*"
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    },
+    "mac": {
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] },
+        { "target": "zip", "arch": ["x64", "arm64"] }
+      ],
+      "category": "public.app-category.business"
+    }
+  }
+}
