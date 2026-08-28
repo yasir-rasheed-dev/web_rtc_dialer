@@ -59,7 +59,7 @@ const LazyDidsPage = lazy(() => import("./pages/dids/DidsPage"));
 const LazyRolesAdmin = lazy(() => import("./pages/roles/RolesAdmin"));
 const LazyUsagePage = lazy(() => import("./pages/usage/UsagePage"));
 const LazyUsersAdmin = lazy(() => import("./pages/users/UsersAdmin"));
-const LazySuperAdminApp = lazy(() => import("./SuperAdminApp"));
+const LazySuperAdminApp = lazy(() => import("./pages/super-admin/SuperAdminApp"));
 
 const NAVIGATION = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, permissions: ["VIEW_DASHBOARD"] },
