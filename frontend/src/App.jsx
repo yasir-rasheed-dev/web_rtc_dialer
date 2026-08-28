@@ -53,7 +53,7 @@ const LazyTeamsAdmin = lazy(() => import("./TeamsAdmin"));
 const LazyCallLogsPage = lazy(() => import("./pages/calls/CallLogsPage"));
 const LazyRecordingsPage = lazy(() => import("./pages/calls/RecordingsPage"));
 const LazyReportsHub = lazy(() => import("./pages/reports/ReportsHub"));
-const LazyTeamChat = lazy(() => import("./TeamChat"));
+const LazyTeamChat = lazy(() => import("./pages/team-chat/TeamChat"));
 const LazyContactsPage = lazy(() => import("./pages/contacts/ContactsPage"));
 const LazyDidsPage = lazy(() => import("./pages/dids/DidsPage"));
 const LazyRolesAdmin = lazy(() => import("./pages/roles/RolesAdmin"));
