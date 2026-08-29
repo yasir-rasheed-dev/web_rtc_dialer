@@ -164,13 +164,17 @@ export default function Login({ onAuthenticated }) {
   return (
     // h-screen + overflow-hidden (not min-h-screen): this is a locked,
     // single-viewport screen by design — it must never need a page-level
-    // scroll. Each column below still gets its own overflow-y-auto as a
-    // safety net for very short windows, but normal content fits without
-    // it ever engaging.
-    <main className="relative grid h-screen grid-cols-1 overflow-hidden bg-bg md:grid-cols-2">
+    // scroll. Flexbox rather than grid here specifically because flex's
+    // default `align-items: stretch` reliably fills both columns to the
+    // container's full height; a grid's implicit row track sizes to
+    // content (`auto`) even inside a fixed-height container, which let
+    // the taller column push the whole page past the viewport. Each
+    // column still gets its own overflow-y-auto as a safety net for very
+    // short windows, but normal content fits without it ever engaging.
+    <main className="relative flex h-screen flex-col overflow-hidden bg-bg md:flex-row">
       <ThemeToggle className="absolute right-5 top-5 z-10" />
 
-      <section className="flex h-full flex-col justify-center overflow-y-auto border-b border-border bg-surface px-6 py-8 sm:px-10 md:border-b-0 md:border-r md:px-12 lg:px-16">
+      <section className="flex flex-1 flex-col justify-center overflow-y-auto border-b border-border bg-surface px-6 py-8 sm:px-10 md:border-b-0 md:border-r md:px-12 lg:px-16">
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -231,7 +235,7 @@ export default function Login({ onAuthenticated }) {
         </motion.div>
       </section>
 
-      <aside className="relative hidden h-full flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-surface-2 to-bg px-10 md:flex">
+      <aside className="relative hidden flex-1 flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-surface-2 to-bg px-10 md:flex">
         <div
           className="pointer-events-none absolute inset-0 opacity-60"
           style={{
