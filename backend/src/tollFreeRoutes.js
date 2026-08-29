@@ -56,24 +56,32 @@ async function putIvrAstDb(ami, ivrId, greetingAudioPath, options) {
   }
 }
 
-// Asterisk's queue engine reads membership straight out of a realtime
-// `queue_members` table (same "app writes rows, Asterisk reads them
+// Asterisk's queue engine reads both queue *settings* (strategy, timeout —
+// the `queues` realtime table) and *membership* (`queue_members`) straight
+// out of realtime tables (same "app writes rows, Asterisk reads them
 // directly, no AMI round-trip" pattern sipProvisioning.js already uses for
 // ps_endpoints/ps_auths/ps_aors) — requires Asterisk's own realtime config
-// (extconfig.conf/sorcery.conf) to map the `queue_members`/`queues`
+// (extconfig.conf/sorcery.conf) to map the `queues`/`queue_members`
 // families onto tables in this same realtimeDb database; see the dialplan
 // reference file for the expected table shape. Not verified against a
-// live Asterisk box from here — confirm on deploy.
-async function putQueueMembers(campaignId, sipUsernames) {
+// live Asterisk box from here — confirm on deploy. Ring strategy isn't a
+// Queue() application argument in Asterisk — it only comes from here.
+async function putQueue(campaign, sipUsernames) {
+  const queueName = `ringnex-campaign-${campaign.id}`;
   const connection = await realtimeDb.getConnection();
   try {
     await connection.beginTransaction();
-    await connection.execute(`DELETE FROM queue_members WHERE queue_name = ?`, [`ringnex-campaign-${campaignId}`]);
+    await connection.execute(`DELETE FROM queues WHERE name = ?`, [queueName]);
+    await connection.execute(
+      `INSERT INTO queues (name, strategy, timeout) VALUES (?, ?, ?)`,
+      [queueName, campaign.ring_strategy || "ringall", campaign.no_answer_timeout_sec]
+    );
+    await connection.execute(`DELETE FROM queue_members WHERE queue_name = ?`, [queueName]);
     for (const sipUsername of sipUsernames) {
       await connection.execute(
         `INSERT INTO queue_members (queue_name, interface, membername, penalty, paused)
          VALUES (?, ?, ?, 0, 0)`,
-        [`ringnex-campaign-${campaignId}`, `PJSIP/${sipUsername}`, sipUsername]
+        [queueName, `PJSIP/${sipUsername}`, sipUsername]
       );
     }
     await connection.commit();
@@ -83,6 +91,12 @@ async function putQueueMembers(campaignId, sipUsernames) {
   } finally {
     connection.release();
   }
+}
+
+async function deleteQueue(campaignId) {
+  const queueName = `ringnex-campaign-${campaignId}`;
+  await realtimeDb.execute(`DELETE FROM queue_members WHERE queue_name = ?`, [queueName]);
+  await realtimeDb.execute(`DELETE FROM queues WHERE name = ?`, [queueName]);
 }
 
 // A live-infrastructure sync (AstDB over AMI + the realtime queue_members
@@ -238,7 +252,7 @@ async function createCampaign(req, res, ami) {
   const agents = await loadCampaignAgents(id);
   const asteriskSync = await trySync(`create campaign ${id}`, async () => {
     await putCampaignAstDb(ami, campaign, did.number);
-    await putQueueMembers(id, agents.map((a) => a.sip_username).filter(Boolean));
+    await putQueue(campaign, agents.map((a) => a.sip_username).filter(Boolean));
   });
 
   res.status(201).json({ campaign, agents, asteriskSync });
@@ -288,7 +302,7 @@ async function updateCampaign(req, res, ami) {
   const agents = await loadCampaignAgents(campaign.id);
   const asteriskSync = await trySync(`update campaign ${campaign.id}`, async () => {
     await putCampaignAstDb(ami, updated, updated.did_number);
-    await putQueueMembers(campaign.id, agents.map((a) => a.sip_username).filter(Boolean));
+    await putQueue(updated, agents.map((a) => a.sip_username).filter(Boolean));
   });
 
   res.json({ campaign: updated, agents, asteriskSync });
@@ -306,7 +320,7 @@ async function deleteCampaign(req, res, ami) {
   // delete that already succeeded where it matters.
   await trySync(`delete campaign ${campaign.id}`, async () => {
     await delCampaignAstDb(ami, campaign, campaign.did_number);
-    await putQueueMembers(campaign.id, []);
+    await deleteQueue(campaign.id);
   });
 
   res.status(204).end();
