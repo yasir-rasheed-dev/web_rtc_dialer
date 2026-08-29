@@ -5,6 +5,7 @@ import {
   CreditCard,
   FileAudio,
   Headphones,
+  Headset,
   LayoutDashboard,
   MessageCircle,
   Phone,
@@ -47,6 +48,7 @@ const LazyDidsPage = lazy(() => import("../pages/dids/DidsPage"));
 const LazyRolesAdmin = lazy(() => import("../pages/roles/RolesAdmin"));
 const LazyUsagePage = lazy(() => import("../pages/usage/UsagePage"));
 const LazyUsersAdmin = lazy(() => import("../pages/users/UsersAdmin"));
+const LazyTollFreePage = lazy(() => import("../pages/toll-free/TollFreePage"));
 const LazySuperAdminApp = lazy(() => import("../pages/super-admin/SuperAdminApp"));
 
 const NAVIGATION = [
@@ -76,6 +78,7 @@ const NAVIGATION = [
   { id: "teams", label: "Team Management", icon: UsersRound, permissions: ["VIEW_TEAMS", "MANAGE_TEAMS"] },
   { id: "roles", label: "Roles & Privileges", icon: ShieldCheck, permissions: ["VIEW_ROLES", "MANAGE_ROLES"] },
   { id: "dids", label: "Phone Numbers", icon: Phone, permissions: ["VIEW_DIDS", "MANAGE_DIDS", "MANAGE_AGENTS"] },
+  { id: "toll-free", label: "Toll-Free", icon: Headset, permissions: ["VIEW_TOLL_FREE", "MANAGE_TOLL_FREE_CAMPAIGNS"] },
   { id: "usage", label: "Usage & Billing", icon: CreditCard, permissions: ["VIEW_USAGE", "VIEW_BILLING"] }
 ];
 
@@ -251,6 +254,7 @@ function TenantApp() {
     if (page === "teams") return <LazyTeamsAdmin />;
     if (page === "roles") return <LazyRolesAdmin permissions={session.permissions || []} />;
     if (page === "dids") return <LazyDidsPage permissions={session.permissions || []} />;
+    if (page === "toll-free") return <LazyTollFreePage permissions={session.permissions || []} />;
     if (page === "usage") return <LazyUsagePage />;
     if (ownerAccount) {
       return (

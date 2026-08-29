@@ -159,3 +159,43 @@ export function reserveCommioNumber(did, numberType = "LOCAL") {
 export function completeCommioOrder(orderId) {
   return api(`/dids/commio/orders/${encodeURIComponent(orderId)}/complete`, { method: "POST" });
 }
+
+// ---------------------------
+// Toll-free inbound campaigns / IVRs (VIEW_TOLL_FREE / MANAGE_TOLL_FREE_CAMPAIGNS)
+// ---------------------------
+
+export function listTollFreeNumbers() {
+  return api("/toll-free/numbers").then((payload) => payload.numbers || []);
+}
+
+export function listTollFreeCampaigns() {
+  return api("/toll-free/campaigns").then((payload) => payload.campaigns || []);
+}
+
+export function getTollFreeCampaign(id) {
+  return api(`/toll-free/campaigns/${encodeURIComponent(id)}`);
+}
+
+export function createTollFreeCampaign(body) {
+  return api("/toll-free/campaigns", { method: "POST", body });
+}
+
+export function updateTollFreeCampaign(id, body) {
+  return api(`/toll-free/campaigns/${encodeURIComponent(id)}`, { method: "PATCH", body });
+}
+
+export function deleteTollFreeCampaign(id) {
+  return api(`/toll-free/campaigns/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export function listTollFreeIvrs() {
+  return api("/toll-free/ivrs").then((payload) => payload.ivrs || []);
+}
+
+export function createTollFreeIvr(body) {
+  return api("/toll-free/ivrs", { method: "POST", body });
+}
+
+export function deleteTollFreeIvr(id) {
+  return api(`/toll-free/ivrs/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
