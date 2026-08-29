@@ -43,6 +43,7 @@ import createCampaignRoutes from "./campaignRoutes.js";
 import createCommioRoutes from "./commioRoutes.js";
 import * as commio from "./commio.js";
 import createTeamChatRoutes from "./teamChatRoutes.js";
+import createTollFreeRoutes, { syncQueuePauseForAgent } from "./tollFreeRoutes.js";
 import { fileURLToPath } from "node:url";
 import {
   DEFAULT_TEAM_PRIVILEGES,
@@ -533,6 +534,7 @@ app.get("/api/health", asyncRoute(async (_req, res) => {
 }));
 app.use("/api/campaigns", createCampaignRoutes(authenticate));
 app.use("/api/dids/commio", createCommioRoutes(authenticate));
+app.use("/api/toll-free", createTollFreeRoutes(authenticate, ami));
 app.use("/api/team-chat", createTeamChatRoutes(authenticate));
 // Chat attachments — filenames are random UUIDs (see teamChatRoutes.js), so
 // this is safe to serve statically without going through the JWT-auth
@@ -1509,6 +1511,10 @@ app.post("/api/agent/status", authenticate, asyncRoute(async (req, res) => {
   const status = String(req.body.status || "").toUpperCase();
   if (!["READY", "PAUSED", "WRAP_UP", "OFFLINE"].includes(status)) return res.status(400).json({ error: "Invalid agent status" });
   await db.execute("UPDATE users SET status=? WHERE id=? AND tenant_id=?", [status, req.user.id, req.user.tenant_id]);
+  // Only READY counts as available for toll-free queues — an agent who set
+  // themselves Paused/Wrap-up/Offline shouldn't keep ringing on those too,
+  // even while still a campaign's assigned/roster member.
+  await syncQueuePauseForAgent(req.user.sip_username, status);
   const payload = { tenantId: req.user.tenant_id, userId: req.user.id, agent: req.user.sip_username, status, updatedAt: new Date().toISOString() };
   io.to(`tenant:${req.user.tenant_id}:live`).emit("agent:status", payload);
   try {

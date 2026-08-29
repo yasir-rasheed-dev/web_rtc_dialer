@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS ivrs (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   KEY idx_ivrs_tenant (tenant_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS ivr_options (
   id CHAR(36) NOT NULL PRIMARY KEY,
@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS ivr_options (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uq_ivr_digit (ivr_id, digit),
   KEY idx_ivr_options_ivr (ivr_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 4. An inbound campaign: one toll-free DID, a static agent roster, an
 --    optional IVR gate, and Active/Inactive. ring_strategy is stored
@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS inbound_campaigns (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uq_campaign_did (did_id),
   KEY idx_inbound_campaigns_tenant (tenant_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 5. The queue's static membership list — who's assigned to this campaign
 --    at all. Live/effective queue membership is further gated by that
@@ -91,4 +91,4 @@ CREATE TABLE IF NOT EXISTS inbound_campaign_agents (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (campaign_id, user_id),
   KEY idx_campaign_agents_user (user_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
