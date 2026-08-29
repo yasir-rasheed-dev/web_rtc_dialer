@@ -48,6 +48,7 @@ import Card from "../../components/ui/Card";
 import EmptyState from "../../components/ui/EmptyState";
 import Input from "../../components/ui/Input";
 import Modal from "../../components/ui/Modal";
+import StatusBadge from "../../components/ui/StatusBadge";
 
 const KEYPAD = [
   ["1", ""],
@@ -89,6 +90,17 @@ const HISTORY_TABS = [
   { id: "outgoing", label: "Outgoing", icon: PhoneOutgoing },
   { id: "missed", label: "Missed", icon: PhoneMissed }
 ];
+
+// Every value finishCall() can pass as forcedOutcome (or derive itself),
+// mapped to a short label + StatusBadge tone for the history list.
+const OUTCOME_META = {
+  completed: { label: "Completed", tone: "success" },
+  missed: { label: "Missed", tone: "danger" },
+  "not answered": { label: "No answer", tone: "warning" },
+  declined: { label: "Declined", tone: "danger" },
+  failed: { label: "Failed", tone: "danger" },
+  disconnected: { label: "Disconnected", tone: "warning" }
+};
 
 function Softphone({ sip = null, permissions = [] }) {
   const can = (key) => permissions.includes(key);
@@ -1281,11 +1293,47 @@ const addPstnParticipant = async () => {
           </div>
 
           <div className="flex-1 overflow-y-auto">
+            {/* The one call in progress, if any — separate from the persisted
+                history below (which only gains an entry once a call ends),
+                so an active/ringing call shows up here the instant it
+                starts, with its duration ticking live off the same
+                `elapsed` timer the main call card above uses. */}
+            {callStatus !== "idle" && (
+              <div className="mb-2 flex items-center gap-3 rounded-xl border border-brand/30 bg-brand/5 px-3 py-3">
+                <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand/10 text-brand">
+                  <span className="absolute inset-0 animate-ping rounded-full bg-brand/20" />
+                  {activeCallRef.current?.direction === "incoming" ? (
+                    <ArrowDownLeft size={16} className="relative" />
+                  ) : (
+                    <ArrowUpRight size={16} className="relative" />
+                  )}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-text">
+                    {currentParty.displayName || currentParty.number || "Unknown"}
+                  </p>
+                  <p className="truncate text-xs text-muted">
+                    {currentParty.displayName ? currentParty.number : CALL_LABELS[callStatus]}
+                  </p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-brand/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand" />
+                    Live
+                  </span>
+                  <p className="mt-1 text-xs font-semibold text-text">
+                    {callEstablished ? formatDuration(elapsed) : CALL_LABELS[callStatus]}
+                  </p>
+                </div>
+              </div>
+            )}
+
             {filteredHistory.length ? (
               <div className="flex flex-col divide-y divide-border/60">
                 {filteredHistory.map((item) => {
                   const missed = item.direction === "incoming" && item.outcome === "missed";
                   const RowIcon = item.direction === "incoming" ? ArrowDownLeft : ArrowUpRight;
+                  const outcomeMeta = OUTCOME_META[item.outcome] || { label: item.outcome, tone: "neutral" };
                   return (
                     <button
                       type="button"
@@ -1302,25 +1350,30 @@ const addPstnParticipant = async () => {
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-text">{item.displayName || item.number}</p>
-                        <p className="truncate text-xs text-muted">
-                          {item.displayName ? item.number : missed ? "Missed" : item.outcome}
-                        </p>
+                        <div className="mt-0.5 flex items-center gap-1.5">
+                          {item.displayName && <p className="truncate text-xs text-muted">{item.number}</p>}
+                          <StatusBadge tone={outcomeMeta.tone} className="shrink-0 !px-1.5 !py-0.5 !text-[10px]">
+                            {outcomeMeta.label}
+                          </StatusBadge>
+                        </div>
                       </div>
                       <div className="shrink-0 text-right">
                         <p className="text-xs text-muted">
                           {new Date(item.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                         </p>
-                        {item.duration > 0 && <p className="text-xs text-muted">{formatDuration(item.duration)}</p>}
+                        <p className="mt-0.5 text-xs font-semibold text-text">
+                          {item.duration > 0 ? formatDuration(item.duration) : "—"}
+                        </p>
                       </div>
                     </button>
                   );
                 })}
               </div>
-            ) : (
+            ) : callStatus === "idle" ? (
               <div className="flex flex-1 items-center justify-center py-16">
                 <EmptyState icon={Phone} title="No calls in this category" />
               </div>
-            )}
+            ) : null}
           </div>
         </Card>
       </div>
