@@ -31,7 +31,13 @@ async function putCampaignAstDb(ami, campaign, didNumber) {
     { Family: "ringnex_campaign", Key: didNumber, Val: campaign.id },
     { Family: "ringnex_campaign_status", Key: campaign.id, Val: campaign.status },
     { Family: "ringnex_campaign_ivr", Key: campaign.id, Val: campaign.ivr_id || "" },
-    { Family: "ringnex_campaign_timeout", Key: campaign.id, Val: String(campaign.no_answer_timeout_sec) }
+    { Family: "ringnex_campaign_timeout", Key: campaign.id, Val: String(campaign.no_answer_timeout_sec) },
+    // So the dialplan can reject calls for a suspended/cancelled tenant on
+    // the campaign path exactly like it already does on the single-agent
+    // path (ringnex_tenant_status) — a campaign's own ACTIVE/INACTIVE flag
+    // says nothing about whether the *tenant* is still allowed to receive
+    // calls at all.
+    { Family: "ringnex_campaign_tenant", Key: campaign.id, Val: campaign.tenant_id }
   ];
   for (const action of puts) await ami.action({ Action: "DBPut", ...action });
 }
@@ -41,7 +47,8 @@ async function delCampaignAstDb(ami, campaign, didNumber) {
     { Family: "ringnex_campaign", Key: didNumber },
     { Family: "ringnex_campaign_status", Key: campaign.id },
     { Family: "ringnex_campaign_ivr", Key: campaign.id },
-    { Family: "ringnex_campaign_timeout", Key: campaign.id }
+    { Family: "ringnex_campaign_timeout", Key: campaign.id },
+    { Family: "ringnex_campaign_tenant", Key: campaign.id }
   ];
   for (const action of dels) await ami.action({ Action: "DBDel", ...action });
 }
