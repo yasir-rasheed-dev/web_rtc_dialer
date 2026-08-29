@@ -45,7 +45,9 @@ export const PERMISSIONS = Object.freeze([
   { key: "USE_AUTO_DIALER", name: "Use Auto Dialer", category: "Auto Dialer" },
   { key: "SKIP_CONTACT", name: "Skip Contact", category: "Auto Dialer" },
   { key: "VIEW_CAMPAIGN_REPORTS", name: "View Campaign Reports", category: "Auto Dialer" },
-  { key: "EXPORT_CAMPAIGN_REPORTS", name: "Export Campaign Reports", category: "Auto Dialer" }
+  { key: "EXPORT_CAMPAIGN_REPORTS", name: "Export Campaign Reports", category: "Auto Dialer" },
+  { key: "VIEW_TOLL_FREE", name: "View Toll-Free Numbers & Campaigns", category: "Toll-Free" },
+  { key: "MANAGE_TOLL_FREE_CAMPAIGNS", name: "Manage Toll-Free Campaigns & IVRs", category: "Toll-Free" }
 ]);
 
 const OWNER_BLOCKED = new Set([
