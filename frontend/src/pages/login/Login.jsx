@@ -1,6 +1,12 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Radio, ShieldCheck } from "lucide-react";
+import { PhoneCall, Radio, ShieldCheck, Users } from "lucide-react";
+
+const FEATURES = [
+  { icon: PhoneCall, text: "Browser calling over WSS signaling + DTLS-SRTP media" },
+  { icon: Users, text: "Roles, teams and permission-based access per workspace" },
+  { icon: ShieldCheck, text: "Tenant-isolated data — nothing crosses workspace lines" }
+];
 
 import Button from "../../components/ui/Button";
 import Input from "../../components/ui/Input";
@@ -156,10 +162,10 @@ export default function Login({ onAuthenticated }) {
   }
 
   return (
-    <main className="relative grid min-h-screen grid-cols-1 bg-bg lg:grid-cols-[480px_1fr]">
+    <main className="relative grid min-h-screen grid-cols-1 bg-bg md:grid-cols-2">
       <ThemeToggle className="absolute right-6 top-6 z-10" />
 
-      <section className="flex flex-col justify-center border-b border-border bg-surface px-8 py-12 sm:px-14 lg:border-b-0 lg:border-r lg:px-16">
+      <section className="flex flex-col justify-center border-b border-border bg-surface px-6 py-12 sm:px-10 md:border-b-0 md:border-r md:px-12 lg:px-16">
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -177,7 +183,7 @@ export default function Login({ onAuthenticated }) {
           </div>
 
           <span className="text-[11px] font-extrabold tracking-[0.16em] text-brand">WORKSPACE SIGN IN</span>
-          <h1 className="mt-2 text-[38px] font-bold leading-tight tracking-tight text-text">Welcome back</h1>
+          <h1 className="mt-2 text-[32px] font-bold leading-tight tracking-tight text-text sm:text-[38px]">Welcome back</h1>
           <p className="mt-2 text-sm leading-relaxed text-muted">
             Use the setup/workspace assigned by your Ringnex Product Owner.
           </p>
@@ -220,8 +226,20 @@ export default function Login({ onAuthenticated }) {
         </motion.div>
       </section>
 
-      <aside className="relative hidden items-center justify-center overflow-hidden bg-gradient-to-br from-surface-2 to-bg lg:flex">
-        <div className="max-w-sm px-10 text-center">
+      <aside className="relative hidden flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-surface-2 to-bg px-10 md:flex">
+        <div
+          className="pointer-events-none absolute inset-0 opacity-60"
+          style={{
+            backgroundImage: "radial-gradient(circle, rgb(var(--rn-blue) / 0.14) 1px, transparent 1px)",
+            backgroundSize: "26px 26px"
+          }}
+        />
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: "easeOut", delay: 0.1 }}
+          className="relative max-w-sm text-center"
+        >
           <div className="relative mx-auto mb-8 flex h-24 w-24 items-center justify-center">
             <motion.span
               animate={{ scale: [1, 1.5, 1], opacity: [0.55, 0, 0.55] }}
@@ -240,7 +258,21 @@ export default function Login({ onAuthenticated }) {
           <p className="mt-3 text-sm leading-relaxed text-muted">
             Roles, extensions, contacts, calls and DIDs are resolved after authentication.
           </p>
-        </div>
+
+          <div className="mt-8 flex flex-col gap-3 text-left">
+            {FEATURES.map(({ icon: Icon, text }) => (
+              <div
+                key={text}
+                className="flex items-start gap-3 rounded-xl border border-border/70 bg-surface/70 px-4 py-3 backdrop-blur-sm"
+              >
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
+                  <Icon size={14} />
+                </span>
+                <p className="mt-0.5 text-xs leading-relaxed text-muted">{text}</p>
+              </div>
+            ))}
+          </div>
+        </motion.div>
       </aside>
     </main>
   );
