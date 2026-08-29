@@ -56,7 +56,15 @@ import {
 
 const app = express();
 app.set("trust proxy", config.trustProxy);
-app.use(helmet({ crossOriginResourcePolicy: { policy: "same-site" } }));
+// "cross-origin" (not "same-site"): the API is deliberately consumed from
+// origins that aren't same-site with it — the Electron desktop app's
+// "app://myaiobyoc" custom scheme, and in general any web frontend origin
+// not sharing this backend's domain. Access control for that is CORS
+// (corsOriginCheck below) plus the Bearer-token auth on every route, not
+// this header; leaving it at "same-site" silently blocks those origins'
+// fetches at the browser level (net::ERR_BLOCKED_BY_RESPONSE) even though
+// CORS itself allows them.
+app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 
 function corsOriginCheck(origin, callback) {
   if (!origin || config.frontendOrigins.includes(origin)) return callback(null, true);
