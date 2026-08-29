@@ -162,18 +162,23 @@ export default function Login({ onAuthenticated }) {
   }
 
   return (
-    <main className="relative grid min-h-screen grid-cols-1 bg-bg md:grid-cols-2">
-      <ThemeToggle className="absolute right-6 top-6 z-10" />
+    // h-screen + overflow-hidden (not min-h-screen): this is a locked,
+    // single-viewport screen by design — it must never need a page-level
+    // scroll. Each column below still gets its own overflow-y-auto as a
+    // safety net for very short windows, but normal content fits without
+    // it ever engaging.
+    <main className="relative grid h-screen grid-cols-1 overflow-hidden bg-bg md:grid-cols-2">
+      <ThemeToggle className="absolute right-5 top-5 z-10" />
 
-      <section className="flex flex-col justify-center border-b border-border bg-surface px-6 py-12 sm:px-10 md:border-b-0 md:border-r md:px-12 lg:px-16">
+      <section className="flex h-full flex-col justify-center overflow-y-auto border-b border-border bg-surface px-6 py-8 sm:px-10 md:border-b-0 md:border-r md:px-12 lg:px-16">
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, ease: "easeOut" }}
           className="mx-auto w-full max-w-sm"
         >
-          <div className="mb-9 flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-brand to-blue-700 text-sm font-extrabold text-white shadow-[0_12px_30px_-8px_rgb(var(--rn-blue)/0.45)]">
+          <div className="mb-6 flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-brand to-blue-700 text-sm font-extrabold text-white shadow-[0_12px_30px_-8px_rgb(var(--rn-blue)/0.45)]">
               RN
             </span>
             <div>
@@ -183,12 +188,12 @@ export default function Login({ onAuthenticated }) {
           </div>
 
           <span className="text-[11px] font-extrabold tracking-[0.16em] text-brand">WORKSPACE SIGN IN</span>
-          <h1 className="mt-2 text-[32px] font-bold leading-tight tracking-tight text-text sm:text-[38px]">Welcome back</h1>
-          <p className="mt-2 text-sm leading-relaxed text-muted">
+          <h1 className="mt-1.5 text-[28px] font-bold leading-tight tracking-tight text-text sm:text-[32px]">Welcome back</h1>
+          <p className="mt-1.5 text-sm leading-relaxed text-muted">
             Use the setup/workspace assigned by your Ringnex Product Owner.
           </p>
 
-          <form onSubmit={submit} className="mt-8 flex flex-col gap-4">
+          <form onSubmit={submit} className="mt-6 flex flex-col gap-3.5">
             <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
               Workspace
               <Input
@@ -219,14 +224,14 @@ export default function Login({ onAuthenticated }) {
             </Button>
           </form>
 
-          <div className="mt-8 flex items-center gap-2 text-xs text-muted">
+          <div className="mt-6 flex items-center gap-2 text-xs text-muted">
             <ShieldCheck size={16} />
             <span>Tenant-isolated session · WSS signaling · DTLS-SRTP media</span>
           </div>
         </motion.div>
       </section>
 
-      <aside className="relative hidden flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-surface-2 to-bg px-10 md:flex">
+      <aside className="relative hidden h-full flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-surface-2 to-bg px-10 md:flex">
         <div
           className="pointer-events-none absolute inset-0 opacity-60"
           style={{
@@ -238,37 +243,35 @@ export default function Login({ onAuthenticated }) {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, ease: "easeOut", delay: 0.1 }}
-          className="relative max-w-sm text-center"
+          className="relative w-full max-w-sm text-center"
         >
-          <div className="relative mx-auto mb-8 flex h-24 w-24 items-center justify-center">
+          <div className="relative mx-auto mb-5 flex h-16 w-16 items-center justify-center">
             <motion.span
               animate={{ scale: [1, 1.5, 1], opacity: [0.55, 0, 0.55] }}
               transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut" }}
               className="absolute inset-0 rounded-full bg-brand/25"
             />
-            <span className="relative flex h-16 w-16 items-center justify-center rounded-full bg-surface shadow-card">
-              <Radio size={28} className="text-brand" />
+            <span className="relative flex h-12 w-12 items-center justify-center rounded-full bg-surface shadow-card">
+              <Radio size={22} className="text-brand" />
             </span>
           </div>
-          <h2 className="text-2xl font-bold leading-snug text-text">
-            One app.
-            <br />
-            Your own workspace.
+          <h2 className="text-xl font-bold leading-snug text-text">
+            One app. Your own workspace.
           </h2>
-          <p className="mt-3 text-sm leading-relaxed text-muted">
+          <p className="mt-2 text-sm leading-relaxed text-muted">
             Roles, extensions, contacts, calls and DIDs are resolved after authentication.
           </p>
 
-          <div className="mt-8 flex flex-col gap-3 text-left">
+          <div className="mt-6 flex flex-col gap-2 text-left">
             {FEATURES.map(({ icon: Icon, text }) => (
               <div
                 key={text}
-                className="flex items-start gap-3 rounded-xl border border-border/70 bg-surface/70 px-4 py-3 backdrop-blur-sm"
+                className="flex items-center gap-2.5 rounded-lg border border-border/70 bg-surface/70 px-3 py-2 backdrop-blur-sm"
               >
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
-                  <Icon size={14} />
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-brand/10 text-brand">
+                  <Icon size={12} />
                 </span>
-                <p className="mt-0.5 text-xs leading-relaxed text-muted">{text}</p>
+                <p className="text-xs leading-snug text-muted">{text}</p>
               </div>
             ))}
           </div>
