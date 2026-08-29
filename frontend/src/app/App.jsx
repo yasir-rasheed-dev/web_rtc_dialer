@@ -32,6 +32,7 @@ import Supervisor from "../pages/supervisor/Supervisor";
 // an in-progress SIP call never drops when the agent navigates to another
 // page. Everything else below is lazy-loaded to keep the initial bundle lean.
 import GlobalCallOverlay from "../components/ui/GlobalCallOverlay";
+import DesktopCallBridge from "../components/DesktopCallBridge";
 import Softphone from "../pages/softphone/Softphone";
 
 const LazyAutoDialer = lazy(() => import("../pages/auto-dialer/AutoDialer"));
@@ -307,7 +308,11 @@ function TenantApp() {
           )}
         </main>
       </div>
-      {!ownerAccount && session.sip && <GlobalCallOverlay onDialerPage={page === "dialer"} />}
+      {/* Desktop (Electron): calls pop into their own native window instead
+          (see DesktopCallBridge), so the in-page overlay is redundant there.
+          Web: window.ringnexDesktop never exists, so this is unchanged. */}
+      {!ownerAccount && session.sip && !window.ringnexDesktop && <GlobalCallOverlay onDialerPage={page === "dialer"} />}
+      {!ownerAccount && session.sip && <DesktopCallBridge />}
     </div>
   );
 }

@@ -70,6 +70,19 @@ builds also trigger a Gatekeeper warning on the user's machine, so a real
 release additionally needs an Apple Developer ID for signing + notarization
 — out of scope until you're actually ready to ship to Mac users.
 
+## Call popup window
+
+Incoming/active calls pop into their own small always-on-top window instead
+of the in-page overlay the web app uses — Answer/Decline/Hangup/Mute/Hold,
+plus a DTMF keypad and blind transfer. It never runs its own SIP connection
+(there's still only ever one, in the main window) — it's a thin UI that
+mirrors state and sends commands over Electron IPC. You can close it mid-call
+without ending the call; the main window's header shows a green "call in
+progress" pill the whole time a call is active, and clicking it reopens the
+popup with the current live state. Warm/attended transfer stays on the main
+window's Dialer page only — see `frontend/src/pages/call-window/CallWindow.jsx`
+and `frontend/src/components/DesktopCallBridge.jsx` if you need to touch this.
+
 ## Things worth knowing
 
 - **Microphone permission**: `main.js` allows the `media` and

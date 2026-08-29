@@ -533,7 +533,9 @@ const [transferStage, setTransferStage] = useState("idle");
       muted,
       held,
       canReceive: can("RECEIVE_CALLS"),
-      canHold: can("HOLD_CALL")
+      canHold: can("HOLD_CALL"),
+      canBlindTransfer: can("BLIND_TRANSFER"),
+      canSendDtmf: can("SEND_DTMF")
     };
     window.dispatchEvent(
       new CustomEvent("ringnex:softphone-state", { detail: window.ringnexSoftphoneState })
@@ -605,14 +607,45 @@ const [transferStage, setTransferStage] = useState("idle");
     window.ringnexHangup = () => globalControlsRef.current.hangup();
     window.ringnexToggleMute = () => globalControlsRef.current.toggleMute();
     window.ringnexToggleHold = () => globalControlsRef.current.toggleHold();
+    // Used by the Electron call-popup window (via DesktopCallBridge) for its
+    // blind-transfer input and DTMF keypad — same indirection pattern, just
+    // wired up once runBlindTransfer/pressKey exist (see the Object.assign
+    // next to pressKey's declaration below).
+    window.ringnexBlindTransfer = (number) => globalControlsRef.current.runBlindTransfer(number);
+    window.ringnexSendDTMF = (key) => globalControlsRef.current.sendDtmf(key);
     return () => {
       delete window.ringnexAnswerCall;
       delete window.ringnexDeclineCall;
       delete window.ringnexHangup;
       delete window.ringnexToggleMute;
       delete window.ringnexToggleHold;
+      delete window.ringnexBlindTransfer;
+      delete window.ringnexSendDTMF;
     };
   }, []);
+
+  // Core of a blind transfer, taking the target directly rather than
+  // prompting for it — pulled out of transferCall() below so
+  // window.ringnexBlindTransfer (used by the Electron call-popup window,
+  // which already collected the number through its own input) can reuse
+  // the exact same validation/transfer/notice path instead of duplicating
+  // it. Throws on failure instead of setting `error` itself, so each
+  // caller decides how to surface that (transferCall shows it inline here;
+  // the popup reports it back over IPC).
+  const runBlindTransfer = async (rawTarget) => {
+    if (!clientRef.current || !callEstablished) {
+      throw new Error("No active call available to transfer.");
+    }
+
+    const target = normalizeDialString(rawTarget);
+    if (!isValidDialString(target)) {
+      throw new Error("Enter a valid agent extension or phone number.");
+    }
+
+    await clientRef.current.transfer(target);
+    flashNotice(`Transfer initiated to ${target}`);
+    return target;
+  };
 
   const transferCall = async () => {
     if (!clientRef.current || !callEstablished) {
@@ -627,19 +660,10 @@ const [transferStage, setTransferStage] = useState("idle");
 
     if (input === null) return;
 
-    const target = normalizeDialString(input);
-
-    if (!isValidDialString(target)) {
-      setError("Enter a valid agent extension or phone number.");
-      return;
-    }
-
     setError("");
 
     try {
-      await clientRef.current.transfer(target);
-
-      flashNotice(`Transfer initiated to ${target}`);
+      await runBlindTransfer(input);
     } catch (transferError) {
       setError(
         transferError?.message ||
@@ -815,6 +839,13 @@ const addPstnParticipant = async () => {
       setDialNumber((current) => normalizeDialString(`${current}${key}`));
     }
   };
+
+  // runBlindTransfer/pressKey aren't declared yet at the point
+  // globalControlsRef.current is first assigned above (they're `const`s
+  // further down the component body, so referencing them any earlier would
+  // hit the temporal dead zone) — extend the same ref object here instead,
+  // once both exist. Re-runs every render, same as that first assignment.
+  Object.assign(globalControlsRef.current, { runBlindTransfer, sendDtmf: pressKey });
 
   const selectSpeaker = async (value) => {
     setSpeakerId(value);

@@ -7,7 +7,7 @@
 // the packaged frontend, and README.md in this folder for the full setup.
 "use strict";
 
-const { app, BrowserWindow, Menu, protocol, net, session, shell } = require("electron");
+const { app, BrowserWindow, Menu, protocol, net, session, shell, ipcMain, screen } = require("electron");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
@@ -89,6 +89,9 @@ function allowMicAndNotifications() {
   session.defaultSession.setPermissionCheckHandler((_webContents, permission) => allowed.has(permission));
 }
 
+let mainWindow = null;
+let callWindow = null;
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1440,
@@ -116,7 +119,96 @@ function createWindow() {
     return { action: "deny" };
   });
 
+  mainWindow = win;
+  win.on("closed", () => {
+    if (mainWindow === win) mainWindow = null;
+  });
+
   return win;
+}
+
+// The call popup — a small always-on-top "phone view" for incoming/active
+// calls, separate from the main window (see DesktopCallBridge.jsx on the
+// frontend side for what drives show/hide). It renders the SAME packaged
+// bundle as the main window, just at a different in-app route (the
+// "#call-window" hash), and never runs its own SIP client — it only
+// mirrors state from, and sends commands to, the one SIP connection that
+// lives in the main window. Created once and kept alive-but-hidden for the
+// app's lifetime (like the main window keeps Softphone permanently mounted)
+// so reopening it is instant and never loses state.
+function createCallWindow() {
+  const display = screen.getPrimaryDisplay();
+  const { workArea } = display;
+  const width = 340;
+  const height = 540;
+
+  const win = new BrowserWindow({
+    width,
+    height,
+    x: workArea.x + workArea.width - width - 16,
+    y: workArea.y + workArea.height - height - 16,
+    frame: false,
+    resizable: false,
+    alwaysOnTop: true,
+    skipTaskbar: false,
+    show: false,
+    backgroundColor: "#07111f",
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
+    }
+  });
+
+  win.loadURL(`${APP_SCHEME}://${APP_HOST}/index.html#call-window`);
+  win.setAlwaysOnTop(true, "floating");
+
+  // A close click (the popup's own custom close button, or Alt+F4/OS
+  // close) just hides it — it never ends the call, and the main window's
+  // header shows a "call in progress" pill to reopen it. Only an actual
+  // app quit tears this window down for real.
+  win.on("close", (event) => {
+    if (app.isQuitting) return;
+    event.preventDefault();
+    win.hide();
+  });
+
+  callWindow = win;
+  win.on("closed", () => {
+    if (callWindow === win) callWindow = null;
+  });
+
+  return win;
+}
+
+function showCallWindow() {
+  if (!callWindow || callWindow.isDestroyed()) createCallWindow();
+  callWindow.show();
+  callWindow.focus();
+}
+
+function hideCallWindow() {
+  if (callWindow && !callWindow.isDestroyed()) callWindow.hide();
+}
+
+function registerCallWindowIpc() {
+  ipcMain.on("call-window:show", () => showCallWindow());
+  ipcMain.on("call-window:hide", () => hideCallWindow());
+  // Main window -> popup: live call state mirror.
+  ipcMain.on("call-window:state", (_event, state) => {
+    if (callWindow && !callWindow.isDestroyed()) callWindow.webContents.send("call-window:state", state);
+  });
+  // Popup -> main window: answer/decline/hangup/mute/hold/transfer/dtmf —
+  // the main window's DesktopCallBridge dispatches these to the real
+  // window.ringnex* functions Softphone.jsx already exposes.
+  ipcMain.on("call-window:command", (_event, payload) => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("call-window:command", payload);
+  });
+  // Main window -> popup: outcome of a command (currently just transfer).
+  ipcMain.on("call-window:command-result", (_event, result) => {
+    if (callWindow && !callWindow.isDestroyed()) callWindow.webContents.send("call-window:command-result", result);
+  });
 }
 
 // Two copies of a softphone fighting over the same microphone/ringtone
@@ -126,25 +218,38 @@ if (!gotLock) {
   app.quit();
 } else {
   app.on("second-instance", () => {
-    const [win] = BrowserWindow.getAllWindows();
-    if (win) {
-      if (win.isMinimized()) win.restore();
-      win.focus();
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
     }
   });
 
   app.whenReady().then(() => {
     registerAppProtocol();
     allowMicAndNotifications();
+    registerCallWindowIpc();
     Menu.setApplicationMenu(null);
-    createWindow();
+    const win = createWindow();
+
+    // The call window stays alive-but-hidden across the main window's
+    // lifetime (see createCallWindow) — that means it's still a "window"
+    // as far as Electron's own window-all-closed accounting goes, so that
+    // event alone won't fire just because the main window closes. Closing
+    // the main window is what should actually end the app (outside
+    // macOS's dock convention), so this listens directly for it instead.
+    win.on("closed", () => {
+      if (process.platform !== "darwin") app.quit();
+    });
 
     app.on("activate", () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      if (!mainWindow) createWindow();
     });
   });
 
-  app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") app.quit();
+  // Lets the call window's own "close hides instead of quits" handler
+  // (see createCallWindow) know a real shutdown is happening, so it
+  // doesn't block the app from exiting.
+  app.on("before-quit", () => {
+    app.isQuitting = true;
   });
 }
