@@ -100,6 +100,17 @@ async function createPendingOrder(req, res) {
   const did = normalizeDid(req.body.did);
   if (!did) return res.status(400).json({ error: "Invalid phone number" });
 
+  // The frontend already knows which search produced this DID (its own
+  // "Type" dropdown state) — carried through here so completePendingOrder
+  // can tag the resulting tenant_dids row correctly. Not derived from the
+  // DID's area code on purpose: this codebase deliberately doesn't
+  // hardcode a toll-free NPA list anywhere, it relies on what the search
+  // actually was.
+  const numberType = String(req.body.numberType || "LOCAL").toUpperCase();
+  if (!["LOCAL", "TOLLFREE"].includes(numberType)) {
+    return res.status(400).json({ error: "numberType must be LOCAL or TOLLFREE" });
+  }
+
   const [[existing]] = await db.execute(`SELECT id FROM tenant_dids WHERE number=? LIMIT 1`, [did]);
   if (existing) return res.status(409).json({ error: "This number is already owned by a tenant" });
 
@@ -117,9 +128,9 @@ async function createPendingOrder(req, res) {
 
   try {
     await db.execute(
-      `INSERT INTO commio_pending_orders (id, tenant_id, commio_order_id, did, requested_by, price_summary, status)
-       VALUES (?,?,?,?,?,?,'PENDING')`,
-      [crypto.randomUUID(), req.user.tenant_id, orderId, did, req.user.id, priceSummary ? JSON.stringify(priceSummary) : null]
+      `INSERT INTO commio_pending_orders (id, tenant_id, commio_order_id, did, number_type, requested_by, price_summary, status)
+       VALUES (?,?,?,?,?,?,?,'PENDING')`,
+      [crypto.randomUUID(), req.user.tenant_id, orderId, did, numberType, req.user.id, priceSummary ? JSON.stringify(priceSummary) : null]
     );
   } catch (dbError) {
     await commio.cancelOrder(orderId).catch(() => undefined);
@@ -168,14 +179,14 @@ async function completePendingOrder(req, res) {
     await connection.beginTransaction();
     const id = crypto.randomUUID();
     await connection.execute(
-      `INSERT INTO tenant_dids (id, tenant_id, number, status, commio_order_id, purchased_by, purchased_at, monthly_cost)
-       VALUES (?,?,?,'AVAILABLE',?,?,NOW(),?)`,
-      [id, req.user.tenant_id, pending.did, orderId, req.user.id, monthlyCost]
+      `INSERT INTO tenant_dids (id, tenant_id, number, number_type, status, commio_order_id, purchased_by, purchased_at, monthly_cost)
+       VALUES (?,?,?,?,'AVAILABLE',?,?,NOW(),?)`,
+      [id, req.user.tenant_id, pending.did, pending.number_type || "LOCAL", orderId, req.user.id, monthlyCost]
     );
     await connection.execute(`UPDATE commio_pending_orders SET status='COMPLETED' WHERE id=?`, [pending.id]);
     await connection.commit();
     [[didRow]] = await db.execute(
-      `SELECT id,number,label,status,commio_order_id,purchased_at,monthly_cost FROM tenant_dids WHERE id=?`,
+      `SELECT id,number,number_type,label,status,commio_order_id,purchased_at,monthly_cost FROM tenant_dids WHERE id=?`,
       [id]
     );
   } catch (error) {

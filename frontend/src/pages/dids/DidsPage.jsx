@@ -87,7 +87,7 @@ function BuyNumberModal({ open, onClose, onPurchased }) {
     setReserveError("");
     setReservation(null);
     try {
-      const payload = await reserveCommioNumber(number.did);
+      const payload = await reserveCommioNumber(number.did, searchType === "tollfree" ? "TOLLFREE" : "LOCAL");
       if (!payload.price) {
         setReserveError("Number reserved, but the price could not be confirmed. Please try again rather than purchase blind.");
         return;

@@ -149,8 +149,10 @@ export function searchCommioNumbers(params) {
 
 // Reserves the number with Commio (does not charge) and returns a price
 // quote — the caller must still call completeCommioOrder to actually buy it.
-export function reserveCommioNumber(did) {
-  return api("/dids/commio/orders", { method: "POST", body: { did } });
+// numberType ("LOCAL"/"TOLLFREE") records which search produced this DID,
+// so the purchased tenant_dids row ends up correctly tagged.
+export function reserveCommioNumber(did, numberType = "LOCAL") {
+  return api("/dids/commio/orders", { method: "POST", body: { did, numberType } });
 }
 
 // This is the step that actually charges the tenant's Commio account.
