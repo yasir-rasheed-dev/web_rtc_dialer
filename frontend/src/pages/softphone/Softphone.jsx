@@ -43,6 +43,8 @@ import {
   saveHistory,
   saveTabPassword
 } from "../../lib/storage";
+import { startRingtone, stopRingtone } from "../../lib/ringtone";
+import { closeIncomingCallNotification, ensureNotificationPermission, showIncomingCallNotification } from "../../lib/desktopNotify";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import EmptyState from "../../components/ui/EmptyState";
@@ -170,6 +172,37 @@ const [transferStage, setTransferStage] = useState("idle");
     setNotice(message);
     noticeTimerRef.current = window.setTimeout(() => setNotice(""), 2800);
   }, []);
+
+  // Best-effort — asks once per mount, not tied to any call. On the web
+  // this may be silently ignored until the agent interacts with the page
+  // (browser-enforced); inside Electron it resolves immediately since
+  // main.js already grants the "notifications" permission for this app.
+  useEffect(() => {
+    ensureNotificationPermission();
+  }, []);
+
+  // Ringtone + native OS notification for an incoming call — owned here
+  // (not in GlobalCallOverlay/CallWindow, which just mirror this state)
+  // so it fires exactly once per incoming call regardless of which of
+  // those UIs happens to be visible, instead of each one independently
+  // reacting to the same "ringnex:softphone-state" broadcast and
+  // stacking duplicate rings/notifications.
+  useEffect(() => {
+    if (callStatus !== "incoming") {
+      stopRingtone();
+      closeIncomingCallNotification();
+      return undefined;
+    }
+    startRingtone();
+    showIncomingCallNotification({
+      title: currentParty.displayName || currentParty.number || "Incoming call",
+      body: currentParty.displayName ? currentParty.number : "Incoming call"
+    });
+    return () => {
+      stopRingtone();
+      closeIncomingCallNotification();
+    };
+  }, [callStatus, currentParty]);
 
   const appendHistory = useCallback((entry) => {
     setHistory((current) => {
