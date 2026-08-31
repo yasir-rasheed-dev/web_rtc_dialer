@@ -523,6 +523,61 @@ async function createIvr(req, res, ami) {
   res.status(201).json({ ivr, options: savedOptions, asteriskSync });
 }
 
+// Full replace of name/greeting/options — no "in use" restriction like
+// deleteIvr (editing an IVR a campaign already uses is the whole point,
+// e.g. re-saving after espeak-ng/ffmpeg become available so audio that
+// was missing at create time finally gets synthesized and synced).
+async function updateIvr(req, res, ami) {
+  const [[existing]] = await db.execute(`SELECT id FROM ivrs WHERE id = ? AND tenant_id = ? LIMIT 1`, [req.params.id, req.user.tenant_id]);
+  if (!existing) return res.status(404).json({ error: "IVR not found" });
+
+  const name = String(req.body.name || "").trim().slice(0, 160);
+  const greetingText = String(req.body.greetingText || "").trim().slice(0, 500);
+  if (!name) return res.status(400).json({ error: "IVR name is required" });
+  if (!greetingText) return res.status(400).json({ error: "Greeting text is required" });
+  const options = validateIvrOptions(req.body.options);
+
+  if (options.some((o) => o.actionType === "CAMPAIGN")) {
+    const targetIds = [...new Set(options.filter((o) => o.targetCampaignId).map((o) => o.targetCampaignId))];
+    const [validCampaigns] = await db.query(
+      `SELECT id FROM inbound_campaigns WHERE tenant_id = ? AND id IN (?)`,
+      [req.user.tenant_id, targetIds]
+    );
+    if (validCampaigns.length !== targetIds.length) return res.status(400).json({ error: "One or more target campaigns are invalid" });
+  }
+
+  const greetingAudioPath = await synthesizeToFile(greetingText);
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    await connection.execute(
+      `UPDATE ivrs SET name=?, greeting_text=?, greeting_audio_path=? WHERE id=? AND tenant_id=?`,
+      [name, greetingText, greetingAudioPath, existing.id, req.user.tenant_id]
+    );
+    await connection.execute(`DELETE FROM ivr_options WHERE ivr_id = ?`, [existing.id]);
+    for (const option of options) {
+      const promptAudioPath = await synthesizeToFile(option.promptText);
+      await connection.execute(
+        `INSERT INTO ivr_options (id, ivr_id, digit, prompt_text, prompt_audio_path, action_type, target_campaign_id)
+         VALUES (?,?,?,?,?,?,?)`,
+        [crypto.randomUUID(), existing.id, option.digit, option.promptText, promptAudioPath, option.actionType, option.targetCampaignId]
+      );
+    }
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+
+  const [[ivr]] = await db.execute(`SELECT * FROM ivrs WHERE id = ?`, [existing.id]);
+  const [savedOptions] = await db.execute(`SELECT * FROM ivr_options WHERE ivr_id = ? ORDER BY digit`, [existing.id]);
+  const asteriskSync = await trySync(`update ivr ${existing.id}`, () => putIvrAstDb(ami, existing.id, greetingAudioPath, savedOptions));
+
+  res.json({ ivr, options: savedOptions, asteriskSync });
+}
+
 async function deleteIvr(req, res) {
   const [[ivr]] = await db.execute(`SELECT id FROM ivrs WHERE id = ? AND tenant_id = ? LIMIT 1`, [req.params.id, req.user.tenant_id]);
   if (!ivr) return res.status(404).json({ error: "IVR not found" });
@@ -554,6 +609,7 @@ export default function createTollFreeRoutes(authenticate, ami) {
   router.get("/ivrs", authenticate, requirePermission("VIEW_TOLL_FREE"), asyncRoute(listIvrs));
   router.get("/ivrs/:id", authenticate, requirePermission("VIEW_TOLL_FREE"), asyncRoute(getIvr));
   router.post("/ivrs", authenticate, requirePermission("MANAGE_TOLL_FREE_CAMPAIGNS"), asyncRoute((req, res) => createIvr(req, res, ami)));
+  router.patch("/ivrs/:id", authenticate, requirePermission("MANAGE_TOLL_FREE_CAMPAIGNS"), asyncRoute((req, res) => updateIvr(req, res, ami)));
   router.delete("/ivrs/:id", authenticate, requirePermission("MANAGE_TOLL_FREE_CAMPAIGNS"), asyncRoute(deleteIvr));
 
   return router;

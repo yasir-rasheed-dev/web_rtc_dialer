@@ -192,8 +192,16 @@ export function listTollFreeIvrs() {
   return api("/toll-free/ivrs").then((payload) => payload.ivrs || []);
 }
 
+export function getTollFreeIvr(id) {
+  return api(`/toll-free/ivrs/${encodeURIComponent(id)}`);
+}
+
 export function createTollFreeIvr(body) {
   return api("/toll-free/ivrs", { method: "POST", body });
+}
+
+export function updateTollFreeIvr(id, body) {
+  return api(`/toll-free/ivrs/${encodeURIComponent(id)}`, { method: "PATCH", body });
 }
 
 export function deleteTollFreeIvr(id) {

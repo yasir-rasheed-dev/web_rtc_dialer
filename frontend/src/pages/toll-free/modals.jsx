@@ -7,7 +7,7 @@ import Modal from "../../components/ui/Modal";
 import Select from "../../components/ui/Select";
 import Toggle from "../../components/ui/Toggle";
 import { notifyError, notifySuccess } from "../../lib/toast";
-import { createTollFreeCampaign, createTollFreeIvr, updateTollFreeCampaign } from "../../lib/api";
+import { createTollFreeCampaign, createTollFreeIvr, updateTollFreeCampaign, updateTollFreeIvr } from "../../lib/api";
 
 function fieldLabelClass() {
   return "flex flex-col gap-1.5 text-xs font-medium text-muted";
@@ -209,7 +209,11 @@ function emptyOption() {
   return { key: crypto.randomUUID(), digit: "", promptText: "", actionType: "CAMPAIGN", targetCampaignId: "" };
 }
 
-export function CreateIvrModal({ open, onClose, campaigns, onSaved }) {
+// `ivr` (when present) is the full { ivr, options } detail from getIvr —
+// TollFreePage fetches that on-demand when Edit is clicked, since the
+// list view only has name/greeting, not the option rows.
+export function CreateIvrModal({ open, onClose, ivr = null, campaigns, onSaved }) {
+  const isEdit = Boolean(ivr);
   const [name, setName] = useState("");
   const [greetingText, setGreetingText] = useState("");
   const [options, setOptions] = useState([emptyOption()]);
@@ -218,11 +222,21 @@ export function CreateIvrModal({ open, onClose, campaigns, onSaved }) {
 
   useEffect(() => {
     if (!open) return;
-    setName("");
-    setGreetingText("");
-    setOptions([emptyOption()]);
+    setName(ivr?.ivr?.name || "");
+    setGreetingText(ivr?.ivr?.greeting_text || "");
+    setOptions(
+      ivr?.options?.length
+        ? ivr.options.map((o) => ({
+            key: crypto.randomUUID(),
+            digit: o.digit,
+            promptText: o.prompt_text,
+            actionType: o.action_type,
+            targetCampaignId: o.target_campaign_id || ""
+          }))
+        : [emptyOption()]
+    );
     setError("");
-  }, [open]);
+  }, [open, ivr]);
 
   const campaignOptions = useMemo(() => campaigns.map((c) => ({ value: c.id, label: `${c.name} (${c.did_number})` })), [campaigns]);
 
@@ -243,7 +257,7 @@ export function CreateIvrModal({ open, onClose, campaigns, onSaved }) {
     setBusy(true);
     setError("");
     try {
-      const result = await createTollFreeIvr({
+      const body = {
         name: name.trim(),
         greetingText: greetingText.trim(),
         options: options.map((o) => ({
@@ -252,8 +266,9 @@ export function CreateIvrModal({ open, onClose, campaigns, onSaved }) {
           actionType: o.actionType,
           targetCampaignId: o.actionType === "CAMPAIGN" ? o.targetCampaignId : null
         }))
-      });
-      notifySuccess(`IVR "${result.ivr.name}" created.`);
+      };
+      const result = isEdit ? await updateTollFreeIvr(ivr.ivr.id, body) : await createTollFreeIvr(body);
+      notifySuccess(`IVR "${result.ivr.name}" ${isEdit ? "updated" : "created"}.`);
       if (result.asteriskSync && !result.asteriskSync.ok) {
         notifyError(`Saved, but the Asterisk sync failed: ${result.asteriskSync.error}. It will retry on the next save.`);
       }
@@ -267,7 +282,7 @@ export function CreateIvrModal({ open, onClose, campaigns, onSaved }) {
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Create IVR" width="max-w-xl">
+    <Modal open={open} onClose={onClose} title={isEdit ? "Edit IVR" : "Create IVR"} width="max-w-xl">
       <div className="flex flex-col gap-4">
         {error && <div className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>}
 
@@ -352,7 +367,7 @@ export function CreateIvrModal({ open, onClose, campaigns, onSaved }) {
             Cancel
           </Button>
           <Button loading={busy} onClick={submit}>
-            Create IVR
+            {isEdit ? "Save changes" : "Create IVR"}
           </Button>
         </div>
       </div>

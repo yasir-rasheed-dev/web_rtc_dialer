@@ -14,6 +14,7 @@ import {
   api,
   deleteTollFreeCampaign,
   deleteTollFreeIvr,
+  getTollFreeIvr,
   getTollFreeQueueStatus,
   listTollFreeCampaigns,
   listTollFreeIvrs,
@@ -36,7 +37,7 @@ export default function TollFreePage({ permissions = [] }) {
   const [error, setError] = useState("");
 
   const [campaignModal, setCampaignModal] = useState({ open: false, campaign: null });
-  const [ivrModalOpen, setIvrModalOpen] = useState(false);
+  const [ivrModal, setIvrModal] = useState({ open: false, ivr: null });
   // Keyed by campaign id -> { waiting, longestWaitSec } | undefined (still
   // loading). Polled, not pushed — a toll-free queue is low-traffic enough
   // that a plain interval is simpler than wiring a new socket channel for
@@ -120,6 +121,15 @@ export default function TollFreePage({ permissions = [] }) {
       await deleteTollFreeCampaign(campaign.id);
       notifySuccess("Campaign deleted.");
       load();
+    } catch (e) {
+      notifyError(e.message);
+    }
+  };
+
+  const openEditIvr = async (ivr) => {
+    try {
+      const detail = await getTollFreeIvr(ivr.id);
+      setIvrModal({ open: true, ivr: detail });
     } catch (e) {
       notifyError(e.message);
     }
@@ -261,7 +271,7 @@ export default function TollFreePage({ permissions = [] }) {
       <Card animate={false} title="IVRs" description={`${ivrs.length} menu${ivrs.length === 1 ? "" : "s"}`} icon={Voicemail}>
         <div className="mb-3 flex justify-end">
           {canManage && (
-            <Button size="sm" variant="secondary" icon={Plus} onClick={() => setIvrModalOpen(true)}>
+            <Button size="sm" variant="secondary" icon={Plus} onClick={() => setIvrModal({ open: true, ivr: null })}>
               New IVR
             </Button>
           )}
@@ -277,13 +287,18 @@ export default function TollFreePage({ permissions = [] }) {
                   <p className="truncate text-xs text-muted">{ivr.greeting_text}</p>
                 </div>
                 {canManage && (
-                  <button
-                    onClick={() => removeIvr(ivr)}
-                    className="shrink-0 rounded-lg p-1.5 text-muted hover:bg-danger-soft hover:text-danger"
-                    aria-label={`Delete ${ivr.name}`}
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button size="sm" variant="secondary" onClick={() => openEditIvr(ivr)}>
+                      Edit
+                    </Button>
+                    <button
+                      onClick={() => removeIvr(ivr)}
+                      className="rounded-lg p-1.5 text-muted hover:bg-danger-soft hover:text-danger"
+                      aria-label={`Delete ${ivr.name}`}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 )}
               </div>
             ))}
@@ -302,7 +317,13 @@ export default function TollFreePage({ permissions = [] }) {
         users={users}
         onSaved={load}
       />
-      <CreateIvrModal open={ivrModalOpen} onClose={() => setIvrModalOpen(false)} campaigns={campaigns} onSaved={load} />
+      <CreateIvrModal
+        open={ivrModal.open}
+        onClose={() => setIvrModal({ open: false, ivr: null })}
+        ivr={ivrModal.ivr}
+        campaigns={campaigns}
+        onSaved={load}
+      />
     </div>
   );
 }
