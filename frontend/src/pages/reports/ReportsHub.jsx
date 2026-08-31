@@ -200,7 +200,7 @@ function ReportCard({ icon: Icon, title, description, pending, onClick }) {
       onClick={onClick}
       whileHover={{ y: -2 }}
       whileTap={{ scale: 0.98 }}
-      className="group flex flex-col items-start gap-4 rounded-2xl border border-border bg-surface p-6 text-left shadow-card transition-colors hover:border-border-strong hover:bg-surface-2"
+      className="group flex flex-col items-start gap-4 rounded-2xl border border-border bg-surface p-6 text-left transition-colors hover:border-border-strong hover:bg-surface-2"
     >
       <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand/10 text-brand">
         <Icon size={20} />

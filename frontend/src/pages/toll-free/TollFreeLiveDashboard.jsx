@@ -4,7 +4,7 @@ import { Headset, PhoneCall, RefreshCw, Users, Wifi, WifiOff } from "lucide-reac
 import Select from "../../components/ui/Select";
 import EmptyState from "../../components/ui/EmptyState";
 import ThemeToggle from "../../components/ui/ThemeToggle";
-import { api, getToken, getTollFreeCampaign, listTollFreeCampaigns } from "../../lib/api";
+import { api, getToken, getTollFreeCampaign, listTollFreeCampaigns, lookupCallerIdentity } from "../../lib/api";
 import { API_BASE } from "../../lib/apiConfig";
 
 // The standalone "#toll-free-live" window opened by the Toll-Free page's
@@ -82,6 +82,11 @@ export default function TollFreeLiveDashboard() {
   const [liveAgentStatus, setLiveAgentStatus] = useState({}); // userId -> READY|PAUSED|WRAP_UP|OFFLINE
   const [queueState, setQueueState] = useState({ waiting: 0, entries: [], ok: true });
   const [nowTick, setNowTick] = useState(Date.now());
+  // number -> { type, name } | "pending" | "unknown" — a saved contact's
+  // name or (if the number is actually a teammate's extension) an agent's
+  // name beats showing a raw digit string; anything that resolves to
+  // neither shows "Unknown caller" rather than the number itself.
+  const [callerIdentities, setCallerIdentities] = useState({});
   const socketRef = useRef(null);
   const subscribedCampaignRef = useRef("");
 
@@ -222,7 +227,7 @@ export default function TollFreeLiveDashboard() {
       .map((call) => ({
         kind: call.status === "RINGING" ? "ringing" : "live",
         key: call.linkedid,
-        caller: call.from || "—",
+        caller: call.from || null,
         agent: call.agentName || call.agent || "—",
         detail: call.status === "HELD" ? "On hold" : call.status === "RINGING" ? "Ringing" : "Connected",
         seconds: call.answeredAt ? (nowTick - new Date(call.answeredAt).getTime()) / 1000 : 0
@@ -230,7 +235,7 @@ export default function TollFreeLiveDashboard() {
     const queued = (queueState.entries || []).map((entry) => ({
       kind: "queue",
       key: entry.uniqueid,
-      caller: entry.callerIdNum || "—",
+      caller: entry.callerIdNum || null,
       agent: "—",
       detail: `Position ${entry.position || "—"}`,
       // entry.waitSec is a fresh-as-of-last-poll snapshot; interpolate
@@ -239,6 +244,44 @@ export default function TollFreeLiveDashboard() {
     }));
     return [...live, ...queued].sort((a, b) => b.seconds - a.seconds);
   }, [campaignLiveCalls, queueState, nowTick]);
+
+  // Deliberately separate from activityRows above (which recomputes every
+  // second for the ticking duration) — this only changes when the actual
+  // SET of caller numbers on screen changes, which is what should trigger
+  // a lookup, not every per-second re-render.
+  const callerNumbersKey = useMemo(() => {
+    const numbers = new Set([
+      ...campaignLiveCalls.map((call) => call.from).filter(Boolean),
+      ...(queueState.entries || []).map((entry) => entry.callerIdNum).filter(Boolean)
+    ]);
+    return [...numbers].join(",");
+  }, [campaignLiveCalls, queueState.entries]);
+
+  useEffect(() => {
+    const numbers = callerNumbersKey ? callerNumbersKey.split(",") : [];
+    const unresolved = numbers.filter((number) => !callerIdentities[number]);
+    if (!unresolved.length) return;
+    setCallerIdentities((current) => {
+      const next = { ...current };
+      for (const number of unresolved) next[number] = "pending";
+      return next;
+    });
+    unresolved.forEach((number) => {
+      lookupCallerIdentity(number)
+        .then((result) => {
+          setCallerIdentities((current) => ({ ...current, [number]: result.name ? result : "unknown" }));
+        })
+        .catch(() => setCallerIdentities((current) => ({ ...current, [number]: "unknown" })));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callerNumbersKey]);
+
+  function callerLabel(number) {
+    const identity = callerIdentities[number];
+    if (!identity || identity === "pending") return number; // brief loading state
+    if (identity === "unknown") return "Unknown caller";
+    return identity.type === "agent" ? `${identity.name} (teammate)` : identity.name;
+  }
 
   if (authError) {
     return (
@@ -372,7 +415,7 @@ export default function TollFreeLiveDashboard() {
                             {row.kind === "queue" ? "In queue" : row.kind === "ringing" ? "Ringing" : "Live call"}
                           </span>
                         </td>
-                        <td className="px-4 py-2.5 text-text">{row.caller}</td>
+                        <td className="px-4 py-2.5 text-text">{row.caller ? callerLabel(row.caller) : "Unknown caller"}</td>
                         <td className="px-4 py-2.5 text-muted">{row.agent}</td>
                         <td className="px-4 py-2.5 text-muted">{row.detail}</td>
                         <td className="px-4 py-2.5 font-mono text-text">{formatDuration(row.seconds)}</td>

@@ -1810,6 +1810,43 @@ app.get("/api/dids", authenticate, requirePermission("VIEW_DIDS", "MANAGE_DIDS",
   res.json({ dids: rows });
 }));
 
+// Resolves a raw caller number into something a human recognizes, for
+// call-activity displays (currently the Toll-Free Live Dashboard's
+// activity table). Priority: an internal agent's own extension (it's not
+// really "unknown" — it's someone on the team calling) > a saved contact
+// > "Unknown caller" (left to the frontend when this returns null).
+app.get(
+  "/api/contacts/lookup",
+  authenticate,
+  requirePermission("VIEW_CONTACTS", "VIEW_CALL_LOGS", "VIEW_REPORTS", "VIEW_TOLL_FREE"),
+  asyncRoute(async (req, res) => {
+    const raw = String(req.query.number || "").trim();
+    if (!raw) return res.json({ type: null, name: null });
+    const digits = raw.replace(/[^0-9]/g, "");
+    if (!digits) return res.json({ type: null, name: null });
+    // A handful of equivalent forms — numbers get stored/dialed
+    // inconsistently (with/without a leading country-code "1", with/
+    // without "+") across contacts, extensions and live caller ID.
+    const candidates = [...new Set([digits, digits.replace(/^1/, ""), `1${digits.replace(/^1/, "")}`])];
+
+    const [[agent]] = await db.execute(
+      `SELECT name FROM users WHERE tenant_id=? AND extension IN (${candidates.map(() => "?").join(",")}) LIMIT 1`,
+      [req.user.tenant_id, ...candidates]
+    );
+    if (agent) return res.json({ type: "agent", name: agent.name });
+
+    const [[contact]] = await db.execute(
+      `SELECT c.first_name, c.last_name FROM contact_phones p
+         JOIN contacts c ON c.id = p.contact_id AND c.tenant_id = p.tenant_id
+        WHERE p.tenant_id=? AND p.number IN (${candidates.map(() => "?").join(",")}) LIMIT 1`,
+      [req.user.tenant_id, ...candidates]
+    );
+    if (contact) return res.json({ type: "contact", name: [contact.first_name, contact.last_name].filter(Boolean).join(" ") });
+
+    res.json({ type: null, name: null });
+  })
+);
+
 app.get("/api/contacts", authenticate, requirePermission("VIEW_CONTACTS"), asyncRoute(async (req, res) => {
   const search = String(req.query.search || "").slice(0, 80);
   const term = `%${search}%`;

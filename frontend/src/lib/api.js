@@ -135,6 +135,13 @@ export function getCallCounts(filters = {}) {
   return api(`/calls/counts?${query.toString()}`);
 }
 
+// Resolves a raw caller number into a saved contact's name or a teammate's
+// name (if it's actually an internal extension) — {type:"agent"|"contact"
+// |null, name}. Used by the Toll-Free Live Dashboard's activity table.
+export function lookupCallerIdentity(number) {
+  return api(`/contacts/lookup?number=${encodeURIComponent(number)}`);
+}
+
 export async function recordingBlob(callId) {
   const response = await fetch(`${API_BASE}/api/recordings/${encodeURIComponent(callId)}`, {
     headers: { Authorization: `Bearer ${getToken()}` }
