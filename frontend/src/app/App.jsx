@@ -11,6 +11,7 @@ import {
   Phone,
   PhoneCall,
   PhoneForwarded,
+  PhoneOff,
   RefreshCw,
   ShieldCheck,
   Users,
@@ -50,6 +51,7 @@ const LazyRolesAdmin = lazy(() => import("../pages/roles/RolesAdmin"));
 const LazyUsagePage = lazy(() => import("../pages/usage/UsagePage"));
 const LazyUsersAdmin = lazy(() => import("../pages/users/UsersAdmin"));
 const LazyTollFreePage = lazy(() => import("../pages/toll-free/TollFreePage"));
+const LazyDncManagement = lazy(() => import("../pages/dnc/DncManagement"));
 const LazySuperAdminApp = lazy(() => import("../pages/super-admin/SuperAdminApp"));
 
 const NAVIGATION = [
@@ -80,6 +82,7 @@ const NAVIGATION = [
   { id: "roles", label: "Roles & Privileges", icon: ShieldCheck, permissions: ["VIEW_ROLES", "MANAGE_ROLES"] },
   { id: "dids", label: "Phone Numbers", icon: Phone, permissions: ["VIEW_DIDS", "MANAGE_DIDS", "MANAGE_AGENTS"] },
   { id: "toll-free", label: "Toll-Free", icon: Headset, permissions: ["VIEW_TOLL_FREE", "MANAGE_TOLL_FREE_CAMPAIGNS"] },
+  { id: "dnc", label: "Do-Not-Call", icon: PhoneOff, permissions: ["MANAGE_DNC"] },
   { id: "usage", label: "Usage & Billing", icon: CreditCard, permissions: ["VIEW_USAGE", "VIEW_BILLING"] }
 ];
 
@@ -263,6 +266,7 @@ function TenantApp() {
     if (page === "roles") return <LazyRolesAdmin permissions={session.permissions || []} />;
     if (page === "dids") return <LazyDidsPage permissions={session.permissions || []} />;
     if (page === "toll-free") return <LazyTollFreePage permissions={session.permissions || []} isOwner={ownerAccount} />;
+    if (page === "dnc") return <LazyDncManagement />;
     if (page === "usage") return <LazyUsagePage />;
     if (ownerAccount) {
       return (

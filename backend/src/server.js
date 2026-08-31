@@ -44,6 +44,7 @@ import createCommioRoutes from "./commioRoutes.js";
 import * as commio from "./commio.js";
 import createTeamChatRoutes from "./teamChatRoutes.js";
 import createTollFreeRoutes, { getQueueStatus, syncQueuePauseForAgent } from "./tollFreeRoutes.js";
+import createDncRoutes from "./dncRoutes.js";
 import { fileURLToPath } from "node:url";
 import {
   DEFAULT_TEAM_PRIVILEGES,
@@ -563,6 +564,7 @@ app.get("/api/health", asyncRoute(async (_req, res) => {
 app.use("/api/campaigns", createCampaignRoutes(authenticate));
 app.use("/api/dids/commio", createCommioRoutes(authenticate));
 app.use("/api/toll-free", createTollFreeRoutes(authenticate, ami));
+app.use("/api/dnc", createDncRoutes(authenticate));
 app.use("/api/team-chat", createTeamChatRoutes(authenticate));
 // Chat attachments — filenames are random UUIDs (see teamChatRoutes.js), so
 // this is safe to serve statically without going through the JWT-auth

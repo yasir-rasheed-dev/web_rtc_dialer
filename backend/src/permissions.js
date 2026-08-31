@@ -47,7 +47,14 @@ export const PERMISSIONS = Object.freeze([
   { key: "VIEW_CAMPAIGN_REPORTS", name: "View Campaign Reports", category: "Auto Dialer" },
   { key: "EXPORT_CAMPAIGN_REPORTS", name: "Export Campaign Reports", category: "Auto Dialer" },
   { key: "VIEW_TOLL_FREE", name: "View Toll-Free Numbers & Campaigns", category: "Toll-Free" },
-  { key: "MANAGE_TOLL_FREE_CAMPAIGNS", name: "Manage Toll-Free Campaigns & IVRs", category: "Toll-Free" }
+  { key: "MANAGE_TOLL_FREE_CAMPAIGNS", name: "Manage Toll-Free Campaigns & IVRs", category: "Toll-Free" },
+  { key: "MANAGE_DNC", name: "Manage Do-Not-Call List", category: "Compliance" },
+  // Deliberately separate from MANAGE_DNC (which only edits the list) and
+  // never granted by default below other than to Tenant Admin — this is
+  // the one thing that lets a call actually proceed to a listed number,
+  // so it needs the same "opt in per role, never bundled" treatment as
+  // PURCHASE_DIDS above.
+  { key: "CALL_DNC_NUMBERS", name: "Call Do-Not-Call Numbers", category: "Compliance" }
 ]);
 
 const OWNER_BLOCKED = new Set([
@@ -65,7 +72,10 @@ const OWNER_BLOCKED = new Set([
   "WHISPER_CALLS",
   "BARGE_CALLS",
   "USE_AUTO_DIALER",
-  "SKIP_CONTACT"
+  "SKIP_CONTACT",
+  // A call-action permission like the ones above — the Tenant Owner
+  // doesn't place calls at all, so bypassing DNC is meaningless for them.
+  "CALL_DNC_NUMBERS"
 ]);
 
 export const DEFAULT_ROLE_PERMISSIONS = Object.freeze({
@@ -78,7 +88,8 @@ export const DEFAULT_ROLE_PERMISSIONS = Object.freeze({
     "VIEW_AGENTS", "VIEW_TEAMS", "VIEW_REPORTS", "MONITOR_CALLS", "LISTEN_LIVE_CALLS",
     "WHISPER_CALLS", "BARGE_CALLS",
     "VIEW_CAMPAIGNS", "ASSIGN_CONTACTS", "USE_AUTO_DIALER", "SKIP_CONTACT",
-    "VIEW_CAMPAIGN_REPORTS", "EXPORT_CAMPAIGN_REPORTS"
+    "VIEW_CAMPAIGN_REPORTS", "EXPORT_CAMPAIGN_REPORTS",
+    "MANAGE_DNC"
   ],
   Agent: [
     "VIEW_DASHBOARD", "VIEW_DIALER", "MAKE_CALLS", "RECEIVE_CALLS", "HOLD_CALL", "SEND_DTMF",

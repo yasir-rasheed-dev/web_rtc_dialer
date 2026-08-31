@@ -529,6 +529,22 @@ const [transferStage, setTransferStage] = useState("idle");
     const number = formatForDialing(rawNumber);
     if (!isValidDialString(number)) fail("Enter a valid phone number using digits, +, * or #.");
 
+    // Every outbound call funnels through here, so this is the one place
+    // that needs to know about the Do-Not-Call list — extensions/DTMF-style
+    // dial strings just come back { onList: false } from the backend (no
+    // usable 10-digit number to match), so this is a no-op for those.
+    try {
+      const dnc = await api(`/dnc/check?number=${encodeURIComponent(number)}`);
+      if (dnc.onList && !dnc.canCall) {
+        fail("This number is on the Do-Not-Call list and cannot be dialed.");
+      }
+    } catch (dncError) {
+      // A failed check (network blip, etc.) should never itself become the
+      // reason a call can't be made — fail() throws deliberately; anything
+      // else here is the DNC lookup itself erroring, which we let through.
+      if (dncError?.message?.includes("Do-Not-Call")) throw dncError;
+    }
+
     const party = { number, displayName };
     historyCommittedRef.current = false;
     activeCallRef.current = {

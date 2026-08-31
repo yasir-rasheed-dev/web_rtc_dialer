@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 
 import { db, audit } from "./db.js";
 import { hasPermission } from "./saas.js";
+import { dncStatusForUser } from "./dncRoutes.js";
 
 // A contact handed to an agent is held for this long. If the agent closes the
 // tab without dialling, the lock goes stale and the contact returns to the pool.
@@ -184,6 +185,14 @@ export async function dialCampaignContact(req, res) {
     if (contact.locked_by_user_id !== agentId) {
       await connection.rollback();
       return res.status(409).json({ error: "This contact is no longer held by you. Fetch the next contact again." });
+    }
+
+    // Checked before touching attempt_count/locked_at — a blocked call
+    // shouldn't burn an attempt or otherwise look like a real dial.
+    const dnc = await dncStatusForUser(tenantId, req.user, contact.phone);
+    if (dnc.onList && !dnc.canCall) {
+      await connection.rollback();
+      return res.status(403).json({ error: "This number is on the Do-Not-Call list", dnc: true });
     }
 
     const [[campaign]] = await connection.execute(
