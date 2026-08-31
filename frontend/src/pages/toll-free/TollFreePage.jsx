@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Headset, Phone, Plus, Trash2, Voicemail } from "lucide-react";
+import { Headset, MonitorPlay, Phone, Plus, Trash2, Voicemail } from "lucide-react";
 
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
@@ -23,10 +23,11 @@ import {
   updateTollFreeCampaign
 } from "../../lib/api";
 
-const QUEUE_STATUS_POLL_MS = 15000;
 import { CreateCampaignModal, CreateIvrModal } from "./modals";
 
-export default function TollFreePage({ permissions = [] }) {
+const QUEUE_STATUS_POLL_MS = 15000;
+
+export default function TollFreePage({ permissions = [], isOwner = false }) {
   const can = (key) => permissions.includes(key);
   const canManage = can("MANAGE_TOLL_FREE_CAMPAIGNS");
 
@@ -171,11 +172,30 @@ export default function TollFreePage({ permissions = [] }) {
         title="Toll-Free"
         description="Buy a toll-free number from Phone Numbers, then build a campaign here — agents, an optional IVR, and Active/Inactive."
         actions={
-          canManage && (
-            <Button icon={Plus} onClick={() => setCampaignModal({ open: true, campaign: null, agents: [] })} disabled={!unassignedNumbers.length}>
-              New campaign
-            </Button>
-          )
+          <>
+            {isOwner && (
+              <Button
+                variant="secondary"
+                icon={MonitorPlay}
+                onClick={() =>
+                  // Deliberately no "noopener" feature — same-origin
+                  // window.open() clones sessionStorage (the auth token)
+                  // into the new window at creation time, which is what
+                  // lets it authenticate with no separate login step; that
+                  // only reliably happens when the opener relationship is
+                  // kept intact.
+                  window.open(`${window.location.pathname}#toll-free-live`, "ringnex-toll-free-live", "width=1360,height=880")
+                }
+              >
+                Open Dashboard Mode
+              </Button>
+            )}
+            {canManage && (
+              <Button icon={Plus} onClick={() => setCampaignModal({ open: true, campaign: null, agents: [] })} disabled={!unassignedNumbers.length}>
+                New campaign
+              </Button>
+            )}
+          </>
         }
       />
 

@@ -262,7 +262,7 @@ function TenantApp() {
     if (page === "teams") return <LazyTeamsAdmin />;
     if (page === "roles") return <LazyRolesAdmin permissions={session.permissions || []} />;
     if (page === "dids") return <LazyDidsPage permissions={session.permissions || []} />;
-    if (page === "toll-free") return <LazyTollFreePage permissions={session.permissions || []} />;
+    if (page === "toll-free") return <LazyTollFreePage permissions={session.permissions || []} isOwner={ownerAccount} />;
     if (page === "usage") return <LazyUsagePage />;
     if (ownerAccount) {
       return (
