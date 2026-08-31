@@ -36,11 +36,18 @@ function publicCall(call) {
 }
 
 export class CallTracker {
-  constructor(io, recordingRoot) {
+  constructor(io, recordingRoot, applyAgentStatus = null) {
     this.io = io;
     this.recordingRoot = path.resolve(recordingRoot);
     this.calls = new Map();
     this.presence = new Map();
+    // Optional — server.js passes its applyAgentStatus(tenantId, userId,
+    // sipUsername, status) helper here so an agent's status auto-flips to
+    // ON_CALL the moment they're actually bridged (inbound or outbound —
+    // whichever direction resolved agentUserId), and back to READY once
+    // that call ends. Kept optional (rather than a hard dependency) so
+    // this class stays testable/usable without the full server.js wiring.
+    this.applyAgentStatus = applyAgentStatus;
   }
 
   list(tenantId = null) {
@@ -192,8 +199,19 @@ export class CallTracker {
         call.tenantId ||= await this.#resolveTenantByDid(inboundDid);
       }
     } else if (event.Event === "BridgeEnter" || (event.Event === "Newstate" && event.ChannelStateDesc === "Up")) {
+      const wasAlreadyAnswered = Boolean(call.answeredAt);
       call.status = "ANSWERED";
       call.answeredAt ||= new Date().toISOString();
+      // Only on the FIRST answer (BridgeEnter can fire again later, e.g.
+      // re-bridging after a transfer) and only for whichever endpoint is
+      // actually attributed as the agent — not a losing queue candidate
+      // whose own channel happens to reach "Up" transiently.
+      if (!wasAlreadyAnswered && call.agentUserId && detectedEndpoint === call.agent && this.applyAgentStatus) {
+        call.onCallStatusApplied = true;
+        this.applyAgentStatus(call.tenantId, call.agentUserId, call.agent, "ON_CALL").catch((error) =>
+          console.error("[callTracker] auto-ON_CALL failed:", error.message)
+        );
+      }
     } else if (event.Event === "Hold") {
       call.status = "HELD";
     } else if (event.Event === "Unhold") {
@@ -224,6 +242,17 @@ export class CallTracker {
       if (call.tenantId) {
         this.io.to(`tenant:${call.tenantId}:live`).emit("call:ended", visibleCall);
         this.#emitCallTeamEvent(call, "call:ended", visibleCall);
+      }
+      // Mirror of the auto-ON_CALL transition above — an agent whose
+      // status this call itself flipped to ON_CALL becomes available
+      // again the instant it's actually over (both legs gone, not just
+      // this one channel), not left stuck on ON_CALL for whatever comes
+      // next. Doesn't fire for a call that never triggered ON_CALL in the
+      // first place (no agent resolved, or applyAgentStatus wasn't wired).
+      if (call.onCallStatusApplied && call.agentUserId && this.applyAgentStatus) {
+        this.applyAgentStatus(call.tenantId, call.agentUserId, call.agent, "READY").catch((error) =>
+          console.error("[callTracker] auto-READY-after-call failed:", error.message)
+        );
       }
     }
   }

@@ -81,7 +81,35 @@ const io = new SocketServer(server, {
   cors: { origin: corsOriginCheck, methods: ["GET", "POST"] }
 });
 export const ami = new AmiClient(config.ami);
-const tracker = new CallTracker(io, config.recordingRoot);
+
+// Persists an agent's status + every side effect that needs to happen
+// alongside it (toll-free queue pause sync, live socket broadcast) — used
+// by the manual POST /api/agent/status endpoint, by finalizeLogin
+// (auto-READY on login), and by CallTracker's auto-ON_CALL/auto-revert
+// transitions (passed into it below), so all three ways a status can
+// change stay consistent instead of three separate partial copies of this
+// logic drifting apart. Defined here (rather than down by the route) so
+// it exists in time to hand to `new CallTracker(...)`.
+async function applyAgentStatus(tenantId, userId, sipUsername, status) {
+  await db.execute("UPDATE users SET status=? WHERE id=? AND tenant_id=?", [status, userId, tenantId]);
+  // Only READY counts as available for toll-free queues — ON_CALL/Paused/
+  // Wrap-up/Offline shouldn't keep ringing on those too, even while still
+  // a campaign's assigned/roster member.
+  if (sipUsername) await syncQueuePauseForAgent(sipUsername, status);
+  const payload = { tenantId, userId, agent: sipUsername, status, updatedAt: new Date().toISOString() };
+  io.to(`tenant:${tenantId}:live`).emit("agent:status", payload);
+  try {
+    const [teamIds] = await db.execute(
+      `SELECT tm.team_id FROM team_members tm JOIN teams t ON t.id=tm.team_id AND t.tenant_id=tm.tenant_id
+        WHERE tm.tenant_id=? AND tm.user_id=? AND tm.active=1 AND t.active=1`,
+      [tenantId, userId]
+    );
+    for (const row of teamIds) io.to(`tenant:${tenantId}:team:${row.team_id}`).emit("agent:status", payload);
+  } catch { /* migration compatibility */ }
+  return payload;
+}
+
+const tracker = new CallTracker(io, config.recordingRoot, applyAgentStatus);
 let amiConnected = false;
 const loginAttempts = new Map();
 
@@ -968,6 +996,15 @@ async function finalizeLogin(user, req) {
   io.in(`user:${user.id}`).disconnectSockets(true);
   const tokenUser = { ...user, current_session_id: sessionId };
   await audit(user.id, "AUTH_LOGIN", "user", user.id, { ip: req.ip }, user.tenant_id);
+  // A telephony agent logging in is available to take calls by default —
+  // same "not the Tenant Owner, has a SIP endpoint" guard as the manual
+  // status endpoint. Fire-and-forget: a failure here shouldn't block
+  // login itself, just leaves status at whatever it already was.
+  if (!isTenantOwner(user) && user.sip_username) {
+    applyAgentStatus(user.tenant_id, user.id, user.sip_username, "READY").catch((error) =>
+      console.error("[auth] auto-READY on login failed:", error.message)
+    );
+  }
   return { token: signToken(tokenUser), ...authPayload(tokenUser) };
 }
 
@@ -1509,22 +1546,10 @@ app.post("/api/agent/status", authenticate, asyncRoute(async (req, res) => {
     return res.status(403).json({ error: "This account is not a telephony agent" });
   }
   const status = String(req.body.status || "").toUpperCase();
+  // ON_CALL is set automatically by callTracker.js, not something an
+  // agent (or anyone else) picks from the status dropdown themselves.
   if (!["READY", "PAUSED", "WRAP_UP", "OFFLINE"].includes(status)) return res.status(400).json({ error: "Invalid agent status" });
-  await db.execute("UPDATE users SET status=? WHERE id=? AND tenant_id=?", [status, req.user.id, req.user.tenant_id]);
-  // Only READY counts as available for toll-free queues — an agent who set
-  // themselves Paused/Wrap-up/Offline shouldn't keep ringing on those too,
-  // even while still a campaign's assigned/roster member.
-  await syncQueuePauseForAgent(req.user.sip_username, status);
-  const payload = { tenantId: req.user.tenant_id, userId: req.user.id, agent: req.user.sip_username, status, updatedAt: new Date().toISOString() };
-  io.to(`tenant:${req.user.tenant_id}:live`).emit("agent:status", payload);
-  try {
-    const teamIds = await db.execute(
-      `SELECT tm.team_id FROM team_members tm JOIN teams t ON t.id=tm.team_id AND t.tenant_id=tm.tenant_id
-        WHERE tm.tenant_id=? AND tm.user_id=? AND tm.active=1 AND t.active=1`,
-      [req.user.tenant_id, req.user.id]
-    );
-    for (const row of teamIds[0]) io.to(`tenant:${req.user.tenant_id}:team:${row.team_id}`).emit("agent:status", payload);
-  } catch { /* migration compatibility */ }
+  const payload = await applyAgentStatus(req.user.tenant_id, req.user.id, req.user.sip_username, status);
   res.json(payload);
 }));
 

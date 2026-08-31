@@ -11,7 +11,13 @@ const AGENT_STATUS_OPTIONS = [
   { value: "OFFLINE", label: "Offline" },
   { value: "READY", label: "Ready" },
   { value: "PAUSED", label: "Paused" },
-  { value: "WRAP_UP", label: "Wrap up" }
+  { value: "WRAP_UP", label: "Wrap up" },
+  // Set automatically by the backend the moment an agent is bridged to a
+  // call (see applyAgentStatus in server.js), never picked here — kept
+  // disabled so the dropdown shows it correctly instead of going blank
+  // (AGENT_STATUS_OPTIONS.find(...) below would find nothing without
+  // this entry) while still blocking it as a manual choice.
+  { value: "ON_CALL", label: "On call", isDisabled: true }
 ];
 
 // Desktop-only: the call popup window (see DesktopCallBridge.jsx) can be
