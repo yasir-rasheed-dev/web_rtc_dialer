@@ -66,15 +66,40 @@ export default function DesktopCallBridge() {
           window.ringnexSendDTMF?.(payload?.key);
           break;
         case "transfer":
-          // The only command with meaningful failure feedback the popup
-          // should show inline (invalid/unreachable number, no active
-          // call, etc.) — the others are fire-and-forget, same as the
-          // in-page UI's own mute/hold/DTMF buttons.
+          // Blind transfer — kept only for a caller without WARM_TRANSFER
+          // (see CallWindow.jsx, which falls back to this UI in that
+          // case). Meaningful failure feedback the popup should show
+          // inline (invalid/unreachable number, no active call, etc.) —
+          // most other commands are fire-and-forget, same as the in-page
+          // UI's own mute/hold/DTMF buttons.
           try {
             await window.ringnexBlindTransfer?.(payload?.number);
             bridge.sendCommandResult({ command: "transfer", ok: true });
           } catch (error) {
             bridge.sendCommandResult({ command: "transfer", ok: false, error: error?.message });
+          }
+          break;
+        case "startWarmTransfer":
+          // Moves the current call into a ConfBridge and rings the target
+          // agent into it (see /calls/conference/start + /invite-agent in
+          // server.js) — result here just reports whether that kicked off
+          // OK; the actual "ready to complete" transition arrives
+          // separately via the next softphone-state broadcast
+          // (transferStage flips to "ready"), same as every other live
+          // call-state field this popup mirrors.
+          try {
+            await window.ringnexStartWarmTransfer?.(payload?.extension);
+            bridge.sendCommandResult({ command: "startWarmTransfer", ok: true });
+          } catch (error) {
+            bridge.sendCommandResult({ command: "startWarmTransfer", ok: false, error: error?.message });
+          }
+          break;
+        case "completeWarmTransfer":
+          try {
+            await window.ringnexCompleteWarmTransfer?.();
+            bridge.sendCommandResult({ command: "completeWarmTransfer", ok: true });
+          } catch (error) {
+            bridge.sendCommandResult({ command: "completeWarmTransfer", ok: false, error: error?.message });
           }
           break;
         default:

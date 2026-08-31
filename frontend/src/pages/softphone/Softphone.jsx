@@ -227,6 +227,15 @@ const [transferStage, setTransferStage] = useState("idle");
       setMuted(false);
       setHeld(false);
       setCallStatus("idle");
+      // A call ending abnormally mid-transfer (customer hangs up during
+      // consult, agent hangs up before pressing Complete, etc.) used to
+      // leave transferStage stuck at "consulting"/"ready" for the NEXT
+      // call too — nothing reset these on call end, only a successful
+      // completeWarmTransfer or a failed start did. Reset unconditionally
+      // here so every fresh call starts from a clean transfer state.
+      setTransferStage("idle");
+      setTransferTarget("");
+      setConferenceId(null);
     },
     [appendHistory, setCallStatus]
   );
@@ -547,13 +556,20 @@ const [transferStage, setTransferStage] = useState("idle");
       canReceive: can("RECEIVE_CALLS"),
       canHold: can("HOLD_CALL"),
       canBlindTransfer: can("BLIND_TRANSFER"),
-      canSendDtmf: can("SEND_DTMF")
+      canWarmTransfer: can("WARM_TRANSFER"),
+      canSendDtmf: can("SEND_DTMF"),
+      // Mirrored so the Electron call-popup can show its own
+      // consulting/ready UI in step with this window's — see
+      // CallWindow.jsx's supervised-transfer panel.
+      transferStage,
+      transferTarget,
+      conferenceId
     };
     window.dispatchEvent(
       new CustomEvent("ringnex:softphone-state", { detail: window.ringnexSoftphoneState })
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isRegistered, callStatus, currentParty, muted, held]);
+  }, [isRegistered, callStatus, currentParty, muted, held, transferStage, transferTarget, conferenceId]);
 
   const answerCall = async () => {
     setError("");
@@ -620,10 +636,13 @@ const [transferStage, setTransferStage] = useState("idle");
     window.ringnexToggleMute = () => globalControlsRef.current.toggleMute();
     window.ringnexToggleHold = () => globalControlsRef.current.toggleHold();
     // Used by the Electron call-popup window (via DesktopCallBridge) for its
-    // blind-transfer input and DTMF keypad — same indirection pattern, just
-    // wired up once runBlindTransfer/pressKey exist (see the Object.assign
-    // next to pressKey's declaration below).
+    // blind-transfer input, supervised-transfer panel and DTMF keypad —
+    // same indirection pattern, just wired up once runBlindTransfer/
+    // runWarmTransferStart/completeWarmTransfer/pressKey exist (see the
+    // Object.assign next to pressKey's declaration below).
     window.ringnexBlindTransfer = (number) => globalControlsRef.current.runBlindTransfer(number);
+    window.ringnexStartWarmTransfer = (extension) => globalControlsRef.current.runWarmTransferStart(extension);
+    window.ringnexCompleteWarmTransfer = () => globalControlsRef.current.completeWarmTransfer();
     window.ringnexSendDTMF = (key) => globalControlsRef.current.sendDtmf(key);
     return () => {
       delete window.ringnexAnswerCall;
@@ -632,6 +651,8 @@ const [transferStage, setTransferStage] = useState("idle");
       delete window.ringnexToggleMute;
       delete window.ringnexToggleHold;
       delete window.ringnexBlindTransfer;
+      delete window.ringnexStartWarmTransfer;
+      delete window.ringnexCompleteWarmTransfer;
       delete window.ringnexSendDTMF;
     };
   }, []);
@@ -683,100 +704,85 @@ const [transferStage, setTransferStage] = useState("idle");
       );
     }
   };
+  // Core of a warm/supervised transfer, taking the target directly rather
+  // than prompting for it — same reasoning and same split as
+  // runBlindTransfer/transferCall above: the Electron call-popup already
+  // collected the extension through its own input field, so it calls this
+  // directly instead of hitting a native window.prompt inside an
+  // always-on-top popup. Throws on failure instead of setting `error`
+  // itself, so each caller decides how to surface that.
+  const runWarmTransferStart = async (rawTarget) => {
+    if (!callEstablished) {
+      throw new Error("No active call available to transfer.");
+    }
+    const target = String(rawTarget || "").trim();
+    if (!/^\d+$/.test(target)) {
+      throw new Error("Enter a valid agent extension.");
+    }
+
+    setTransferStage("consulting");
+    setTransferTarget(target);
+
+    try {
+      // 1. Move Agent + Customer into a ConfBridge
+      const conference = await api("/calls/conference/start", { method: "POST" });
+      setConferenceId(conference.conferenceId);
+
+      // 2. Ring target agent and join them to same conference — once this
+      // resolves the target agent's phone is ringing/answered into the
+      // bridge, so both the original and target agent can talk to each
+      // other with the customer on hold until Complete is pressed.
+      await api("/calls/conference/invite-agent", {
+        method: "POST",
+        body: { conferenceId: conference.conferenceId, targetExtension: target }
+      });
+
+      setTransferStage("ready");
+      flashNotice(`Agent ${target} invited to transfer`);
+    } catch (warmTransferError) {
+      setTransferStage("idle");
+      setTransferTarget("");
+      setConferenceId(null);
+      throw warmTransferError;
+    }
+  };
+
   const startWarmTransfer = async () => {
-  if (!callEstablished) {
-    setError("No active call available to transfer.");
-    return;
-  }
+    if (!callEstablished) {
+      setError("No active call available to transfer.");
+      return;
+    }
+    const input = window.prompt("Enter agent extension for warm transfer:", "1002");
+    if (input === null) return;
+    setError("");
+    try {
+      await runWarmTransferStart(input);
+    } catch (warmTransferError) {
+      setError(warmTransferError?.message || "Warm transfer could not be started.");
+    }
+  };
 
-  const input = window.prompt(
-    "Enter agent extension for warm transfer:",
-    "1002"
-  );
-
-  if (input === null) return;
-
-  const target = input.trim();
-
-  if (!/^\d+$/.test(target)) {
-    setError("Enter a valid agent extension.");
-    return;
-  }
-
-  setError("");
-  setTransferStage("consulting");
-  setTransferTarget(target);
-
-  try {
-    // 1. Move Agent + Customer into a ConfBridge
-    const conference = await api(
-      "/calls/conference/start",
-      {
-        method: "POST"
-      }
-    );
-
-    setConferenceId(conference.conferenceId);
-
-    // 2. Ring target agent and join them to same conference
-    await api(
-      "/calls/conference/invite-agent",
-      {
-        method: "POST",
-        body: {
-          conferenceId: conference.conferenceId,
-          targetExtension: target
-        }
-      }
-    );
-
-    setTransferStage("ready");
-
-    flashNotice(
-      `Agent ${target} invited to transfer`
-    );
-  } catch (warmTransferError) {
-    setTransferStage("idle");
-
-    setError(
-      warmTransferError?.message ||
-        "Warm transfer could not be started."
-    );
-  }
-};
-const completeWarmTransfer = async () => {
-  if (!conferenceId) {
-    setError("No active warm transfer conference.");
-    return;
-  }
-
-  setError("");
-
-  try {
-    await api(
-      "/calls/conference/complete",
-      {
-        method: "POST",
-        body: {
-          conferenceId
-        }
-      }
-    );
-
-    flashNotice(
-      `Transfer to agent ${transferTarget} completed`
-    );
-
+  // Reusable as-is (no prompt involved) — both the in-page "Complete"
+  // button and the Electron popup call this directly.
+  const completeWarmTransfer = async () => {
+    if (!conferenceId) {
+      throw new Error("No active warm transfer conference.");
+    }
+    await api("/calls/conference/complete", { method: "POST", body: { conferenceId } });
+    flashNotice(`Transfer to agent ${transferTarget} completed`);
     setConferenceId(null);
     setTransferTarget("");
     setTransferStage("idle");
-  } catch (completeTransferError) {
-    setError(
-      completeTransferError?.message ||
-        "Could not complete the transfer."
-    );
-  }
-};
+  };
+
+  const handleCompleteWarmTransferClick = async () => {
+    setError("");
+    try {
+      await completeWarmTransfer();
+    } catch (completeTransferError) {
+      setError(completeTransferError?.message || "Could not complete the transfer.");
+    }
+  };
 const addPstnParticipant = async () => {
   if (!callEstablished) {
     setError("No active call available.");
@@ -857,7 +863,7 @@ const addPstnParticipant = async () => {
   // further down the component body, so referencing them any earlier would
   // hit the temporal dead zone) — extend the same ref object here instead,
   // once both exist. Re-runs every render, same as that first assignment.
-  Object.assign(globalControlsRef.current, { runBlindTransfer, sendDtmf: pressKey });
+  Object.assign(globalControlsRef.current, { runBlindTransfer, runWarmTransferStart, completeWarmTransfer, sendDtmf: pressKey });
 
   const selectSpeaker = async (value) => {
     setSpeakerId(value);
@@ -1144,7 +1150,7 @@ const addPstnParticipant = async () => {
                   </div>
 
                   {can("WARM_TRANSFER") && transferStage === "ready" && conferenceId && (
-                    <Button size="sm" onClick={completeWarmTransfer} className="w-full justify-center">
+                    <Button size="sm" onClick={handleCompleteWarmTransferClick} className="w-full justify-center">
                       Complete transfer
                     </Button>
                   )}

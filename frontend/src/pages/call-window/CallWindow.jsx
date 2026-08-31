@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Grid3x3, Mic, MicOff, Pause, PhoneIncoming, PhoneOff, Play, Send, X } from "lucide-react";
+import { Check, Grid3x3, Mic, MicOff, Pause, PhoneIncoming, PhoneOff, Play, Send, X } from "lucide-react";
 
 import { formatDuration, initials, isValidDialString, normalizeDialString } from "../../lib/phone";
 
@@ -23,7 +23,15 @@ const IDLE_STATE = {
   canReceive: false,
   canHold: false,
   canBlindTransfer: false,
-  canSendDtmf: false
+  canWarmTransfer: false,
+  canSendDtmf: false,
+  // Supervised-transfer progress, mirrored live from Softphone.jsx's own
+  // state (see runWarmTransferStart/completeWarmTransfer there) —
+  // "idle" -> "consulting" (target agent being rung into the conference)
+  // -> "ready" (both agents + customer bridged, waiting on Complete).
+  transferStage: "idle",
+  transferTarget: "",
+  conferenceId: null
 };
 
 const DTMF_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
@@ -42,6 +50,7 @@ export default function CallWindow() {
   const [transferNumber, setTransferNumber] = useState("");
   const [transferBusy, setTransferBusy] = useState(false);
   const [transferError, setTransferError] = useState("");
+  const [completeBusy, setCompleteBusy] = useState(false);
 
   useEffect(() => {
     const bridge = window.ringnexDesktop?.callWindow;
@@ -53,14 +62,34 @@ export default function CallWindow() {
     const bridge = window.ringnexDesktop?.callWindow;
     if (!bridge) return undefined;
     return bridge.onCommandResult((result) => {
-      if (result?.command !== "transfer") return;
-      setTransferBusy(false);
-      if (result.ok) {
-        setPanel(null);
-        setTransferNumber("");
-        setTransferError("");
-      } else {
-        setTransferError(result.error || "The call could not be transferred.");
+      if (result?.command === "transfer") {
+        setTransferBusy(false);
+        if (result.ok) {
+          setPanel(null);
+          setTransferNumber("");
+          setTransferError("");
+        } else {
+          setTransferError(result.error || "The call could not be transferred.");
+        }
+        return;
+      }
+      if (result?.command === "startWarmTransfer") {
+        setTransferBusy(false);
+        if (result.ok) {
+          // Consulting/ready UI comes from state.transferStage, mirrored
+          // separately via the next softphone-state broadcast — this just
+          // dismisses the "enter an extension" input now that it's sent.
+          setPanel(null);
+          setTransferNumber("");
+          setTransferError("");
+        } else {
+          setTransferError(result.error || "Warm transfer could not be started.");
+        }
+        return;
+      }
+      if (result?.command === "completeWarmTransfer") {
+        setCompleteBusy(false);
+        if (!result.ok) setTransferError(result.error || "Could not complete the transfer.");
       }
     });
   }, []);
@@ -84,12 +113,30 @@ export default function CallWindow() {
     setTransferNumber("");
     setTransferError("");
     setTransferBusy(false);
+    setCompleteBusy(false);
   }, [state.callStatus]);
 
   const send = (command, payload) => window.ringnexDesktop?.callWindow?.sendCommand(command, payload);
 
+  // Supervised (warm) transfer when the agent's role has it — the popup's
+  // input collects an extension either way, but what it's FOR differs:
+  // ringing a target agent into a consult conference vs. an unattended
+  // SIP REFER straight to whatever was typed. Falls back to blind
+  // transfer only when the agent lacks WARM_TRANSFER, so removing that
+  // permission never removes transfer capability outright.
   const submitTransfer = (event) => {
     event.preventDefault();
+    if (state.canWarmTransfer) {
+      const target = transferNumber.trim();
+      if (!/^\d+$/.test(target)) {
+        setTransferError("Enter a valid agent extension.");
+        return;
+      }
+      setTransferError("");
+      setTransferBusy(true);
+      send("startWarmTransfer", { extension: target });
+      return;
+    }
     const target = normalizeDialString(transferNumber);
     if (!isValidDialString(target)) {
       setTransferError("Enter a valid agent extension or phone number.");
@@ -98,6 +145,11 @@ export default function CallWindow() {
     setTransferError("");
     setTransferBusy(true);
     send("transfer", { number: target });
+  };
+
+  const completeTransfer = () => {
+    setCompleteBusy(true);
+    send("completeWarmTransfer");
   };
 
   const isIncoming = state.callStatus === "incoming";
@@ -209,15 +261,33 @@ export default function CallWindow() {
             </button>
           </div>
 
-          {state.canBlindTransfer && (
+          {(state.canWarmTransfer || state.canBlindTransfer) && (
             <div className="shrink-0 border-t border-border px-4 py-2 text-center">
-              <button
-                type="button"
-                onClick={() => setPanel((current) => (current === "transfer" ? null : "transfer"))}
-                className="text-xs font-medium text-muted hover:text-text"
-              >
-                {panel === "transfer" ? "Cancel transfer" : "Transfer call"}
-              </button>
+              {state.transferStage === "ready" ? (
+                <div className="flex items-center justify-center gap-2">
+                  <span className="text-xs font-medium text-success">Ready — {state.transferTarget} joined</span>
+                  <button
+                    type="button"
+                    onClick={completeTransfer}
+                    disabled={completeBusy}
+                    className="flex items-center gap-1 rounded-lg bg-success px-2 py-1 text-xs font-semibold text-white disabled:opacity-50"
+                    aria-label="Complete transfer"
+                  >
+                    <Check size={12} />
+                    Complete
+                  </button>
+                </div>
+              ) : state.transferStage === "consulting" ? (
+                <span className="text-xs font-medium text-muted">Ringing {state.transferTarget}…</span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setPanel((current) => (current === "transfer" ? null : "transfer"))}
+                  className="text-xs font-medium text-muted hover:text-text"
+                >
+                  {panel === "transfer" ? "Cancel transfer" : "Transfer call"}
+                </button>
+              )}
             </div>
           )}
 
@@ -244,7 +314,7 @@ export default function CallWindow() {
               </motion.div>
             )}
 
-            {panel === "transfer" && (
+            {panel === "transfer" && state.transferStage === "idle" && (
               <motion.form
                 onSubmit={submitTransfer}
                 initial={{ opacity: 0, height: 0 }}
@@ -252,11 +322,16 @@ export default function CallWindow() {
                 exit={{ opacity: 0, height: 0 }}
                 className="shrink-0 overflow-hidden border-t border-border px-4 py-3"
               >
+                {state.canWarmTransfer && (
+                  <p className="mb-1.5 text-[11px] text-muted">
+                    Rings the agent into a consult call — you'll talk to them, then press Complete.
+                  </p>
+                )}
                 <div className="flex items-center gap-2">
                   <input
                     value={transferNumber}
                     onChange={(event) => setTransferNumber(event.target.value)}
-                    placeholder="Extension or number"
+                    placeholder={state.canWarmTransfer ? "Agent extension" : "Extension or number"}
                     autoFocus
                     className="w-full rounded-lg border border-border bg-surface-2 px-2.5 py-1.5 text-sm text-text outline-none transition-colors focus:border-brand"
                   />
