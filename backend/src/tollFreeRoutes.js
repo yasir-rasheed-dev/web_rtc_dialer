@@ -120,7 +120,11 @@ async function putQueue(campaign, sipUsernames) {
 // QueueEntry per waiting caller, then QueueStatusComplete, all tagged with
 // the same ActionID). Collect that stream manually via the "event"
 // EventEmitter instead of the plain action() promise.
-async function getQueueStatus(ami, queueName, timeoutMs = 5000) {
+// Exported for server.js's socket "toll-free:subscribe" handler (the Live
+// Dashboard window's per-campaign queue feed) — same AMI multi-event
+// collection this file's own queue-status route uses, so the two never
+// disagree on how a QueueStatus response gets parsed.
+export async function getQueueStatus(ami, queueName, timeoutMs = 5000) {
   return new Promise((resolve, reject) => {
     let actionId = null;
     let settled = false;

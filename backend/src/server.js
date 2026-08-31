@@ -43,7 +43,7 @@ import createCampaignRoutes from "./campaignRoutes.js";
 import createCommioRoutes from "./commioRoutes.js";
 import * as commio from "./commio.js";
 import createTeamChatRoutes from "./teamChatRoutes.js";
-import createTollFreeRoutes, { syncQueuePauseForAgent } from "./tollFreeRoutes.js";
+import createTollFreeRoutes, { getQueueStatus, syncQueuePauseForAgent } from "./tollFreeRoutes.js";
 import { fileURLToPath } from "node:url";
 import {
   DEFAULT_TEAM_PRIVILEGES,
@@ -2668,6 +2668,63 @@ app.post("/api/supervisor/monitor", authenticate, requirePermission("MONITOR_CAL
 }));
 
 // ---------------------------
+// Toll-Free Live Dashboard — per-campaign queue feed
+// ---------------------------
+// Live calls/agent-status for the dashboard ride the EXISTING tenant
+// "live" room broadcasts (call:update/call:ended/presence:update/
+// agent:status) — nothing new needed there, the dashboard's socket just
+// needs to land in that room like any other tenant-wide viewer already
+// does above. What Asterisk doesn't push on its own is per-caller QUEUE
+// state (who's on hold, how long) — AMI's QueueStatus is a request/
+// response action, not an event stream, so this polls it server-side
+// (one poll loop per campaign, shared across every dashboard window
+// watching that campaign — not one poll per browser tab) and re-emits the
+// result over Socket.IO, so the *client* still only ever sees push-style
+// updates even though the backend's source of truth is a poll.
+const QUEUE_POLL_MS = 2000;
+const queuePollers = new Map(); // campaignId -> setInterval handle
+
+function tollFreeRoom(campaignId) {
+  return `toll-free:${campaignId}`;
+}
+
+function startCampaignQueuePoll(campaignId) {
+  if (queuePollers.has(campaignId)) return;
+  const queueName = `ringnex-campaign-${campaignId}`;
+  const tick = async () => {
+    try {
+      const { entries } = await getQueueStatus(ami, queueName);
+      io.to(tollFreeRoom(campaignId)).emit("toll-free:queue", {
+        campaignId,
+        ok: true,
+        waiting: entries.length,
+        entries: entries.map((entry) => ({
+          uniqueid: entry.Uniqueid || entry.Channel,
+          channel: entry.Channel || "",
+          callerIdNum: entry.CallerIDNum || entry.CallerId || "",
+          waitSec: Number(entry.Wait || 0),
+          position: Number(entry.Position || 0)
+        }))
+      });
+    } catch (error) {
+      io.to(tollFreeRoom(campaignId)).emit("toll-free:queue", { campaignId, ok: false, waiting: 0, entries: [], error: error.message });
+    }
+  };
+  tick();
+  queuePollers.set(campaignId, setInterval(tick, QUEUE_POLL_MS));
+}
+
+function stopCampaignQueuePollIfEmpty(campaignId) {
+  const room = io.sockets.adapter.rooms.get(tollFreeRoom(campaignId));
+  if (room && room.size > 0) return;
+  const handle = queuePollers.get(campaignId);
+  if (handle) {
+    clearInterval(handle);
+    queuePollers.delete(campaignId);
+  }
+}
+
+// ---------------------------
 // Socket tenant isolation
 // ---------------------------
 io.use(async (socket, next) => {
@@ -2709,6 +2766,34 @@ io.on("connection", async (socket) => {
   }
 
   socket.emit("system:state", { ami: amiConnected, calls });
+
+  // Toll-Free Live Dashboard's per-campaign queue feed (see the poller
+  // helpers above). Re-verifies tenant ownership of the campaign on every
+  // subscribe — a socket already being tenant-scoped for the call/presence
+  // rooms above doesn't by itself prove this specific campaignId belongs
+  // to this tenant.
+  socket.tollFreeCampaigns = new Set();
+  socket.on("toll-free:subscribe", async ({ campaignId } = {}) => {
+    if (!campaignId || socket.tollFreeCampaigns.has(campaignId)) return;
+    try {
+      const [[campaign]] = await db.execute(`SELECT id FROM inbound_campaigns WHERE id=? AND tenant_id=?`, [campaignId, user.tenant_id]);
+      if (!campaign) return;
+    } catch {
+      return;
+    }
+    socket.join(tollFreeRoom(campaignId));
+    socket.tollFreeCampaigns.add(campaignId);
+    startCampaignQueuePoll(campaignId);
+  });
+  socket.on("toll-free:unsubscribe", ({ campaignId } = {}) => {
+    if (!campaignId) return;
+    socket.leave(tollFreeRoom(campaignId));
+    socket.tollFreeCampaigns.delete(campaignId);
+    stopCampaignQueuePollIfEmpty(campaignId);
+  });
+  socket.on("disconnect", () => {
+    for (const campaignId of socket.tollFreeCampaigns) stopCampaignQueuePollIfEmpty(campaignId);
+  });
 });
 
 ami.on("connection", (connected) => {
