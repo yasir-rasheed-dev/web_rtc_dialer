@@ -25,6 +25,7 @@ import { api, getToken, setToken } from "../lib/api";
 import { API_BASE } from "../lib/apiConfig";
 import { hasAny } from "../lib/permissions";
 import { useTeamChatUnreadCount } from "../lib/teamChatBadge";
+import { useMissedCallsBadge } from "../lib/missedCallsBadge";
 import Login from "../pages/login/Login";
 import Dashboard from "../pages/dashboard/Dashboard";
 import Supervisor from "../pages/supervisor/Supervisor";
@@ -123,6 +124,7 @@ function TenantApp() {
   const [liveAgentStatus, setLiveAgentStatus] = useState({});
   const [supervisorAgents, setSupervisorAgents] = useState([]);
   const teamChatUnread = useTeamChatUnreadCount(session);
+  const missedCalls = useMissedCallsBadge(session);
 
   useEffect(() => {
     localStorage.setItem("ringnex.sidebarCollapsed", collapsed ? "1" : "0");
@@ -158,9 +160,10 @@ function TenantApp() {
         socket.on("call:update", (call) =>
           setLiveCalls((calls) => [...calls.filter((item) => item.linkedid !== call.linkedid), call])
         );
-        socket.on("call:ended", (call) =>
-          setLiveCalls((calls) => calls.filter((item) => item.linkedid !== call.linkedid))
-        );
+        socket.on("call:ended", (call) => {
+          setLiveCalls((calls) => calls.filter((item) => item.linkedid !== call.linkedid));
+          missedCalls.recordCallEnded(call);
+        });
         socket.on("presence:update", (item) =>
           setPresence((items) => [...items.filter((entry) => entry.agent !== item.agent), item])
         );
@@ -181,7 +184,7 @@ function TenantApp() {
       cancelled = true;
       socket?.disconnect();
     };
-  }, [session]);
+  }, [session, missedCalls.recordCallEnded]);
 
   useEffect(() => {
     if (!session || !hasAny(session, ["MONITOR_CALLS", "VIEW_REPORTS"])) return;
@@ -207,6 +210,11 @@ function TenantApp() {
   useEffect(() => {
     if (navigation.length && !navigation.some((item) => item.id === page)) setPage(navigation[0].id);
   }, [navigation, page]);
+
+  useEffect(() => {
+    if (page === "call-logs") missedCalls.markSeen();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
 
   const changeStatus = async (status) => {
     setAgentStatus(status);
@@ -284,7 +292,7 @@ function TenantApp() {
         amiConnected={amiConnected}
         collapsed={collapsed}
         setCollapsed={setCollapsed}
-        badges={{ "team-chat": teamChatUnread }}
+        badges={{ "team-chat": teamChatUnread, "call-logs": missedCalls.count }}
       />
       <div
         className="console-content transition-[margin-left] duration-200 lg:!ml-[var(--rn-sidebar-w)]"

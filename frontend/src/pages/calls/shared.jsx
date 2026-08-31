@@ -33,12 +33,6 @@ export function useAgentOptions() {
   return agents;
 }
 
-const DIRECTION_OPTIONS = [
-  { value: "", label: "All directions" },
-  { value: "INBOUND", label: "Inbound" },
-  { value: "OUTBOUND", label: "Outbound" }
-];
-
 const STATUS_OPTIONS = [
   { value: "", label: "All statuses" },
   { value: "COMPLETED", label: "Completed" },
@@ -83,16 +77,6 @@ export function Filters({ filters, setFilters, onApply, agents, includeCallFilte
             options={agentOptions}
             value={agentOptions.find((option) => option.value === filters.agentId) || agentOptions[0]}
             onChange={(option) => setFilters({ ...filters, agentId: option.value })}
-          />
-        </label>
-      )}
-      {includeCallFilters && (
-        <label className={`${fieldLabelClass()} w-[170px]`}>
-          Direction
-          <Select
-            options={DIRECTION_OPTIONS}
-            value={DIRECTION_OPTIONS.find((option) => option.value === filters.direction) || DIRECTION_OPTIONS[0]}
-            onChange={(option) => setFilters({ ...filters, direction: option.value })}
           />
         </label>
       )}

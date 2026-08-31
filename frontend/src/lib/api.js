@@ -124,6 +124,17 @@ export async function exportCallReport({ direction, filters = {}, format, onProg
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 
+// Tab counters for the Call Logs page — all four (all/incoming/outgoing/
+// missed) in one call, against the shared filters only (date/agent/
+// search — never direction/status/outcome, which the tabs control).
+export function getCallCounts(filters = {}) {
+  const query = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") query.set(key, value);
+  });
+  return api(`/calls/counts?${query.toString()}`);
+}
+
 export async function recordingBlob(callId) {
   const response = await fetch(`${API_BASE}/api/recordings/${encodeURIComponent(callId)}`, {
     headers: { Authorization: `Bearer ${getToken()}` }
