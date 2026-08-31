@@ -37,7 +37,7 @@ const RING_STRATEGIES = [
 // the toll-free number itself can't be changed once a campaign exists on
 // it (that's a delete-and-recreate), so the DID picker is only shown when
 // creating.
-export function CreateCampaignModal({ open, onClose, campaign = null, numbers, ivrs, users, onSaved }) {
+export function CreateCampaignModal({ open, onClose, campaign = null, currentAgents = [], numbers, ivrs, users, onSaved }) {
   const isEdit = Boolean(campaign);
   const [name, setName] = useState("");
   const [didId, setDidId] = useState("");
@@ -53,19 +53,18 @@ export function CreateCampaignModal({ open, onClose, campaign = null, numbers, i
     if (!open) return;
     setName(campaign?.name || "");
     setDidId(campaign?.did_id || "");
-    setAgentIds([]);
+    // Pre-filled from the campaign's actual current roster (TollFreePage
+    // fetches this via getTollFreeCampaign before opening Edit) — PATCH's
+    // agentIds is replace-all semantics, so starting from what's already
+    // assigned (rather than empty) is what makes "open Edit, change one
+    // thing, save" not silently unassign every agent.
+    setAgentIds(currentAgents.map((a) => a.user_id));
     setIvrMode(campaign?.ivr_id ? "existing" : "none");
     setIvrId(campaign?.ivr_id || "");
     setRingStrategy(campaign?.ring_strategy || "leastrecent");
     setActive(campaign?.status === "ACTIVE");
     setError("");
-    // Agent multi-select starts empty on edit too — the campaign detail
-    // page (not this modal) is what shows/edits the current roster; this
-    // modal's agentIds only ever *adds* to it via PATCH's replace-all
-    // semantics, so pre-filling would require fetching the full roster
-    // just to re-submit it unchanged. Simplest correct behavior: leave
-    // agent selection to the roster editor, not this quick campaign form.
-  }, [open, campaign]);
+  }, [open, campaign, currentAgents]);
 
   const availableNumbers = useMemo(
     () => numbers.filter((n) => !n.campaign_id || n.id === campaign?.did_id),
@@ -89,18 +88,22 @@ export function CreateCampaignModal({ open, onClose, campaign = null, numbers, i
     setBusy(true);
     setError("");
     try {
+      // Always send agentIds (even empty) now that the picker starts
+      // pre-filled with the real current roster on edit — it reflects the
+      // actual intended state, including "remove everyone", not just
+      // "here's who to add".
       const body = {
         name: name.trim(),
         status: active ? "ACTIVE" : "INACTIVE",
         ivrId: ivrMode === "existing" ? ivrId : null,
         ringStrategy,
-        ...(agentIds.length ? { agentIds } : {})
+        agentIds
       };
       let result;
       if (isEdit) {
         result = await updateTollFreeCampaign(campaign.id, body);
       } else {
-        result = await createTollFreeCampaign({ ...body, didId, agentIds });
+        result = await createTollFreeCampaign({ ...body, didId });
       }
       notifySuccess(`Campaign "${result.campaign.name}" saved.`);
       if (result.asteriskSync && !result.asteriskSync.ok) {
@@ -139,7 +142,7 @@ export function CreateCampaignModal({ open, onClose, campaign = null, numbers, i
         )}
 
         <label className={fieldLabelClass()}>
-          {isEdit ? "Add agents to the roster" : "Assign agents"}
+          {isEdit ? "Agent roster" : "Assign agents"}
           <Select
             isMulti
             isSearchable

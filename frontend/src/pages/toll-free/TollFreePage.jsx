@@ -14,6 +14,7 @@ import {
   api,
   deleteTollFreeCampaign,
   deleteTollFreeIvr,
+  getTollFreeCampaign,
   getTollFreeIvr,
   getTollFreeQueueStatus,
   listTollFreeCampaigns,
@@ -36,7 +37,7 @@ export default function TollFreePage({ permissions = [] }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const [campaignModal, setCampaignModal] = useState({ open: false, campaign: null });
+  const [campaignModal, setCampaignModal] = useState({ open: false, campaign: null, agents: [] });
   const [ivrModal, setIvrModal] = useState({ open: false, ivr: null });
   // Keyed by campaign id -> { waiting, longestWaitSec } | undefined (still
   // loading). Polled, not pushed — a toll-free queue is low-traffic enough
@@ -126,6 +127,15 @@ export default function TollFreePage({ permissions = [] }) {
     }
   };
 
+  const openEditCampaign = async (campaign) => {
+    try {
+      const detail = await getTollFreeCampaign(campaign.id);
+      setCampaignModal({ open: true, campaign: detail.campaign, agents: detail.agents });
+    } catch (e) {
+      notifyError(e.message);
+    }
+  };
+
   const openEditIvr = async (ivr) => {
     try {
       const detail = await getTollFreeIvr(ivr.id);
@@ -162,7 +172,7 @@ export default function TollFreePage({ permissions = [] }) {
         description="Buy a toll-free number from Phone Numbers, then build a campaign here — agents, an optional IVR, and Active/Inactive."
         actions={
           canManage && (
-            <Button icon={Plus} onClick={() => setCampaignModal({ open: true, campaign: null })} disabled={!unassignedNumbers.length}>
+            <Button icon={Plus} onClick={() => setCampaignModal({ open: true, campaign: null, agents: [] })} disabled={!unassignedNumbers.length}>
               New campaign
             </Button>
           )
@@ -235,7 +245,7 @@ export default function TollFreePage({ permissions = [] }) {
                     <td className="py-3">
                       {canManage && (
                         <div className="flex items-center gap-1">
-                          <Button size="sm" variant="secondary" onClick={() => setCampaignModal({ open: true, campaign })}>
+                          <Button size="sm" variant="secondary" onClick={() => openEditCampaign(campaign)}>
                             Edit
                           </Button>
                           <button
@@ -259,7 +269,7 @@ export default function TollFreePage({ permissions = [] }) {
             title="No campaigns yet"
             action={
               canManage && unassignedNumbers.length ? (
-                <Button size="sm" icon={Plus} onClick={() => setCampaignModal({ open: true, campaign: null })}>
+                <Button size="sm" icon={Plus} onClick={() => setCampaignModal({ open: true, campaign: null, agents: [] })}>
                   New campaign
                 </Button>
               ) : undefined
@@ -310,8 +320,9 @@ export default function TollFreePage({ permissions = [] }) {
 
       <CreateCampaignModal
         open={campaignModal.open}
-        onClose={() => setCampaignModal({ open: false, campaign: null })}
+        onClose={() => setCampaignModal({ open: false, campaign: null, agents: [] })}
         campaign={campaignModal.campaign}
+        currentAgents={campaignModal.agents}
         numbers={numbers}
         ivrs={ivrs}
         users={users}
