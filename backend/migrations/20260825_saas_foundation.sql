@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS pricing_plans (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uq_pricing_plans_code (code)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS tenants (
   id CHAR(36) NOT NULL PRIMARY KEY,
@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS tenants (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uq_tenants_workspace (workspace),
   KEY idx_tenants_status (status)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS super_admins (
   id CHAR(36) NOT NULL PRIMARY KEY,
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS super_admins (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uq_super_admin_email (email)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS permissions (
   id CHAR(36) NOT NULL PRIMARY KEY,
@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS permissions (
   description VARCHAR(500) NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uq_permission_key (permission_key)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS roles (
   id CHAR(36) NOT NULL PRIMARY KEY,
@@ -76,14 +76,14 @@ CREATE TABLE IF NOT EXISTS roles (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uq_tenant_role_name (tenant_id, name),
   KEY idx_roles_tenant (tenant_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS role_permissions (
   role_id CHAR(36) NOT NULL,
   permission_id CHAR(36) NOT NULL,
   PRIMARY KEY (role_id, permission_id),
   KEY idx_role_permissions_permission (permission_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS tenant_dids (
   id CHAR(36) NOT NULL PRIMARY KEY,
@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS tenant_dids (
   UNIQUE KEY uq_did_number (number),
   KEY idx_tenant_dids_tenant (tenant_id),
   KEY idx_tenant_dids_user (assigned_user_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS tenant_extensions (
   id CHAR(36) NOT NULL PRIMARY KEY,
@@ -109,7 +109,7 @@ CREATE TABLE IF NOT EXISTS tenant_extensions (
   released_at DATETIME NULL,
   UNIQUE KEY uq_tenant_extension (tenant_id, extension),
   KEY idx_tenant_extensions_user (user_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS contacts (
   id CHAR(36) NOT NULL PRIMARY KEY,
@@ -126,7 +126,7 @@ CREATE TABLE IF NOT EXISTS contacts (
   KEY idx_contacts_tenant (tenant_id),
   KEY idx_contacts_phone (tenant_id, phone),
   KEY idx_contacts_email (tenant_id, email)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS carrier_cdrs (
   id CHAR(36) NOT NULL PRIMARY KEY,
@@ -145,7 +145,7 @@ CREATE TABLE IF NOT EXISTS carrier_cdrs (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uq_carrier_cdr (provider, provider_cdr_id),
   KEY idx_carrier_cdr_tenant_time (tenant_id, started_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Add SaaS ownership columns to the existing working tables.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS tenant_id CHAR(36) NULL AFTER id;

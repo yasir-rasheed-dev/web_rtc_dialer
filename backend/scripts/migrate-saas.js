@@ -24,7 +24,7 @@ try {
     CREATE TABLE IF NOT EXISTS schema_migrations (
       migration_name VARCHAR(190) NOT NULL PRIMARY KEY,
       applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
 
   const [appliedRows] = await connection.query("SELECT migration_name FROM schema_migrations");
