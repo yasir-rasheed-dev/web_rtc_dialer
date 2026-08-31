@@ -475,6 +475,19 @@ function validateIvrOptions(rawOptions) {
   });
 }
 
+// The dialplan's Read() only plays ONE file before waiting for a digit —
+// it never plays each option's own prompt_audio_path (that field exists
+// for a future per-digit re-prompt, but nothing reads it today). So the
+// only audio a caller actually hears has to be the greeting PLUS every
+// option's prompt spoken together, in digit order, e.g. "Thanks for
+// calling Ringnex. Press 1 for sales. Press 2 to hang up." — that combined
+// script is what greeting_audio_path actually synthesizes, not just the
+// bare greeting text.
+function buildFullMenuScript(greetingText, options) {
+  const sorted = [...options].sort((a, b) => a.digit.localeCompare(b.digit));
+  return [greetingText, ...sorted.map((o) => o.promptText)].join(". ");
+}
+
 async function createIvr(req, res, ami) {
   const name = String(req.body.name || "").trim().slice(0, 160);
   const greetingText = String(req.body.greetingText || "").trim().slice(0, 500);
@@ -491,7 +504,7 @@ async function createIvr(req, res, ami) {
     if (validCampaigns.length !== targetIds.length) return res.status(400).json({ error: "One or more target campaigns are invalid" });
   }
 
-  const greetingAudioPath = await synthesizeToFile(greetingText);
+  const greetingAudioPath = await synthesizeToFile(buildFullMenuScript(greetingText, options));
   const id = crypto.randomUUID();
   const connection = await db.getConnection();
   try {
@@ -546,7 +559,7 @@ async function updateIvr(req, res, ami) {
     if (validCampaigns.length !== targetIds.length) return res.status(400).json({ error: "One or more target campaigns are invalid" });
   }
 
-  const greetingAudioPath = await synthesizeToFile(greetingText);
+  const greetingAudioPath = await synthesizeToFile(buildFullMenuScript(greetingText, options));
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();

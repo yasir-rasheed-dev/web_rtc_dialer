@@ -292,12 +292,12 @@ export function CreateIvrModal({ open, onClose, ivr = null, campaigns, onSaved }
         </label>
 
         <label className={fieldLabelClass()}>
-          Greeting (spoken via text-to-speech)
+          Greeting (the intro line only — each option's prompt below gets spoken right after it, so don't repeat "press 1 for…" here)
           <textarea
             rows={2}
             value={greetingText}
             onChange={(e) => setGreetingText(e.target.value)}
-            placeholder="Thanks for calling Ringnex. Press 1 for sales, 2 for support."
+            placeholder="Thanks for calling Ringnex."
             className={FIELD_CLASS}
           />
         </label>
