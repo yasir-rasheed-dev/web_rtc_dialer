@@ -40,6 +40,16 @@ const SOUNDS_SSH_KEY = process.env.ASTERISK_SOUNDS_SSH_KEY || "";
 const SOUNDS_REMOTE_DIR =
   process.env.ASTERISK_SOUNDS_REMOTE_DIR || "/opt/ringnex-webrtc/var/lib/asterisk/sounds/en/custom";
 
+// Bare command names by default (normal PATH lookup — fine on Linux/most
+// setups). Overridable because Windows PATH changes only take effect in a
+// process tree started fresh *after* the change (a new terminal tab often
+// isn't enough if its host app — VS Code, a pinned Windows Terminal — was
+// already running before the install), which made bare "espeak-ng" keep
+// failing here even after a supposed restart. A full .exe path sidesteps
+// that entirely.
+const ESPEAK_NG_BIN = process.env.ESPEAK_NG_BIN || "espeak-ng";
+const FFMPEG_BIN = process.env.FFMPEG_BIN || "ffmpeg";
+
 let espeakChecked = false;
 let espeakAvailable = false;
 let ffmpegChecked = false;
@@ -56,7 +66,7 @@ function probe(command, args) {
 async function checkEspeakAvailable() {
   if (espeakChecked) return espeakAvailable;
   espeakChecked = true;
-  espeakAvailable = await probe("espeak-ng", ["--version"]);
+  espeakAvailable = await probe(ESPEAK_NG_BIN, ["--version"]);
   if (!espeakAvailable) {
     console.warn(
       "[tts] espeak-ng not found on PATH — IVR prompts will save without audio " +
@@ -69,7 +79,7 @@ async function checkEspeakAvailable() {
 async function checkFfmpegAvailable() {
   if (ffmpegChecked) return ffmpegAvailable;
   ffmpegChecked = true;
-  ffmpegAvailable = await probe("ffmpeg", ["-version"]);
+  ffmpegAvailable = await probe(FFMPEG_BIN, ["-version"]);
   if (!ffmpegAvailable) {
     console.warn(
       "[tts] ffmpeg not found on PATH — IVR prompts will save without audio " +
@@ -143,8 +153,8 @@ export async function synthesizeToFile(text) {
 
   if (!fs.existsSync(wavPath)) {
     try {
-      await run("espeak-ng", ["-w", rawPath, "-s", "150", trimmed]);
-      await run("ffmpeg", ["-y", "-i", rawPath, "-ar", "8000", "-ac", "1", "-sample_fmt", "s16", wavPath]);
+      await run(ESPEAK_NG_BIN, ["-w", rawPath, "-s", "150", trimmed]);
+      await run(FFMPEG_BIN, ["-y", "-i", rawPath, "-ar", "8000", "-ac", "1", "-sample_fmt", "s16", wavPath]);
     } catch (error) {
       console.error("[tts] synthesis failed:", error.message);
       return null;
