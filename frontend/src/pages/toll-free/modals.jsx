@@ -22,6 +22,17 @@ const IVR_MODES = [
   { value: "existing", label: "Use an existing IVR" }
 ];
 
+// ringall = every roster agent rings at once, first to answer wins (fastest
+// pickup, but decline/no-answer just means the caller waits for someone
+// else already ringing). leastrecent = ring one agent at a time, starting
+// with whoever's gone longest since their last call — a decline or 20s of
+// no answer moves to the next agent in that order, so idle time is what
+// decides who gets the next call, not who happens to answer fastest.
+const RING_STRATEGIES = [
+  { value: "leastrecent", label: "Ring the longest-idle agent first, one at a time" },
+  { value: "ringall", label: "Ring every agent at once" }
+];
+
 // Handles both create (no `campaign` prop) and edit (campaign passed in) —
 // the toll-free number itself can't be changed once a campaign exists on
 // it (that's a delete-and-recreate), so the DID picker is only shown when
@@ -33,6 +44,7 @@ export function CreateCampaignModal({ open, onClose, campaign = null, numbers, i
   const [agentIds, setAgentIds] = useState([]);
   const [ivrMode, setIvrMode] = useState("none");
   const [ivrId, setIvrId] = useState("");
+  const [ringStrategy, setRingStrategy] = useState("leastrecent");
   const [active, setActive] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -44,6 +56,7 @@ export function CreateCampaignModal({ open, onClose, campaign = null, numbers, i
     setAgentIds([]);
     setIvrMode(campaign?.ivr_id ? "existing" : "none");
     setIvrId(campaign?.ivr_id || "");
+    setRingStrategy(campaign?.ring_strategy || "leastrecent");
     setActive(campaign?.status === "ACTIVE");
     setError("");
     // Agent multi-select starts empty on edit too — the campaign detail
@@ -80,6 +93,7 @@ export function CreateCampaignModal({ open, onClose, campaign = null, numbers, i
         name: name.trim(),
         status: active ? "ACTIVE" : "INACTIVE",
         ivrId: ivrMode === "existing" ? ivrId : null,
+        ringStrategy,
         ...(agentIds.length ? { agentIds } : {})
       };
       let result;
@@ -157,6 +171,16 @@ export function CreateCampaignModal({ open, onClose, campaign = null, numbers, i
             />
           </label>
         )}
+
+        <label className={fieldLabelClass()}>
+          Ring strategy
+          <Select
+            options={RING_STRATEGIES}
+            value={RING_STRATEGIES.find((o) => o.value === ringStrategy)}
+            onChange={(o) => setRingStrategy(o.value)}
+            isSearchable={false}
+          />
+        </label>
 
         <label className="flex items-center gap-2.5 text-xs font-medium text-muted">
           <Toggle checked={active} onChange={setActive} label="Campaign active" />

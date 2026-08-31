@@ -14,11 +14,14 @@ import {
   api,
   deleteTollFreeCampaign,
   deleteTollFreeIvr,
+  getTollFreeQueueStatus,
   listTollFreeCampaigns,
   listTollFreeIvrs,
   listTollFreeNumbers,
   updateTollFreeCampaign
 } from "../../lib/api";
+
+const QUEUE_STATUS_POLL_MS = 15000;
 import { CreateCampaignModal, CreateIvrModal } from "./modals";
 
 export default function TollFreePage({ permissions = [] }) {
@@ -34,6 +37,12 @@ export default function TollFreePage({ permissions = [] }) {
 
   const [campaignModal, setCampaignModal] = useState({ open: false, campaign: null });
   const [ivrModalOpen, setIvrModalOpen] = useState(false);
+  // Keyed by campaign id -> { waiting, longestWaitSec } | undefined (still
+  // loading). Polled, not pushed — a toll-free queue is low-traffic enough
+  // that a plain interval is simpler than wiring a new socket channel for
+  // it, and it self-heals if a poll fails (getTollFreeQueueStatus never
+  // throws, see api.js).
+  const [queueStatus, setQueueStatus] = useState({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -59,6 +68,31 @@ export default function TollFreePage({ permissions = [] }) {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Poll live queue depth for every ACTIVE campaign. Runs independently of
+  // `load()` so a slow/failed Asterisk poll never blocks the rest of the
+  // page, and re-subscribes whenever the active campaign list changes.
+  const activeCampaignIds = campaigns.filter((c) => c.status === "ACTIVE").map((c) => c.id).join(",");
+  useEffect(() => {
+    const ids = activeCampaignIds ? activeCampaignIds.split(",") : [];
+    if (!ids.length) return undefined;
+    let cancelled = false;
+    const poll = () => {
+      ids.forEach((id) => {
+        getTollFreeQueueStatus(id)
+          .then((status) => {
+            if (!cancelled) setQueueStatus((current) => ({ ...current, [id]: status }));
+          })
+          .catch(() => {});
+      });
+    };
+    poll();
+    const timer = setInterval(poll, QUEUE_STATUS_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [activeCampaignIds]);
 
   const toggleCampaignStatus = async (campaign) => {
     const nextStatus = campaign.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
@@ -139,7 +173,7 @@ export default function TollFreePage({ permissions = [] }) {
 
       <Card animate={false} title="Campaigns" description={`${campaigns.length} campaign${campaigns.length === 1 ? "" : "s"}`} icon={Headset}>
         {loading ? (
-          <SkeletonTable rows={3} cols={6} />
+          <SkeletonTable rows={3} cols={7} />
         ) : campaigns.length ? (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
@@ -150,6 +184,7 @@ export default function TollFreePage({ permissions = [] }) {
                   <th className="pb-2 pr-4">Agents</th>
                   <th className="pb-2 pr-4">IVR</th>
                   <th className="pb-2 pr-4">Status</th>
+                  <th className="pb-2 pr-4">Queue</th>
                   <th className="pb-2">Actions</th>
                 </tr>
               </thead>
@@ -168,6 +203,23 @@ export default function TollFreePage({ permissions = [] }) {
                         </label>
                       ) : (
                         <StatusBadge tone={campaign.status === "ACTIVE" ? "success" : "neutral"}>{campaign.status}</StatusBadge>
+                      )}
+                    </td>
+                    <td className="py-3 pr-4 text-muted">
+                      {campaign.status !== "ACTIVE" ? (
+                        "—"
+                      ) : queueStatus[campaign.id] === undefined ? (
+                        <span className="text-xs">…</span>
+                      ) : queueStatus[campaign.id].ok === false ? (
+                        <span className="text-xs text-muted" title={queueStatus[campaign.id].error}>
+                          unavailable
+                        </span>
+                      ) : queueStatus[campaign.id].waiting > 0 ? (
+                        <StatusBadge tone="warning">
+                          {queueStatus[campaign.id].waiting} waiting · {queueStatus[campaign.id].longestWaitSec}s
+                        </StatusBadge>
+                      ) : (
+                        <span className="text-xs">0 waiting</span>
                       )}
                     </td>
                     <td className="py-3">

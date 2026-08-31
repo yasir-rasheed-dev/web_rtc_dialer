@@ -199,3 +199,19 @@ export function createTollFreeIvr(body) {
 export function deleteTollFreeIvr(id) {
   return api(`/toll-free/ivrs/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
+
+// Live snapshot (not history) of one campaign's queue — how many callers
+// are on hold right now. Safe to poll; never throws (the backend returns
+// {ok:false} rather than an HTTP error if Asterisk/AMI is unreachable).
+export function getTollFreeQueueStatus(campaignId) {
+  return api(`/toll-free/campaigns/${encodeURIComponent(campaignId)}/queue-status`);
+}
+
+// Per-number rollup (total/answered/abandoned/avg wait) for the Reports >
+// Toll-Free hub. Row-level detail for one number is GET /calls?toNumber=...
+export function getTollFreeReportSummary({ from, to } = {}) {
+  const query = new URLSearchParams();
+  if (from) query.set("from", from);
+  if (to) query.set("to", to);
+  return api(`/toll-free/reports/summary?${query.toString()}`);
+}

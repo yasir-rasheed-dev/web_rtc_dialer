@@ -159,9 +159,21 @@ export class CallTracker {
     if (!call) return;
     if (event.Channel) call.channels.add(event.Channel);
 
+    // For a Queue()-routed call (toll-free campaigns ringing multiple
+    // agents), every candidate's channel generates its own events on this
+    // same linkedid — including the ones who never answer. Once the call
+    // has actually been answered, only let further updates through for the
+    // endpoint that's already attributed as the agent; otherwise a losing
+    // candidate's later Hangup (e.g. they declined a few seconds after the
+    // winner answered) would stomp call.agent back to the wrong person.
+    // Before answer, any detected candidate is fair game (useful to show
+    // "ringing <agent>" for the single-agent-dial case).
     const detectedEndpoint = endpointFromChannel(event.Channel || event.DestChannel);
     const detectedAgent = detectedEndpoint ? await this.#resolveAgent(detectedEndpoint) : null;
-    if (detectedAgent) this.#applyAgent(call, detectedEndpoint, detectedAgent);
+    const alreadyAnswered = call.status === "ANSWERED" || call.status === "HELD" || Boolean(call.answeredAt);
+    if (detectedAgent && (!alreadyAnswered || detectedEndpoint === call.agent)) {
+      this.#applyAgent(call, detectedEndpoint, detectedAgent);
+    }
 
     if (!call.tenantId) {
       call.tenantId = await this.#resolveTenantByDid(call.to || event.Exten);

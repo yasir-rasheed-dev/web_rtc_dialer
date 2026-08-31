@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, ArrowRight, FileSpreadsheet, FileText, PhoneIncoming, PhoneOutgoing, RefreshCw, Timer } from "lucide-react";
+import { ArrowLeft, ArrowRight, FileSpreadsheet, FileText, Headset, PhoneIncoming, PhoneOutgoing, RefreshCw, Timer } from "lucide-react";
 
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
@@ -10,9 +10,15 @@ import { SkeletonTable } from "../../components/ui/Skeleton";
 import StatusBadge from "../../components/ui/StatusBadge";
 import { api, exportCallReport } from "../../lib/api";
 import { notifyError, notifySuccess } from "../../lib/toast";
+import TollFreeReportPage from "./TollFreeReport";
 import { CustomPagination, ExportProgressModal, ReportFilters, formatDate, formatSeconds, useAgentOptions } from "./shared";
 
-function CallDirectionReportPage({ direction, eyebrow, title, description }) {
+// `extraParams` merges fixed, non-user-editable query params into every
+// request (list + export) alongside the usual filter form — the Toll-Free
+// report's per-number drill-down uses it to pin `toNumber` so the table
+// only shows calls for that one DID, on top of the same date/agent/status
+// filters every other report already has.
+export function CallDirectionReportPage({ direction, eyebrow, title, description, extraParams = {} }) {
   const agents = useAgentOptions();
   const [filters, setFilters] = useState({ from: "", to: "", agentId: "", connected: "", durationMin: "", durationMax: "" });
   const [pageSize, setPageSize] = useState(25);
@@ -21,12 +27,14 @@ function CallDirectionReportPage({ direction, eyebrow, title, description }) {
   const [error, setError] = useState("");
   const [exportState, setExportState] = useState(null);
 
+  const extraParamsKey = JSON.stringify(extraParams);
+
   const load = useCallback(
     async (page = 1, size = pageSize) => {
       setLoading(true);
       setError("");
       try {
-        const query = new URLSearchParams({ page: String(page), pageSize: String(size), direction });
+        const query = new URLSearchParams({ page: String(page), pageSize: String(size), direction, ...extraParams });
         Object.entries(filters).forEach(([key, value]) => {
           if (value !== "" && value !== undefined && value !== null) query.set(key, value);
         });
@@ -37,20 +45,21 @@ function CallDirectionReportPage({ direction, eyebrow, title, description }) {
         setLoading(false);
       }
     },
-    [filters, direction, pageSize]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filters, direction, pageSize, extraParamsKey]
   );
 
   useEffect(() => {
     load(1, pageSize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [extraParamsKey]);
 
   const handleExport = async (format) => {
     setExportState({ format, percent: 0, done: false });
     try {
       await exportCallReport({
         direction,
-        filters,
+        filters: { ...filters, ...extraParams },
         format,
         onProgress: (percent) => setExportState((current) => (current ? { ...current, percent } : current))
       });
@@ -257,6 +266,15 @@ export default function ReportsHub() {
     );
   }
 
+  if (view === "tollfree") {
+    return (
+      <div className="flex flex-col gap-4">
+        <BackToReports onClick={() => setView("hub")} />
+        <TollFreeReportPage />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -276,6 +294,12 @@ export default function ReportsHub() {
           title="Outbound Report"
           description="Calls placed, filterable by agent, duration and connection status — exportable to PDF or Excel."
           onClick={() => setView("outbound")}
+        />
+        <ReportCard
+          icon={Headset}
+          title="Toll-Free Report"
+          description="Per-number call volume, live queue status and the full call list for each toll-free number."
+          onClick={() => setView("tollfree")}
         />
         <ReportCard
           icon={Timer}

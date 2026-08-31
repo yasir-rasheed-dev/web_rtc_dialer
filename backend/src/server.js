@@ -2023,6 +2023,9 @@ async function buildCallsFilter(req) {
 
   const direction = String(req.query.direction || "").toUpperCase();
   if (["INBOUND", "OUTBOUND"].includes(direction)) { where += " AND c.direction=?"; params.push(direction); }
+  // Toll-Free report drill-down: exact DID match, so the report for one
+  // toll-free number never bleeds into calls for a tenant's other numbers.
+  if (req.query.toNumber) { where += " AND c.to_number=?"; params.push(String(req.query.toNumber).slice(0, 80)); }
   const status = String(req.query.status || "").toUpperCase();
   if (status) { where += " AND c.status=?"; params.push(status.slice(0, 32)); }
 
