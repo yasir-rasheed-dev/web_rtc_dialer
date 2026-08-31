@@ -925,11 +925,11 @@ const addPstnParticipant = async () => {
 
 
   return (
-    <div className="flex h-full min-h-[600px] flex-col gap-4 p-6">
+    <div className="flex h-full min-h-0 flex-col gap-4 p-6">
       <audio ref={remoteAudioRef} autoPlay playsInline />
 
-      <div className="grid flex-1 grid-cols-1 gap-4 lg:grid-cols-[380px_1fr]">
-        <Card animate={false} className="flex flex-col !p-5">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[380px_1fr]">
+        <Card animate={false} className="flex min-h-0 flex-col overflow-y-auto !p-5">
           <div className="mb-4 flex items-center justify-between gap-3 border-b border-border pb-4">
             <div className="flex min-w-0 items-center gap-3">
               <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand/10 text-base font-bold text-brand">
@@ -1262,7 +1262,7 @@ const addPstnParticipant = async () => {
           )}
         </Card>
 
-        <Card animate={false} className="flex flex-col !p-5">
+        <Card animate={false} className="flex min-h-0 flex-col !p-5">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-base font-semibold text-text">Call History</h2>
