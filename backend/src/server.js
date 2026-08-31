@@ -2006,10 +2006,23 @@ app.delete("/api/contacts/:id", authenticate, requirePermission("DELETE_CONTACTS
 // ---------------------------
 // Calls, recordings, reports
 // ---------------------------
-// Shared by GET /api/calls (paginated list) and GET /api/calls/export (full
-// CSV/XLSX/PDF download) so the two never drift apart on what "matching
-// this filter set" means.
-async function buildCallsFilter(req) {
+// A "missed call" = an inbound call that rang but nobody ever answered it
+// AND it's actually over (still-ringing calls have answered_at IS NULL
+// too, but aren't missed yet — they're in progress). Defined once as a SQL
+// fragment and reused by both the list filter (outcome=missed) and the
+// counts endpoint's SUM(...), so the Missed tab's row count and its list
+// can never drift apart from each other or from GET /api/dashboard/owner's
+// own "missed" metric, which uses this exact same predicate.
+const MISSED_CALL_SQL = "c.direction='INBOUND' AND c.answered_at IS NULL AND c.ended_at IS NOT NULL";
+
+// The filters every call-logs view has in common — tenant/agent-scope,
+// date range, duration, search — WITHOUT direction/status/outcome, which
+// are what differ *per tab*. Split out so the counts endpoint can compute
+// all four tab counts (all/incoming/outgoing/missed) against the exact
+// same base filter in one query, independent of whichever tab happens to
+// be selected — switching tabs must never change what the OTHER tabs'
+// counters say.
+async function buildCallsBaseFilter(req) {
   const scope = await callAccessScope(req.user, "VIEW_TEAM_CALL_LOGS");
   const params = [req.user.tenant_id];
   let where = "WHERE c.tenant_id=?";
@@ -2021,20 +2034,6 @@ async function buildCallsFilter(req) {
   if (from) { where += " AND c.started_at>=?"; params.push(`${from} 00:00:00`); }
   if (to) { where += " AND c.started_at<DATE_ADD(?,INTERVAL 1 DAY)"; params.push(`${to} 00:00:00`); }
 
-  const direction = String(req.query.direction || "").toUpperCase();
-  if (["INBOUND", "OUTBOUND"].includes(direction)) { where += " AND c.direction=?"; params.push(direction); }
-  // Toll-Free report drill-down: exact DID match, so the report for one
-  // toll-free number never bleeds into calls for a tenant's other numbers.
-  if (req.query.toNumber) { where += " AND c.to_number=?"; params.push(String(req.query.toNumber).slice(0, 80)); }
-  const status = String(req.query.status || "").toUpperCase();
-  if (status) { where += " AND c.status=?"; params.push(status.slice(0, 32)); }
-
-  // "Connected" = the call was actually answered (has an answered_at
-  // timestamp), regardless of the exact carrier/Asterisk status string.
-  const connected = String(req.query.connected || "").toLowerCase();
-  if (connected === "true") where += " AND c.answered_at IS NOT NULL";
-  else if (connected === "false") where += " AND c.answered_at IS NULL";
-
   const durationMin = Number(req.query.durationMin);
   if (Number.isFinite(durationMin) && durationMin > 0) { where += " AND c.billable_sec>=?"; params.push(Math.trunc(durationMin)); }
   const durationMax = Number(req.query.durationMax);
@@ -2045,6 +2044,36 @@ async function buildCallsFilter(req) {
     const term = `%${String(req.query.search).slice(0, 64)}%`;
     params.push(term, term, term, term);
   }
+
+  return { where, params };
+}
+
+// Shared by GET /api/calls (paginated list) and GET /api/calls/export (full
+// CSV/XLSX/PDF download) so the two never drift apart on what "matching
+// this filter set" means. Adds the per-tab filters (direction/status/
+// connected/outcome) on top of buildCallsBaseFilter's shared ones.
+async function buildCallsFilter(req) {
+  const { where: baseWhere, params } = await buildCallsBaseFilter(req);
+  let where = baseWhere;
+
+  const direction = String(req.query.direction || "").toUpperCase();
+  if (["INBOUND", "OUTBOUND"].includes(direction)) { where += " AND c.direction=?"; params.push(direction); }
+  // Toll-Free report drill-down: exact DID match, so the report for one
+  // toll-free number never bleeds into calls for a tenant's other numbers.
+  if (req.query.toNumber) { where += " AND c.to_number=?"; params.push(String(req.query.toNumber).slice(0, 80)); }
+  const status = String(req.query.status || "").toUpperCase();
+  if (status) { where += " AND c.status=?"; params.push(status.slice(0, 32)); }
+
+  // The Call Logs page's Missed tab — see MISSED_CALL_SQL above. Distinct
+  // from "connected" below: a still-ringing call is !connected but not
+  // (yet) missed.
+  if (req.query.outcome === "missed") where += ` AND ${MISSED_CALL_SQL}`;
+
+  // "Connected" = the call was actually answered (has an answered_at
+  // timestamp), regardless of the exact carrier/Asterisk status string.
+  const connected = String(req.query.connected || "").toLowerCase();
+  if (connected === "true") where += " AND c.answered_at IS NOT NULL";
+  else if (connected === "false") where += " AND c.answered_at IS NULL";
 
   return { where, params };
 }
@@ -2065,6 +2094,31 @@ app.get("/api/calls", authenticate, requirePermission("VIEW_CALL_LOGS", "VIEW_RE
     [...params, pageSize, (page - 1) * pageSize]
   );
   res.json({ rows, page, pageSize, total: Number(count.total || 0) });
+}));
+
+// Tab counters for the Call Logs page — all four counts (all/incoming/
+// outgoing/missed) in one query, against the SHARED filters only (date
+// range, agent, search — never direction/status/outcome, which are what
+// the tabs themselves control). This is what makes switching tabs not
+// change any counter's value: every tab's count is always computed fresh
+// against the same base filter, not derived from whatever tab is active.
+app.get("/api/calls/counts", authenticate, requirePermission("VIEW_CALL_LOGS", "VIEW_REPORTS"), asyncRoute(async (req, res) => {
+  const { where, params } = await buildCallsBaseFilter(req);
+  const [[row]] = await db.execute(
+    `SELECT
+       COUNT(*) AS all_count,
+       SUM(c.direction='INBOUND') AS incoming_count,
+       SUM(c.direction='OUTBOUND') AS outgoing_count,
+       SUM(${MISSED_CALL_SQL}) AS missed_count
+     ${CALLS_FROM_SQL} ${where}`,
+    params
+  );
+  res.json({
+    all: Number(row.all_count || 0),
+    incoming: Number(row.incoming_count || 0),
+    outgoing: Number(row.outgoing_count || 0),
+    missed: Number(row.missed_count || 0)
+  });
 }));
 
 // ---------------------------
