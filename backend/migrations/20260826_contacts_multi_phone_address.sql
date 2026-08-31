@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS contact_phones (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY idx_contact_phones_contact (tenant_id, contact_id),
     KEY idx_contact_phones_number (tenant_id, number)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS contact_addresses (
     id CHAR(36) NOT NULL PRIMARY KEY,
@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS contact_addresses (
     country VARCHAR(100) NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY idx_contact_addresses_contact (tenant_id, contact_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Backfill: give every existing single-phone contact a primary row in
 -- contact_phones so the new multi-phone UI shows their existing number
