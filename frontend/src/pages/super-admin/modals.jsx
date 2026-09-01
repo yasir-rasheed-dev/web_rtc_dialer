@@ -28,6 +28,7 @@ const initialTenant = {
   timezone: "UTC",
   country: "",
   didsText: "",
+  canPurchaseNumbers: true,
   routingProfileMode: "new",
   routingProfileId: "",
   routingProfileName: ""
@@ -217,6 +218,20 @@ export function CreateSetupModal({ open, onClose, plans, tenants = [], onCreated
             className={FIELD_CLASS}
           />
         </label>
+
+        <label className="flex items-center gap-2 text-sm font-medium text-text">
+          <Toggle
+            checked={form.canPurchaseNumbers}
+            onChange={(v) => setForm({ ...form, canPurchaseNumbers: v })}
+            label="Let this workspace buy its own phone numbers"
+          />
+          Let this workspace buy its own phone numbers
+        </label>
+        {!form.canPurchaseNumbers && (
+          <p className="-mt-2 text-xs text-muted">
+            They'll still be able to assign numbers to agents — you'll need to buy numbers for them yourself from the setup's detail page.
+          </p>
+        )}
 
         <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface-2 px-4 py-3.5">
           <div>

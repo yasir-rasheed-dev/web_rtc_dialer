@@ -178,6 +178,26 @@ export function completeCommioOrder(orderId) {
   return api(`/dids/commio/orders/${encodeURIComponent(orderId)}/complete`, { method: "POST" });
 }
 
+// Super Admin buying a number and handing it directly to a tenant —
+// same search endpoint the tenant purchase flow uses (Commio search
+// itself isn't tenant-scoped), but reserve/complete are super-admin
+// routes so this works even for a tenant with canPurchaseNumbers off.
+export function searchCommioNumbersAsSuperAdmin(params) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") query.set(key, value);
+  });
+  return superApi(`/super-admin/commio-numbers/search?${query.toString()}`).then((payload) => payload.numbers || []);
+}
+
+export function reserveCommioNumberForTenant(tenantId, did, numberType = "LOCAL") {
+  return superApi(`/super-admin/commio-numbers/tenants/${tenantId}/orders`, { method: "POST", body: { did, numberType } });
+}
+
+export function completeCommioOrderForTenant(tenantId, orderId) {
+  return superApi(`/super-admin/commio-numbers/tenants/${tenantId}/orders/${encodeURIComponent(orderId)}/complete`, { method: "POST" });
+}
+
 // ---------------------------
 // Toll-free inbound campaigns / IVRs (VIEW_TOLL_FREE / MANAGE_TOLL_FREE_CAMPAIGNS)
 // ---------------------------

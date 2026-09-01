@@ -264,7 +264,7 @@ function TenantApp() {
     if (page === "users") return <LazyUsersAdmin permissions={session.permissions || []} />;
     if (page === "teams") return <LazyTeamsAdmin />;
     if (page === "roles") return <LazyRolesAdmin permissions={session.permissions || []} />;
-    if (page === "dids") return <LazyDidsPage permissions={session.permissions || []} />;
+    if (page === "dids") return <LazyDidsPage permissions={session.permissions || []} canPurchaseNumbers={session.tenant?.canPurchaseNumbers !== false} />;
     if (page === "toll-free") return <LazyTollFreePage permissions={session.permissions || []} isOwner={ownerAccount} />;
     if (page === "dnc") return <LazyDncManagement />;
     if (page === "usage") return <LazyUsagePage />;

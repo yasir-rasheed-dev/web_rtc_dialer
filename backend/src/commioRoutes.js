@@ -52,6 +52,18 @@ function normalizeDid(value) {
   return digits.length === 10 ? `1${digits}` : digits;
 }
 
+// Super Admin-controlled, tenant-wide — separate from (and layered above)
+// the PURCHASE_DIDS per-role permission already gating these routes: a
+// tenant Super Admin hasn't cleared for self-serve purchasing can't buy
+// numbers no matter what a role inside it is granted. req.user already
+// carries this (loadTenantUser's query joins tenants), so no extra query.
+function requireTenantPurchasingEnabled(req, res, next) {
+  if (!req.user.can_purchase_numbers) {
+    return res.status(403).json({ error: "Your workspace is not enabled to purchase phone numbers. Contact your account manager." });
+  }
+  next();
+}
+
 async function searchCommioNumbers(req, res) {
   const searchType = String(req.query.searchType || "domestic").toLowerCase();
   if (!["domestic", "tollfree"].includes(searchType)) {
@@ -96,23 +108,18 @@ async function searchCommioNumbers(req, res) {
   });
 }
 
-async function createPendingOrder(req, res) {
-  const did = normalizeDid(req.body.did);
-  if (!did) return res.status(400).json({ error: "Invalid phone number" });
-
-  // The frontend already knows which search produced this DID (its own
-  // "Type" dropdown state) — carried through here so completePendingOrder
-  // can tag the resulting tenant_dids row correctly. Not derived from the
-  // DID's area code on purpose: this codebase deliberately doesn't
-  // hardcode a toll-free NPA list anywhere, it relies on what the search
-  // actually was.
-  const numberType = String(req.body.numberType || "LOCAL").toUpperCase();
-  if (!["LOCAL", "TOLLFREE"].includes(numberType)) {
-    return res.status(400).json({ error: "numberType must be LOCAL or TOLLFREE" });
-  }
-
+// tenantId/userId taken as explicit params (not read off req.user) so the
+// same core logic can back both the tenant self-serve routes below (Super
+// Admin has cleared can_purchase_numbers) and the Super Admin
+// buy-on-behalf-of-tenant routes (server.js) — userId is null for the
+// latter, since Super Admin has no row in `users` to reference.
+async function createPendingOrderCore(tenantId, userId, did, numberType) {
   const [[existing]] = await db.execute(`SELECT id FROM tenant_dids WHERE number=? LIMIT 1`, [did]);
-  if (existing) return res.status(409).json({ error: "This number is already owned by a tenant" });
+  if (existing) {
+    const error = new Error("This number is already owned by a tenant");
+    error.statusCode = 409;
+    throw error;
+  }
 
   const order = await commio.createOrder(did);
   const orderId = order?.id;
@@ -130,32 +137,59 @@ async function createPendingOrder(req, res) {
     await db.execute(
       `INSERT INTO commio_pending_orders (id, tenant_id, commio_order_id, did, number_type, requested_by, price_summary, status)
        VALUES (?,?,?,?,?,?,?,'PENDING')`,
-      [crypto.randomUUID(), req.user.tenant_id, orderId, did, numberType, req.user.id, priceSummary ? JSON.stringify(priceSummary) : null]
+      [crypto.randomUUID(), tenantId, orderId, did, numberType, userId, priceSummary ? JSON.stringify(priceSummary) : null]
     );
   } catch (dbError) {
     await commio.cancelOrder(orderId).catch(() => undefined);
     throw dbError;
   }
 
-  res.json({ orderId, did, price: priceSummary });
+  return { orderId, did, price: priceSummary };
 }
 
-async function completePendingOrder(req, res) {
-  const orderId = req.params.orderId;
+async function createPendingOrder(req, res) {
+  const did = normalizeDid(req.body.did);
+  if (!did) return res.status(400).json({ error: "Invalid phone number" });
+
+  // The frontend already knows which search produced this DID (its own
+  // "Type" dropdown state) — carried through here so completePendingOrder
+  // can tag the resulting tenant_dids row correctly. Not derived from the
+  // DID's area code on purpose: this codebase deliberately doesn't
+  // hardcode a toll-free NPA list anywhere, it relies on what the search
+  // actually was.
+  const numberType = String(req.body.numberType || "LOCAL").toUpperCase();
+  if (!["LOCAL", "TOLLFREE"].includes(numberType)) {
+    return res.status(400).json({ error: "numberType must be LOCAL or TOLLFREE" });
+  }
+
+  try {
+    const result = await createPendingOrderCore(req.user.tenant_id, req.user.id, did, numberType);
+    res.json(result);
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+    throw error;
+  }
+}
+
+async function completePendingOrderCore(tenantId, userId, orderId) {
   const [[pending]] = await db.execute(
     `SELECT * FROM commio_pending_orders WHERE commio_order_id=? AND tenant_id=? AND status='PENDING' LIMIT 1`,
-    [orderId, req.user.tenant_id]
+    [orderId, tenantId]
   );
   // Scoped to this tenant so a user can never complete/pay for an order_id
   // that isn't theirs — the row simply won't be found.
-  if (!pending) return res.status(404).json({ error: "No pending order found for your account" });
+  if (!pending) {
+    const error = new Error("No pending order found for this workspace");
+    error.statusCode = 404;
+    throw error;
+  }
 
   await commio.completeOrder(orderId);
 
   let routingAssigned = true;
   let routingError = null;
   try {
-    const [[tenant]] = await db.execute(`SELECT commio_routing_profile_id FROM tenants WHERE id=? LIMIT 1`, [req.user.tenant_id]);
+    const [[tenant]] = await db.execute(`SELECT commio_routing_profile_id FROM tenants WHERE id=? LIMIT 1`, [tenantId]);
     await commio.assignRouting(pending.did, tenant?.commio_routing_profile_id);
   } catch (error) {
     routingAssigned = false;
@@ -181,7 +215,7 @@ async function completePendingOrder(req, res) {
     await connection.execute(
       `INSERT INTO tenant_dids (id, tenant_id, number, number_type, status, commio_order_id, purchased_by, purchased_at, monthly_cost)
        VALUES (?,?,?,?,'AVAILABLE',?,?,NOW(),?)`,
-      [id, req.user.tenant_id, pending.did, pending.number_type || "LOCAL", orderId, req.user.id, monthlyCost]
+      [id, tenantId, pending.did, pending.number_type || "LOCAL", orderId, userId, monthlyCost]
     );
     await connection.execute(`UPDATE commio_pending_orders SET status='COMPLETED' WHERE id=?`, [pending.id]);
     await connection.commit();
@@ -200,7 +234,17 @@ async function completePendingOrder(req, res) {
     connection.release();
   }
 
-  res.json({ did: didRow, routingAssigned, routingError });
+  return { did: didRow, routingAssigned, routingError };
+}
+
+async function completePendingOrder(req, res) {
+  try {
+    const result = await completePendingOrderCore(req.user.tenant_id, req.user.id, req.params.orderId);
+    res.json(result);
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+    throw error;
+  }
 }
 
 export default function createCommioRoutes(authenticate) {
@@ -210,6 +254,7 @@ export default function createCommioRoutes(authenticate) {
     "/search",
     authenticate,
     requirePermission("PURCHASE_DIDS"),
+    requireTenantPurchasingEnabled,
     searchLimiter,
     asyncRoute(searchCommioNumbers)
   );
@@ -218,6 +263,7 @@ export default function createCommioRoutes(authenticate) {
     "/orders",
     authenticate,
     requirePermission("PURCHASE_DIDS"),
+    requireTenantPurchasingEnabled,
     purchaseLimiter,
     asyncRoute(createPendingOrder)
   );
@@ -226,8 +272,62 @@ export default function createCommioRoutes(authenticate) {
     "/orders/:orderId/complete",
     authenticate,
     requirePermission("PURCHASE_DIDS"),
+    requireTenantPurchasingEnabled,
     purchaseLimiter,
     asyncRoute(completePendingOrder)
+  );
+
+  return router;
+}
+
+// Super Admin buying a number and handing it straight to a tenant —
+// deliberately bypasses both PURCHASE_DIDS (a tenant-role permission,
+// meaningless for a Super Admin) and can_purchase_numbers (the tenant-wide
+// gate this whole file otherwise enforces): granting a number directly is
+// exactly how a tenant that flag is off for still gets numbers. Mounted
+// under /api/super-admin/commio-numbers, tenantId comes from the URL
+// param rather than req.user (Super Admin has no tenant_id — they aren't
+// a tenant user at all), and purchased_by/requested_by are left NULL
+// (Super Admin has no row in `users` to reference).
+export function createSuperAdminCommioRoutes(authenticateSuperAdmin) {
+  const router = express.Router();
+
+  router.get("/search", authenticateSuperAdmin, searchLimiter, asyncRoute(searchCommioNumbers));
+
+  router.post(
+    "/tenants/:tenantId/orders",
+    authenticateSuperAdmin,
+    purchaseLimiter,
+    asyncRoute(async (req, res) => {
+      const did = normalizeDid(req.body.did);
+      if (!did) return res.status(400).json({ error: "Invalid phone number" });
+      const numberType = String(req.body.numberType || "LOCAL").toUpperCase();
+      if (!["LOCAL", "TOLLFREE"].includes(numberType)) {
+        return res.status(400).json({ error: "numberType must be LOCAL or TOLLFREE" });
+      }
+      try {
+        const result = await createPendingOrderCore(req.params.tenantId, null, did, numberType);
+        res.json(result);
+      } catch (error) {
+        if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+        throw error;
+      }
+    })
+  );
+
+  router.post(
+    "/tenants/:tenantId/orders/:orderId/complete",
+    authenticateSuperAdmin,
+    purchaseLimiter,
+    asyncRoute(async (req, res) => {
+      try {
+        const result = await completePendingOrderCore(req.params.tenantId, null, req.params.orderId);
+        res.json(result);
+      } catch (error) {
+        if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+        throw error;
+      }
+    })
   );
 
   return router;

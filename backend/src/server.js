@@ -40,7 +40,7 @@ import {
 } from "./saas.js";
 import { PERMISSIONS } from "./permissions.js";
 import createCampaignRoutes from "./campaignRoutes.js";
-import createCommioRoutes from "./commioRoutes.js";
+import createCommioRoutes, { createSuperAdminCommioRoutes } from "./commioRoutes.js";
 import * as commio from "./commio.js";
 import createTeamChatRoutes from "./teamChatRoutes.js";
 import createTollFreeRoutes, { getQueueStatus, syncQueuePauseForAgent } from "./tollFreeRoutes.js";
@@ -455,7 +455,7 @@ async function loadTenantUser(userId) {
             r.name AS role_name, r.active AS role_active,
             t.name AS tenant_name, t.workspace, t.status AS tenant_status, t.plan_id,
             t.features_json, t.price_per_user, t.max_users, t.outbound_minutes, t.inbound_minutes,
-            t.extension_start, t.next_extension, t.timezone
+            t.extension_start, t.next_extension, t.timezone, t.can_purchase_numbers
        FROM users u
        JOIN tenants t ON t.id=u.tenant_id
        LEFT JOIN roles r ON r.id=u.role_id AND r.tenant_id=u.tenant_id
@@ -536,6 +536,7 @@ function authPayload(user) {
       workspace: user.workspace,
       status: user.tenant_status,
       timezone: user.timezone,
+      canPurchaseNumbers: Boolean(user.can_purchase_numbers),
       limits: {
         maxUsers: user.max_users,
         outboundMinutes: user.outbound_minutes,
@@ -563,6 +564,7 @@ app.get("/api/health", asyncRoute(async (_req, res) => {
 }));
 app.use("/api/campaigns", createCampaignRoutes(authenticate));
 app.use("/api/dids/commio", createCommioRoutes(authenticate));
+app.use("/api/super-admin/commio-numbers", createSuperAdminCommioRoutes(authenticateSuperAdmin));
 app.use("/api/toll-free", createTollFreeRoutes(authenticate, ami));
 app.use("/api/dnc", createDncRoutes(authenticate));
 app.use("/api/team-chat", createTeamChatRoutes(authenticate));
@@ -620,7 +622,7 @@ app.get("/api/super-admin/overview", authenticateSuperAdmin, asyncRoute(async (_
   );
   const [tenants] = await db.execute(
     `SELECT t.id,t.name,t.workspace,t.status,t.price_per_user,t.max_users,t.outbound_minutes,t.inbound_minutes,
-            t.extension_start,t.timezone,t.commio_routing_profile_id,t.commio_routing_profile_name,p.name AS plan_name,
+            t.extension_start,t.timezone,t.commio_routing_profile_id,t.commio_routing_profile_name,t.can_purchase_numbers,p.name AS plan_name,
             COUNT(CASE WHEN COALESCE(ur.name,'')<>'Tenant Owner' THEN u.id END) AS users,
             COALESCE(SUM(CASE WHEN COALESCE(ur.name,'')<>'Tenant Owner' AND u.active=1 THEN 1 ELSE 0 END),0) AS active_users
        FROM tenants t
@@ -759,8 +761,9 @@ app.post("/api/super-admin/tenants", authenticateSuperAdmin, asyncRoute(async (r
     await connection.execute(
       `INSERT INTO tenants
         (id,name,workspace,status,plan_id,price_per_user,max_users,outbound_minutes,inbound_minutes,features_json,
-         extension_start,next_extension,timezone,country,billing_cycle,commio_routing_profile_id,commio_routing_profile_name)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         extension_start,next_extension,timezone,country,billing_cycle,commio_routing_profile_id,commio_routing_profile_name,
+         can_purchase_numbers)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         id,
         name,
@@ -778,7 +781,8 @@ app.post("/api/super-admin/tenants", authenticateSuperAdmin, asyncRoute(async (r
         String(req.body.country || "").trim() || null,
         req.body.billingCycle === "ANNIVERSARY" ? "ANNIVERSARY" : "CALENDAR_MONTH",
         existingRoutingProfileId,
-        existingRoutingProfileName
+        existingRoutingProfileName,
+        req.body.canPurchaseNumbers === false ? 0 : 1
       ]
     );
 
@@ -842,7 +846,7 @@ app.patch("/api/super-admin/tenants/:id", authenticateSuperAdmin, asyncRoute(asy
   const allowedStatuses = ["TRIAL", "ACTIVE", "INACTIVE", "SUSPENDED", "CANCELLED"];
   if (!allowedStatuses.includes(status)) return res.status(400).json({ error: "Invalid tenant status" });
   await db.execute(
-    `UPDATE tenants SET name=?,status=?,plan_id=?,price_per_user=?,max_users=?,outbound_minutes=?,inbound_minutes=?,features_json=?,timezone=? WHERE id=?`,
+    `UPDATE tenants SET name=?,status=?,plan_id=?,price_per_user=?,max_users=?,outbound_minutes=?,inbound_minutes=?,features_json=?,timezone=?,can_purchase_numbers=? WHERE id=?`,
     [
       req.body.name ?? tenant.name,
       status,
@@ -853,6 +857,7 @@ app.patch("/api/super-admin/tenants/:id", authenticateSuperAdmin, asyncRoute(asy
       req.body.inboundMinutes === undefined && req.body.unlimitedInbound === undefined ? tenant.inbound_minutes : nullableLimit(req.body.inboundMinutes, req.body.unlimitedInbound),
       req.body.features === undefined ? tenant.features_json : JSON.stringify(req.body.features || {}),
       req.body.timezone ?? tenant.timezone,
+      req.body.canPurchaseNumbers === undefined ? tenant.can_purchase_numbers : (req.body.canPurchaseNumbers ? 1 : 0),
       req.params.id
     ]
   );

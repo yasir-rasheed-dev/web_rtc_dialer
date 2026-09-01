@@ -217,12 +217,17 @@ function BuyNumberModal({ open, onClose, onPurchased }) {
   );
 }
 
-export default function DidsPage({ permissions = [] }) {
+export default function DidsPage({ permissions = [], canPurchaseNumbers = true }) {
   const [dids, setDids] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [buyOpen, setBuyOpen] = useState(false);
-  const canPurchase = permissions.includes("PURCHASE_DIDS");
+  // Two independent gates: the agent's own role permission, and the
+  // tenant-wide flag only Super Admin controls (server.js's
+  // requireTenantPurchasingEnabled enforces this same rule again on the
+  // actual purchase routes — this is just what decides whether the
+  // button/modal even render).
+  const canPurchase = permissions.includes("PURCHASE_DIDS") && canPurchaseNumbers;
 
   const load = useCallback(() => {
     setLoading(true);
