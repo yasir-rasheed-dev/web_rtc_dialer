@@ -1276,17 +1276,22 @@ const addPstnParticipant = async () => {
                 )}
               </div>
 
-              <div className="grid grid-cols-3 justify-items-center gap-3">
+              {/* Fixed-width, centered — a 3-column grid left to stretch
+                  across a wide card scatters the buttons with huge gaps
+                  between them; capping the grid's own width and keeping
+                  the gap small is what actually gives the tight,
+                  handset-style cluster instead. */}
+              <div className="mx-auto grid w-[228px] grid-cols-3 gap-x-3 gap-y-2.5">
                 {KEYPAD.map(([key, letters]) => (
                   <button
                     type="button"
                     key={key}
                     onClick={() => pressKey(key)}
                     aria-label={`Dial ${key}`}
-                    className="flex h-16 w-16 flex-col items-center justify-center rounded-full bg-surface-2 text-text transition-colors hover:bg-surface-3 active:scale-95"
+                    className="flex h-[68px] w-[68px] flex-col items-center justify-center rounded-full bg-surface-2 text-text transition-colors hover:bg-surface-3 active:scale-95"
                   >
-                    <span className="text-xl font-semibold">{key}</span>
-                    <span className="text-[9px] font-medium text-muted">{letters}</span>
+                    <span className="text-[22px] font-semibold leading-none">{key}</span>
+                    <span className="mt-1 text-[9px] font-medium tracking-wide text-muted">{letters || " "}</span>
                   </button>
                 ))}
               </div>
@@ -1394,29 +1399,29 @@ const addPstnParticipant = async () => {
                       type="button"
                       key={item.id}
                       onClick={() => redialFromHistory(item)}
-                      className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-3 text-left transition-colors hover:bg-surface-2"
+                      className="-mx-2 flex items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-surface-2"
                     >
                       <span
-                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
                           missed ? "bg-danger-soft text-danger" : "bg-brand/10 text-brand"
                         }`}
                       >
-                        <RowIcon size={16} />
+                        <RowIcon size={14} />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-text">{item.displayName || item.number}</p>
-                        <div className="mt-0.5 flex items-center gap-1.5">
-                          {item.displayName && <p className="truncate text-xs text-muted">{item.number}</p>}
+                        <div className="flex items-center gap-1.5">
+                          <p className="truncate text-[13px] font-medium text-text">{item.displayName || item.number}</p>
                           <StatusBadge tone={outcomeMeta.tone} className="shrink-0 !px-1.5 !py-0.5 !text-[10px]">
                             {outcomeMeta.label}
                           </StatusBadge>
                         </div>
+                        {item.displayName && <p className="truncate text-[11px] text-muted">{item.number}</p>}
                       </div>
                       <div className="shrink-0 text-right">
-                        <p className="text-xs text-muted">
+                        <p className="text-[11px] text-muted">
                           {new Date(item.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                         </p>
-                        <p className="mt-0.5 text-xs font-semibold text-text">
+                        <p className="text-[11px] font-semibold text-text">
                           {item.duration > 0 ? formatDuration(item.duration) : "—"}
                         </p>
                       </div>
