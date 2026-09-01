@@ -17,26 +17,14 @@ function formatMonthLabel(monthStr) {
   return new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(new Date(Date.UTC(year, month - 1, 1)));
 }
 
-function UsageBar({ label, used, limit }) {
-  const hasLimit = limit !== null && limit !== undefined;
-  const pct = hasLimit && limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
-  const over = hasLimit && used > limit;
+// Just the total consumed — the plan's assigned/limit figure isn't shown
+// here per feedback, so this is a plain used-minutes readout, not a
+// progress-toward-limit bar.
+function UsageBar({ label, used }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex items-center justify-between text-sm">
-        <span className="text-muted">{label}</span>
-        <span className="font-semibold text-text">
-          {used.toLocaleString()} {hasLimit ? `/ ${Number(limit).toLocaleString()} min` : "min (unlimited)"}
-        </span>
-      </div>
-      {hasLimit && (
-        <div className="h-2 w-full overflow-hidden rounded-full bg-surface-2">
-          <div
-            className={`h-full rounded-full ${over ? "bg-danger" : "bg-brand"}`}
-            style={{ width: `${pct}%` }}
-          />
-        </div>
-      )}
+    <div className="flex items-center justify-between text-sm">
+      <span className="text-muted">{label}</span>
+      <span className="font-semibold text-text">{used.toLocaleString()} min</span>
     </div>
   );
 }
@@ -116,8 +104,8 @@ export default function UsagePage() {
 
           <Card title="Minutes usage" description="Included in your plan for this billing month">
             <div className="flex flex-col gap-4">
-              <UsageBar label="Outbound minutes" used={usage.outboundMinutes || 0} limit={limits.outboundMinutes} />
-              <UsageBar label="Inbound minutes" used={usage.inboundMinutes || 0} limit={limits.inboundMinutes} />
+              <UsageBar label="Outbound minutes" used={usage.outboundMinutes || 0} />
+              <UsageBar label="Inbound minutes" used={usage.inboundMinutes || 0} />
             </div>
           </Card>
 
@@ -130,23 +118,6 @@ export default function UsagePage() {
               <div className="flex items-center justify-between py-2.5 text-base font-bold">
                 <span className="text-text">Total</span>
                 <span className="text-brand">${seatBill.toFixed(2)}</span>
-              </div>
-            </div>
-          </Card>
-
-          <Card title="Carrier reconciliation" description="Commio CDR cost rows will populate this view once the account-specific CDR adapter is configured.">
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div>
-                <p className="text-xs text-muted">Carrier billable minutes</p>
-                <p className="mt-1 text-lg font-semibold text-text">{usage.carrierBillableMinutes || 0}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted">Carrier cost</p>
-                <p className="mt-1 text-lg font-semibold text-text">${Number(usage.carrierCost || 0).toFixed(2)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted">Calls</p>
-                <p className="mt-1 text-lg font-semibold text-text">{usage.calls || 0}</p>
               </div>
             </div>
           </Card>
