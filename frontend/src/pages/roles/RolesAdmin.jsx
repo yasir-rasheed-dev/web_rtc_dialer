@@ -14,12 +14,37 @@ import { confirmModal } from "../../lib/modal";
 import { notifyError, notifySuccess } from "../../lib/toast";
 import { api } from "../../lib/api";
 
-function groupPermissions(permissions) {
-  return permissions.reduce((groups, item) => {
-    groups[item.category] ||= [];
-    groups[item.category].push(item);
-    return groups;
-  }, {});
+// Mirrors permissions.js's own key list per Super Admin-controlled
+// tenant-wide feature (see backend/src/saas.js's requireTenantFeature) —
+// when a tenant doesn't have one of these features at all, granting an
+// agent the permission for it here wouldn't do anything (the backend
+// blocks it regardless), so these are hidden from the role editor rather
+// than shown as a toggle that can never actually take effect. Doesn't
+// touch a role's already-saved permissions — only what's offered to
+// grant/revoke here — so nothing is silently stripped if the tenant's
+// flag is re-enabled later.
+const FEATURE_PERMISSION_KEYS = {
+  canPurchaseNumbers: ["PURCHASE_DIDS"],
+  canUseAutoDialer: [
+    "VIEW_CAMPAIGNS", "CREATE_CAMPAIGNS", "MANAGE_CAMPAIGNS", "UPLOAD_CONTACTS",
+    "ASSIGN_CONTACTS", "USE_AUTO_DIALER", "SKIP_CONTACT", "VIEW_CAMPAIGN_REPORTS", "EXPORT_CAMPAIGN_REPORTS"
+  ],
+  canUseTollFree: ["VIEW_TOLL_FREE", "MANAGE_TOLL_FREE_CAMPAIGNS"]
+};
+
+function groupPermissions(permissions, tenant = {}) {
+  const hiddenKeys = new Set(
+    Object.entries(FEATURE_PERMISSION_KEYS)
+      .filter(([flag]) => tenant[flag] === false)
+      .flatMap(([, keys]) => keys)
+  );
+  return permissions
+    .filter((item) => !hiddenKeys.has(item.key))
+    .reduce((groups, item) => {
+      groups[item.category] ||= [];
+      groups[item.category].push(item);
+      return groups;
+    }, {});
 }
 
 function RoleFormModal({ open, onClose, role, grouped, onSaved }) {
@@ -119,7 +144,7 @@ function RoleFormModal({ open, onClose, role, grouped, onSaved }) {
   );
 }
 
-export default function RolesAdmin({ permissions = [] }) {
+export default function RolesAdmin({ permissions = [], tenant = {} }) {
   const canManage = permissions.includes("MANAGE_ROLES");
   const [roles, setRoles] = useState([]);
   const [allPermissions, setAllPermissions] = useState([]);
@@ -128,7 +153,7 @@ export default function RolesAdmin({ permissions = [] }) {
   const [modalRole, setModalRole] = useState(undefined); // undefined = closed, null = new, object = editing
   const [deletingId, setDeletingId] = useState(null);
 
-  const grouped = useMemo(() => groupPermissions(allPermissions), [allPermissions]);
+  const grouped = useMemo(() => groupPermissions(allPermissions, tenant), [allPermissions, tenant]);
 
   const load = useCallback(async () => {
     setLoading(true);
