@@ -974,7 +974,7 @@ const addPstnParticipant = async () => {
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[380px_1fr]">
         <Card animate={false} className="flex min-h-0 flex-col overflow-y-auto !p-4">
-          <div className="mb-3 flex items-center justify-between gap-3 border-b border-border pb-3">
+          <div className="mb-2.5 flex items-center justify-between gap-3 border-b border-border pb-2.5">
             <div className="flex min-w-0 items-center gap-2.5">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand/10 text-sm font-bold text-brand">
                 {initials(config.displayName || config.username)}
@@ -1235,7 +1235,7 @@ const addPstnParticipant = async () => {
               )}
             </div>
           ) : (
-            <div className="flex flex-1 flex-col gap-3.5">
+            <div className="flex flex-1 flex-col justify-center gap-2.5">
               <div
                 onDragOver={(event) => {
                   event.preventDefault();
