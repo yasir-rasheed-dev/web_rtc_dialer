@@ -1,6 +1,59 @@
+import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { db } from "./db.js";
+
+// Reads just the RIFF/fmt/data chunk headers (not the whole file) to
+// compute a WAV's duration — voicemails have no answered_at/ended_at
+// pair like a regular call does to derive billable_sec from, so the
+// audio file itself is the only source of truth for how long one is.
+// Scans chunks properly (rather than assuming a fixed 44-byte header)
+// since a WAV can carry extra chunks before 'data'; returns 0 (never
+// throws) for anything that doesn't parse as a canonical PCM WAV.
+function wavDurationSeconds(filePath) {
+  try {
+    const fd = fs.openSync(filePath, "r");
+    try {
+      const header = Buffer.alloc(12);
+      fs.readSync(fd, header, 0, 12, 0);
+      if (header.toString("ascii", 0, 4) !== "RIFF" || header.toString("ascii", 8, 12) !== "WAVE") return 0;
+
+      let offset = 12;
+      let sampleRate = 0;
+      let channels = 0;
+      let bitsPerSample = 0;
+      let dataSize = 0;
+      const chunkHeader = Buffer.alloc(8);
+      // A handful of chunks at most in a Record()-produced WAV — bounded
+      // loop as a defensive cap either way.
+      for (let i = 0; i < 20; i++) {
+        const read = fs.readSync(fd, chunkHeader, 0, 8, offset);
+        if (read < 8) break;
+        const chunkId = chunkHeader.toString("ascii", 0, 4);
+        const chunkSize = chunkHeader.readUInt32LE(4);
+        if (chunkId === "fmt ") {
+          const fmt = Buffer.alloc(16);
+          fs.readSync(fd, fmt, 0, 16, offset + 8);
+          channels = fmt.readUInt16LE(2);
+          sampleRate = fmt.readUInt32LE(4);
+          bitsPerSample = fmt.readUInt16LE(14);
+        } else if (chunkId === "data") {
+          dataSize = chunkSize;
+          break;
+        }
+        offset += 8 + chunkSize + (chunkSize % 2);
+      }
+
+      if (!sampleRate || !channels || !bitsPerSample || !dataSize) return 0;
+      const byteRate = sampleRate * channels * (bitsPerSample / 8);
+      return byteRate ? Math.round(dataSize / byteRate) : 0;
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return 0;
+  }
+}
 
 function cleanChannel(channel = "") {
   return channel.replace(/-[0-9a-f]+$/i, "");
@@ -379,11 +432,12 @@ export class CallTracker {
   async #saveVoicemail(call, filePath) {
     const id = crypto.randomUUID();
     const fileName = path.basename(filePath);
+    const durationSec = wavDurationSeconds(filePath);
     await db.execute(
       `INSERT INTO voicemails
-        (id, tenant_id, agent_user_id, linkedid, from_number, to_number, file_path, file_name)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, call.tenantId, call.agentUserId, call.linkedid, call.from || "", call.to || "", filePath, fileName]
+        (id, tenant_id, agent_user_id, linkedid, from_number, to_number, file_path, file_name, duration_sec)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, call.tenantId, call.agentUserId, call.linkedid, call.from || "", call.to || "", filePath, fileName, durationSec]
     );
     const payload = {
       id,
