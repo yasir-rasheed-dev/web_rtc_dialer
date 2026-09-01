@@ -259,7 +259,7 @@ function TenantApp() {
       return <LazyAutoDialer permissions={session.permissions || []} sipReady={!ownerAccount && Boolean(session.sip)} />;
     }
     if (page === "contacts") return <LazyContactsPage permissions={session.permissions || []} />;
-    if (page === "call-logs") return <LazyCallLogsPage />;
+    if (page === "call-logs") return <LazyCallLogsPage permissions={session.permissions || []} />;
     if (page === "recordings") return <LazyRecordingsPage />;
     if (page === "supervisor") {
       return (

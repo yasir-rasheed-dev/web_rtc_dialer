@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { FileAudio, PlayCircle, RefreshCw, X } from "lucide-react";
 
 import Card from "../../components/ui/Card";
 import EmptyState from "../../components/ui/EmptyState";
@@ -7,7 +8,7 @@ import PageHeader from "../../components/ui/PageHeader";
 import { SkeletonTable } from "../../components/ui/Skeleton";
 import StatusBadge from "../../components/ui/StatusBadge";
 import Button from "../../components/ui/Button";
-import { api, getCallCounts } from "../../lib/api";
+import { api, getCallCounts, recordingBlob } from "../../lib/api";
 import { Filters, Pagination, formatDate, formatSeconds, useAgentOptions } from "./shared";
 
 // Each tab maps to its own extra query params on top of the shared
@@ -33,7 +34,7 @@ function TabBar({ tab, counts, countsLoading, onSelect }) {
             key={t.id}
             type="button"
             onClick={() => onSelect(t.id)}
-            className={`flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
+            className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] font-medium transition-colors ${
               active
                 ? "border-brand bg-brand text-white"
                 : "border-border bg-surface text-muted hover:border-border-strong hover:text-text"
@@ -54,7 +55,8 @@ function TabBar({ tab, counts, countsLoading, onSelect }) {
   );
 }
 
-export default function CallLogsPage() {
+export default function CallLogsPage({ permissions = [] }) {
+  const canPlayRecordings = permissions.includes("VIEW_RECORDINGS");
   const agents = useAgentOptions();
   const [tab, setTab] = useState("all");
   const [filters, setFilters] = useState({ from: "", to: "", agentId: "", status: "", search: "" });
@@ -63,6 +65,8 @@ export default function CallLogsPage() {
   const [loading, setLoading] = useState(true);
   const [countsLoading, setCountsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [audio, setAudio] = useState(null);
+  const [playingId, setPlayingId] = useState(null);
 
   const load = useCallback(
     async (page, activeTab, activeFilters) => {
@@ -118,14 +122,34 @@ export default function CallLogsPage() {
     loadCounts(filters);
   };
 
+  useEffect(
+    () => () => {
+      if (audio?.url) URL.revokeObjectURL(audio.url);
+    },
+    [audio]
+  );
+
+  const play = async (call) => {
+    setError("");
+    setPlayingId(call.id);
+    try {
+      if (audio?.url) URL.revokeObjectURL(audio.url);
+      setAudio({ call, url: await recordingBlob(call.id) });
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setPlayingId(null);
+    }
+  };
+
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4 pb-20">
       <PageHeader
         eyebrow="CONVERSATION HISTORY"
         title="Call Logs"
         description="Filter tenant call history by agent, date and outcome."
         actions={
-          <Button variant="secondary" icon={RefreshCw} loading={loading} onClick={() => load(result.page, tab, filters)}>
+          <Button variant="secondary" size="sm" icon={RefreshCw} loading={loading} onClick={() => load(result.page, tab, filters)}>
             Refresh
           </Button>
         }
@@ -133,13 +157,13 @@ export default function CallLogsPage() {
 
       <TabBar tab={tab} counts={counts} countsLoading={countsLoading} onSelect={selectTab} />
 
-      <Card>
+      <Card compact>
         <Filters filters={filters} setFilters={setFilters} onApply={applyFilters} agents={agents} includeCallFilters loading={loading} />
       </Card>
 
       {error && <div className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>}
 
-      <Card title="Call records" description={`${result.total} matching records`}>
+      <Card compact title="Call records" description={`${result.total} matching records`}>
         <div className="overflow-x-auto">
           {loading ? (
             <SkeletonTable rows={6} cols={8} />
@@ -154,27 +178,41 @@ export default function CallLogsPage() {
                   <th className="pb-2 pr-4">To</th>
                   <th className="pb-2 pr-4">Status</th>
                   <th className="pb-2 pr-4">Talk time</th>
-                  <th className="pb-2">Disposition</th>
+                  <th className="pb-2">Recording</th>
                 </tr>
               </thead>
               <tbody>
                 {result.rows.map((call) => (
                   <tr key={call.id} className="border-b border-border/60 last:border-0">
-                    <td className="py-3 pr-4 text-muted">{formatDate(call.started_at)}</td>
-                    <td className="py-3 pr-4">
+                    <td className="py-2 pr-4 text-muted">{formatDate(call.started_at)}</td>
+                    <td className="py-2 pr-4">
                       <p className="font-medium text-text">{call.agent_name || call.agent_sip_username || "—"}</p>
                       {call.agent_sip_username && <p className="text-xs text-muted">{call.agent_sip_username}</p>}
                     </td>
-                    <td className="py-3 pr-4">
+                    <td className="py-2 pr-4">
                       <StatusBadge tone="brand">{call.direction}</StatusBadge>
                     </td>
-                    <td className="py-3 pr-4 text-muted">{call.from_number || "—"}</td>
-                    <td className="py-3 pr-4 text-muted">{call.to_number || "—"}</td>
-                    <td className="py-3 pr-4">
+                    <td className="py-2 pr-4 text-muted">{call.from_number || "—"}</td>
+                    <td className="py-2 pr-4 text-muted">{call.to_number || "—"}</td>
+                    <td className="py-2 pr-4">
                       <StatusBadge tone={call.answered_at ? "success" : "neutral"}>{call.status}</StatusBadge>
                     </td>
-                    <td className="py-3 pr-4 text-muted">{formatSeconds(call.billable_sec)}</td>
-                    <td className="py-3 text-muted">{call.disposition || "—"}</td>
+                    <td className="py-2 pr-4 text-muted">{formatSeconds(call.billable_sec)}</td>
+                    <td className="py-2">
+                      {call.recording_name && canPlayRecordings ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          icon={PlayCircle}
+                          loading={playingId === call.id}
+                          onClick={() => play(call)}
+                        >
+                          Play
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-muted">—</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -184,6 +222,40 @@ export default function CallLogsPage() {
         </div>
         <Pagination result={result} load={(page) => load(page, tab, filters)} />
       </Card>
+
+      <AnimatePresence>
+        {audio && (
+          <motion.div
+            initial={{ y: 80, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 80, opacity: 0 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+            className="fixed inset-x-4 bottom-4 z-40 flex flex-col gap-3 rounded-2xl border border-border bg-surface p-4 shadow-card sm:inset-x-auto sm:right-6 sm:w-[440px]"
+          >
+            <div className="flex items-center gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand/10 text-brand">
+                <FileAudio size={17} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-text">
+                  {audio.call.agent_name || audio.call.agent_sip_username || "Recording"}
+                </p>
+                <p className="truncate text-xs text-muted">
+                  {formatDate(audio.call.started_at)} · {audio.call.from_number} → {audio.call.to_number}
+                </p>
+              </div>
+              <button
+                onClick={() => setAudio(null)}
+                aria-label="Close"
+                className="rounded-lg p-1.5 text-muted hover:bg-surface-2 hover:text-text"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <audio src={audio.url} controls autoPlay className="w-full" />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
