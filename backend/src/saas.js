@@ -63,6 +63,21 @@ export function requirePermission(...permissions) {
   };
 }
 
+// Super Admin-controlled, tenant-wide feature gates — can_purchase_numbers,
+// can_use_auto_dialer, can_use_toll_free — layered ABOVE the per-role
+// permissions already guarding these routes, not a replacement for them.
+// req.user already carries these columns (loadTenantUser's query joins
+// tenants), so this is a plain boolean check, no extra query. Must run
+// after `authenticate` has set req.user.
+export function requireTenantFeature(column, message) {
+  return (req, res, next) => {
+    if (!req.user[column]) {
+      return res.status(403).json({ error: message || "This feature is not enabled for your workspace. Contact your account manager." });
+    }
+    next();
+  };
+}
+
 export async function seedPermissionCatalog(connection = db) {
   for (const permission of PERMISSIONS) {
     await connection.execute(

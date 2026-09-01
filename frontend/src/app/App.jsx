@@ -206,6 +206,12 @@ function TenantApp() {
     () =>
       NAVIGATION.filter((item) => {
         if (ownerAccount && ["dialer", "supervisor"].includes(item.id)) return false;
+        // Super Admin-controlled, tenant-wide — on top of whatever the
+        // role's own permissions already say. Defaults to true (matches
+        // the DB column's own default) so a session predating these flags
+        // isn't suddenly missing nav items.
+        if (item.id === "auto-dialer" && session.tenant?.canUseAutoDialer === false) return false;
+        if (item.id === "toll-free" && session.tenant?.canUseTollFree === false) return false;
         return hasAny(session, item.permissions);
       }),
     [session, ownerAccount]

@@ -29,6 +29,8 @@ const initialTenant = {
   country: "",
   didsText: "",
   canPurchaseNumbers: true,
+  canUseAutoDialer: true,
+  canUseTollFree: true,
   routingProfileMode: "new",
   routingProfileId: "",
   routingProfileName: ""
@@ -219,19 +221,38 @@ export function CreateSetupModal({ open, onClose, plans, tenants = [], onCreated
           />
         </label>
 
-        <label className="flex items-center gap-2 text-sm font-medium text-text">
-          <Toggle
-            checked={form.canPurchaseNumbers}
-            onChange={(v) => setForm({ ...form, canPurchaseNumbers: v })}
-            label="Let this workspace buy its own phone numbers"
-          />
-          Let this workspace buy its own phone numbers
-        </label>
-        {!form.canPurchaseNumbers && (
-          <p className="-mt-2 text-xs text-muted">
-            They'll still be able to assign numbers to agents — you'll need to buy numbers for them yourself from the setup's detail page.
-          </p>
-        )}
+        <div className="flex flex-col gap-2 rounded-xl border border-border bg-surface-2 px-4 py-3.5">
+          <p className="text-sm font-semibold text-text">Feature access</p>
+          <label className="flex items-center gap-2 text-sm font-medium text-text">
+            <Toggle
+              checked={form.canPurchaseNumbers}
+              onChange={(v) => setForm({ ...form, canPurchaseNumbers: v })}
+              label="Let this workspace buy its own phone numbers"
+            />
+            Buy phone numbers
+          </label>
+          {!form.canPurchaseNumbers && (
+            <p className="pl-[52px] text-xs text-muted">
+              They'll still be able to assign numbers to agents — you'll need to buy numbers for them yourself from the setup's detail page.
+            </p>
+          )}
+          <label className="flex items-center gap-2 text-sm font-medium text-text">
+            <Toggle
+              checked={form.canUseAutoDialer}
+              onChange={(v) => setForm({ ...form, canUseAutoDialer: v })}
+              label="Enable Auto Dialer"
+            />
+            Auto Dialer
+          </label>
+          <label className="flex items-center gap-2 text-sm font-medium text-text">
+            <Toggle
+              checked={form.canUseTollFree}
+              onChange={(v) => setForm({ ...form, canUseTollFree: v })}
+              label="Enable Toll-Free"
+            />
+            Toll-Free
+          </label>
+        </div>
 
         <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface-2 px-4 py-3.5">
           <div>

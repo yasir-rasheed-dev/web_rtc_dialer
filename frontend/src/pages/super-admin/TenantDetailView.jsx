@@ -259,6 +259,20 @@ export default function TenantDetailView({ tenant, onBack, onStatusChanged }) {
       setPurchaseFlagBusy(false);
     }
   };
+
+  const [featureFlagBusy, setFeatureFlagBusy] = useState(null); // "autoDialer" | "tollFree" | null
+  const toggleFeatureFlag = async (key, bodyKey, value, onLabel, offLabel) => {
+    setFeatureFlagBusy(key);
+    try {
+      await superApi(`/super-admin/tenants/${tenant.id}`, { method: "PATCH", body: { [bodyKey]: value } });
+      notifySuccess(value ? onLabel : offLabel);
+      onStatusChanged();
+    } catch (e) {
+      notifyError(e.message);
+    } finally {
+      setFeatureFlagBusy(null);
+    }
+  };
   const [routingMode, setRoutingMode] = useState("new");
   const [routingSelectedId, setRoutingSelectedId] = useState("");
   const [routingSelectedName, setRoutingSelectedName] = useState("");
@@ -412,6 +426,45 @@ export default function TenantDetailView({ tenant, onBack, onStatusChanged }) {
           <Button icon={Plus} onClick={() => setBuyOpen(true)}>
             Buy number for this tenant
           </Button>
+        </div>
+      </Card>
+
+      <Card title="Feature access" description="Turn whole features on or off for this workspace, on top of whatever roles inside it are permitted.">
+        <div className="flex flex-col gap-3">
+          <label className="flex items-center gap-2 text-sm font-medium text-text">
+            <Toggle
+              checked={Boolean(tenant.can_use_auto_dialer)}
+              onChange={(v) =>
+                toggleFeatureFlag(
+                  "autoDialer",
+                  "canUseAutoDialer",
+                  v,
+                  "Auto Dialer is now enabled for this workspace.",
+                  "Auto Dialer is now disabled for this workspace."
+                )
+              }
+              disabled={featureFlagBusy === "autoDialer"}
+              label="Auto Dialer enabled"
+            />
+            Auto Dialer
+          </label>
+          <label className="flex items-center gap-2 text-sm font-medium text-text">
+            <Toggle
+              checked={Boolean(tenant.can_use_toll_free)}
+              onChange={(v) =>
+                toggleFeatureFlag(
+                  "tollFree",
+                  "canUseTollFree",
+                  v,
+                  "Toll-Free is now enabled for this workspace.",
+                  "Toll-Free is now disabled for this workspace."
+                )
+              }
+              disabled={featureFlagBusy === "tollFree"}
+              label="Toll-Free enabled"
+            />
+            Toll-Free
+          </label>
         </div>
       </Card>
 

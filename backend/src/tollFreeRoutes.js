@@ -10,7 +10,7 @@ import express from "express";
 
 import { db } from "./db.js";
 import { realtimeDb } from "./realtimeDb.js";
-import { requirePermission } from "./saas.js";
+import { requirePermission, requireTenantFeature } from "./saas.js";
 import { synthesizeToFile } from "./tts.js";
 
 function asyncRoute(handler) {
@@ -606,6 +606,11 @@ async function deleteIvr(req, res) {
 
 export default function createTollFreeRoutes(authenticate, ami) {
   const router = express.Router();
+
+  // Super Admin-controlled, tenant-wide — every route below already has
+  // its own authenticate + requirePermission("VIEW_TOLL_FREE"/etc.), this
+  // is layered above all of them in one place instead of on each route.
+  router.use(authenticate, requireTenantFeature("can_use_toll_free"));
 
   router.get("/numbers", authenticate, requirePermission("VIEW_TOLL_FREE"), asyncRoute(listTollFreeNumbers));
 

@@ -455,7 +455,8 @@ async function loadTenantUser(userId) {
             r.name AS role_name, r.active AS role_active,
             t.name AS tenant_name, t.workspace, t.status AS tenant_status, t.plan_id,
             t.features_json, t.price_per_user, t.max_users, t.outbound_minutes, t.inbound_minutes,
-            t.extension_start, t.next_extension, t.timezone, t.can_purchase_numbers
+            t.extension_start, t.next_extension, t.timezone, t.can_purchase_numbers,
+            t.can_use_auto_dialer, t.can_use_toll_free
        FROM users u
        JOIN tenants t ON t.id=u.tenant_id
        LEFT JOIN roles r ON r.id=u.role_id AND r.tenant_id=u.tenant_id
@@ -537,6 +538,8 @@ function authPayload(user) {
       status: user.tenant_status,
       timezone: user.timezone,
       canPurchaseNumbers: Boolean(user.can_purchase_numbers),
+      canUseAutoDialer: Boolean(user.can_use_auto_dialer),
+      canUseTollFree: Boolean(user.can_use_toll_free),
       limits: {
         maxUsers: user.max_users,
         outboundMinutes: user.outbound_minutes,
@@ -622,7 +625,8 @@ app.get("/api/super-admin/overview", authenticateSuperAdmin, asyncRoute(async (_
   );
   const [tenants] = await db.execute(
     `SELECT t.id,t.name,t.workspace,t.status,t.price_per_user,t.max_users,t.outbound_minutes,t.inbound_minutes,
-            t.extension_start,t.timezone,t.commio_routing_profile_id,t.commio_routing_profile_name,t.can_purchase_numbers,p.name AS plan_name,
+            t.extension_start,t.timezone,t.commio_routing_profile_id,t.commio_routing_profile_name,
+            t.can_purchase_numbers,t.can_use_auto_dialer,t.can_use_toll_free,p.name AS plan_name,
             COUNT(CASE WHEN COALESCE(ur.name,'')<>'Tenant Owner' THEN u.id END) AS users,
             COALESCE(SUM(CASE WHEN COALESCE(ur.name,'')<>'Tenant Owner' AND u.active=1 THEN 1 ELSE 0 END),0) AS active_users
        FROM tenants t
@@ -762,8 +766,8 @@ app.post("/api/super-admin/tenants", authenticateSuperAdmin, asyncRoute(async (r
       `INSERT INTO tenants
         (id,name,workspace,status,plan_id,price_per_user,max_users,outbound_minutes,inbound_minutes,features_json,
          extension_start,next_extension,timezone,country,billing_cycle,commio_routing_profile_id,commio_routing_profile_name,
-         can_purchase_numbers)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         can_purchase_numbers,can_use_auto_dialer,can_use_toll_free)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         id,
         name,
@@ -782,7 +786,9 @@ app.post("/api/super-admin/tenants", authenticateSuperAdmin, asyncRoute(async (r
         req.body.billingCycle === "ANNIVERSARY" ? "ANNIVERSARY" : "CALENDAR_MONTH",
         existingRoutingProfileId,
         existingRoutingProfileName,
-        req.body.canPurchaseNumbers === false ? 0 : 1
+        req.body.canPurchaseNumbers === false ? 0 : 1,
+        req.body.canUseAutoDialer === false ? 0 : 1,
+        req.body.canUseTollFree === false ? 0 : 1
       ]
     );
 
@@ -846,7 +852,7 @@ app.patch("/api/super-admin/tenants/:id", authenticateSuperAdmin, asyncRoute(asy
   const allowedStatuses = ["TRIAL", "ACTIVE", "INACTIVE", "SUSPENDED", "CANCELLED"];
   if (!allowedStatuses.includes(status)) return res.status(400).json({ error: "Invalid tenant status" });
   await db.execute(
-    `UPDATE tenants SET name=?,status=?,plan_id=?,price_per_user=?,max_users=?,outbound_minutes=?,inbound_minutes=?,features_json=?,timezone=?,can_purchase_numbers=? WHERE id=?`,
+    `UPDATE tenants SET name=?,status=?,plan_id=?,price_per_user=?,max_users=?,outbound_minutes=?,inbound_minutes=?,features_json=?,timezone=?,can_purchase_numbers=?,can_use_auto_dialer=?,can_use_toll_free=? WHERE id=?`,
     [
       req.body.name ?? tenant.name,
       status,
@@ -858,6 +864,8 @@ app.patch("/api/super-admin/tenants/:id", authenticateSuperAdmin, asyncRoute(asy
       req.body.features === undefined ? tenant.features_json : JSON.stringify(req.body.features || {}),
       req.body.timezone ?? tenant.timezone,
       req.body.canPurchaseNumbers === undefined ? tenant.can_purchase_numbers : (req.body.canPurchaseNumbers ? 1 : 0),
+      req.body.canUseAutoDialer === undefined ? tenant.can_use_auto_dialer : (req.body.canUseAutoDialer ? 1 : 0),
+      req.body.canUseTollFree === undefined ? tenant.can_use_toll_free : (req.body.canUseTollFree ? 1 : 0),
       req.params.id
     ]
   );
@@ -2843,7 +2851,7 @@ io.on("connection", async (socket) => {
   // to this tenant.
   socket.tollFreeCampaigns = new Set();
   socket.on("toll-free:subscribe", async ({ campaignId } = {}) => {
-    if (!campaignId || socket.tollFreeCampaigns.has(campaignId)) return;
+    if (!campaignId || socket.tollFreeCampaigns.has(campaignId) || !user.can_use_toll_free) return;
     try {
       const [[campaign]] = await db.execute(`SELECT id FROM inbound_campaigns WHERE id=? AND tenant_id=?`, [campaignId, user.tenant_id]);
       if (!campaign) return;

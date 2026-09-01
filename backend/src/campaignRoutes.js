@@ -23,7 +23,7 @@ import {
     updateDialerDisposition
 } from "./dialer.js";
 
-import { requirePermission } from "./saas.js";
+import { requirePermission, requireTenantFeature } from "./saas.js";
 
 const uploadDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "uploads/campaigns");
 fs.mkdirSync(uploadDir, { recursive: true });
@@ -38,6 +38,11 @@ function asyncRoute(handler) {
 // argument keeps the dependency one-way and avoids the import cycle.
 export default function createCampaignRoutes(authenticate) {
     const router = express.Router();
+
+    // Super Admin-controlled, tenant-wide — every route below already has
+    // its own authenticate + requirePermission("USE_AUTO_DIALER"/etc.), this
+    // is layered above all of them in one place instead of on each route.
+    router.use(authenticate, requireTenantFeature("can_use_auto_dialer"));
 
     // Agent dialer — registered first so the literal /dialer segment is never
     // shadowed by the /:id routes below.
