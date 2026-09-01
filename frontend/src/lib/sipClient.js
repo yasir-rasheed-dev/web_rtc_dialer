@@ -175,6 +175,20 @@ export class RingnexSipClient {
   }
 
   decline() {
+    // 486 "Busy Here" instead of sip.js SimpleUser's default 480
+    // "Temporarily Unavailable" — confirmed live on the Ringnex Asterisk
+    // Commio trunk that a 480 gets auto-retried by the carrier (it reads
+    // as "try again shortly"), which surfaces as the declined call
+    // re-ringing the agent every ~2s until the caller gives up. 486 is
+    // the unambiguous "the user declined" signal carriers don't retry.
+    // SimpleUser.decline()/SessionManager.decline() don't accept a
+    // statusCode option, so this calls the underlying Invitation's own
+    // reject() directly (same `session` SimpleUser itself uses — see
+    // sip.js SimpleUser's onCallCreated delegate).
+    const session = this.user.session;
+    if (session && typeof session.reject === "function") {
+      return session.reject({ statusCode: 486, reasonPhrase: "Busy Here" });
+    }
     return this.user.decline();
   }
 
