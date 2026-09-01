@@ -210,8 +210,8 @@ function TenantApp() {
         // role's own permissions already say. Defaults to true (matches
         // the DB column's own default) so a session predating these flags
         // isn't suddenly missing nav items.
-        if (item.id === "auto-dialer" && session.tenant?.canUseAutoDialer === false) return false;
-        if (item.id === "toll-free" && session.tenant?.canUseTollFree === false) return false;
+        if (item.id === "auto-dialer" && session?.tenant?.canUseAutoDialer === false) return false;
+        if (item.id === "toll-free" && session?.tenant?.canUseTollFree === false) return false;
         return hasAny(session, item.permissions);
       }),
     [session, ownerAccount]
