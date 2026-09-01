@@ -1,4 +1,5 @@
 import path from "node:path";
+import crypto from "node:crypto";
 import { db } from "./db.js";
 
 function cleanChannel(channel = "") {
@@ -36,9 +37,13 @@ function publicCall(call) {
 }
 
 export class CallTracker {
-  constructor(io, recordingRoot, applyAgentStatus = null) {
+  constructor(io, recordingRoot, applyAgentStatus = null, voicemailRoot = null) {
     this.io = io;
     this.recordingRoot = path.resolve(recordingRoot);
+    // Separate spool from recordingRoot — see config.js's voicemailRoot.
+    // Falls back to recordingRoot only so a caller that doesn't pass one
+    // (e.g. a test harness) doesn't crash path.resolve(null).
+    this.voicemailRoot = path.resolve(voicemailRoot || recordingRoot);
     this.calls = new Map();
     this.presence = new Map();
     // Optional — server.js passes its applyAgentStatus(tenantId, userId,
@@ -221,6 +226,20 @@ export class CallTracker {
       if (recording) {
         call.recordingPath = path.isAbsolute(recording) ? recording : path.join(this.recordingRoot, recording);
       }
+    } else if (event.Event === "VarSet" && event.Variable === "RN_VOICEMAIL_FILE") {
+      // Set by the dialplan's [from-commio-route] agent-route branch right
+      // after Record() finishes, when a declined/unanswered direct PSTN
+      // call to an agent with REDIRECT_TO_VOICEMAIL falls through to
+      // voicemail instead of a plain hangup — see
+      // backend/asterisk/toll-free-routing-snippet.conf. Never fires for
+      // the toll-free queue path, by design.
+      const vm = event.Value || null;
+      if (vm && call.tenantId && call.agentUserId) {
+        const resolved = path.resolve(path.isAbsolute(vm) ? vm : path.join(this.voicemailRoot, vm));
+        if (resolved.startsWith(`${this.voicemailRoot}${path.sep}`)) {
+          await this.#saveVoicemail(call, resolved);
+        }
+      }
     } else if (event.Event === "Hangup") {
       call.channels.delete(event.Channel);
       call.status = event.Cause === "16" ? "COMPLETED" : "FAILED";
@@ -355,5 +374,25 @@ export class CallTracker {
        VALUES (?, ?, ?, ?, ?, ?)`,
       [call.tenantId, call.linkedid, event.Uniqueid || null, event.Event, cleanChannel(event.Channel), JSON.stringify(event)]
     );
+  }
+
+  async #saveVoicemail(call, filePath) {
+    const id = crypto.randomUUID();
+    const fileName = path.basename(filePath);
+    await db.execute(
+      `INSERT INTO voicemails
+        (id, tenant_id, agent_user_id, linkedid, from_number, to_number, file_path, file_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, call.tenantId, call.agentUserId, call.linkedid, call.from || "", call.to || "", filePath, fileName]
+    );
+    const payload = {
+      id,
+      agentUserId: call.agentUserId,
+      from: call.from,
+      to: call.to,
+      createdAt: new Date().toISOString()
+    };
+    this.io.to(`user:${call.agentUserId}`).emit("voicemail:new", payload);
+    if (call.tenantId) this.io.to(`tenant:${call.tenantId}:live`).emit("voicemail:new", payload);
   }
 }

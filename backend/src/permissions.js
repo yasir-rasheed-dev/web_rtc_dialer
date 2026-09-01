@@ -9,9 +9,17 @@ export const PERMISSIONS = Object.freeze([
   { key: "WARM_TRANSFER", name: "Warm Transfer", category: "Call & Media" },
   { key: "ADD_PARTICIPANT", name: "Add Participant", category: "Call & Media" },
   { key: "RECORD_CALL", name: "Recording", category: "Call & Media" },
+  // Deliberately separate from RECEIVE_CALLS (which only lets the call
+  // ring the agent at all) and never granted by default below other than
+  // to Tenant Admin — this is the one thing that lets a declined/
+  // unanswered direct PSTN call fall through to voicemail instead of a
+  // plain busy-tone hangup, so it needs the same "opt in per role, never
+  // bundled" treatment as PURCHASE_DIDS/CALL_DNC_NUMBERS above.
+  { key: "REDIRECT_TO_VOICEMAIL", name: "Redirect Declined Calls to Voicemail", category: "Call & Media" },
   { key: "VIEW_CALL_LOGS", name: "View Call Logs", category: "Agent Dashboard" },
   { key: "EDIT_CALL_DISPOSITION", name: "Edit Call Disposition", category: "Agent Dashboard" },
   { key: "VIEW_RECORDINGS", name: "Play Recordings", category: "Agent Dashboard" },
+  { key: "VIEW_VOICEMAILS", name: "Play Voicemails", category: "Agent Dashboard" },
   { key: "VIEW_CONTACTS", name: "View Contacts", category: "Agent Dashboard" },
   { key: "CREATE_CONTACTS", name: "Create Contacts", category: "Agent Dashboard" },
   { key: "EDIT_CONTACTS", name: "Edit Contacts", category: "Agent Dashboard" },
@@ -67,6 +75,7 @@ const OWNER_BLOCKED = new Set([
   "WARM_TRANSFER",
   "ADD_PARTICIPANT",
   "RECORD_CALL",
+  "REDIRECT_TO_VOICEMAIL",
   "MONITOR_CALLS",
   "LISTEN_LIVE_CALLS",
   "WHISPER_CALLS",
@@ -84,7 +93,7 @@ export const DEFAULT_ROLE_PERMISSIONS = Object.freeze({
   Supervisor: [
     "VIEW_DASHBOARD", "VIEW_DIALER", "MAKE_CALLS", "RECEIVE_CALLS", "HOLD_CALL", "SEND_DTMF",
     "BLIND_TRANSFER", "WARM_TRANSFER", "ADD_PARTICIPANT", "RECORD_CALL", "VIEW_CALL_LOGS",
-    "EDIT_CALL_DISPOSITION", "VIEW_RECORDINGS", "VIEW_CONTACTS", "CREATE_CONTACTS", "EDIT_CONTACTS",
+    "EDIT_CALL_DISPOSITION", "VIEW_RECORDINGS", "VIEW_VOICEMAILS", "VIEW_CONTACTS", "CREATE_CONTACTS", "EDIT_CONTACTS",
     "VIEW_AGENTS", "VIEW_TEAMS", "VIEW_REPORTS", "MONITOR_CALLS", "LISTEN_LIVE_CALLS",
     "WHISPER_CALLS", "BARGE_CALLS",
     "VIEW_CAMPAIGNS", "ASSIGN_CONTACTS", "USE_AUTO_DIALER", "SKIP_CONTACT",
@@ -94,7 +103,7 @@ export const DEFAULT_ROLE_PERMISSIONS = Object.freeze({
   Agent: [
     "VIEW_DASHBOARD", "VIEW_DIALER", "MAKE_CALLS", "RECEIVE_CALLS", "HOLD_CALL", "SEND_DTMF",
     "BLIND_TRANSFER", "WARM_TRANSFER", "ADD_PARTICIPANT", "RECORD_CALL", "VIEW_CALL_LOGS",
-    "EDIT_CALL_DISPOSITION", "VIEW_RECORDINGS", "VIEW_CONTACTS", "CREATE_CONTACTS", "EDIT_CONTACTS",
+    "EDIT_CALL_DISPOSITION", "VIEW_RECORDINGS", "VIEW_VOICEMAILS", "VIEW_CONTACTS", "CREATE_CONTACTS", "EDIT_CONTACTS",
     "VIEW_CAMPAIGNS", "USE_AUTO_DIALER", "SKIP_CONTACT"
   ]
 });

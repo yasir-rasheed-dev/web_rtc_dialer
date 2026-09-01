@@ -45,6 +45,7 @@ import * as commio from "./commio.js";
 import createTeamChatRoutes from "./teamChatRoutes.js";
 import createTollFreeRoutes, { getQueueStatus, syncQueuePauseForAgent } from "./tollFreeRoutes.js";
 import createDncRoutes from "./dncRoutes.js";
+import createVoicemailRoutes from "./voicemailRoutes.js";
 import { fileURLToPath } from "node:url";
 import {
   DEFAULT_TEAM_PRIVILEGES,
@@ -110,7 +111,7 @@ async function applyAgentStatus(tenantId, userId, sipUsername, status) {
   return payload;
 }
 
-const tracker = new CallTracker(io, config.recordingRoot, applyAgentStatus);
+const tracker = new CallTracker(io, config.recordingRoot, applyAgentStatus, config.voicemailRoot);
 let amiConnected = false;
 const loginAttempts = new Map();
 
@@ -278,6 +279,7 @@ const ASTERISK_TELEPHONY_PERMISSIONS = Object.freeze([
   "WARM_TRANSFER",
   "ADD_PARTICIPANT",
   "RECORD_CALL",
+  "REDIRECT_TO_VOICEMAIL",
   "MONITOR_CALLS",
   "LISTEN_LIVE_CALLS",
   "WHISPER_CALLS",
@@ -570,6 +572,10 @@ app.use("/api/dids/commio", createCommioRoutes(authenticate));
 app.use("/api/super-admin/commio-numbers", createSuperAdminCommioRoutes(authenticateSuperAdmin));
 app.use("/api/toll-free", createTollFreeRoutes(authenticate, ami));
 app.use("/api/dnc", createDncRoutes(authenticate));
+app.use(
+  "/api/voicemails",
+  createVoicemailRoutes(authenticate, { callAccessScope, appendCallAgentScope, appendRequestedAgent, normalizeDateFilter })
+);
 app.use("/api/team-chat", createTeamChatRoutes(authenticate));
 // Chat attachments — filenames are random UUIDs (see teamChatRoutes.js), so
 // this is safe to serve statically without going through the JWT-auth

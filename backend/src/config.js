@@ -59,6 +59,13 @@ export const config = Object.freeze({
     process.env.RECORDING_ROOT || "/opt/ringnex-webrtc/var/spool/asterisk/monitor"
   ),
   recordingRetentionDays: integer("RECORDING_RETENTION_DAYS", 90),
+  // Deliberately separate from recordingRoot/RECORDING_ROOT — voicemails
+  // (agent-busy-decline recordings) live in their own spool directory on
+  // the Asterisk box, mounted onto this server the same SSHFS way, but as
+  // its own mount so the two never mix.
+  voicemailRoot: path.resolve(
+    process.env.VOICEMAIL_ROOT || "/opt/ringnex-webrtc/var/spool/asterisk/voicemail-custom"
+  ),
   // Not `required()`: absent on deployments that don't use DID purchasing.
   // commio.js checks these itself and fails the request (not server boot)
   // if a purchase route is actually hit without them configured.

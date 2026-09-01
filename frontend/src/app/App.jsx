@@ -28,6 +28,7 @@ import { hasAny } from "../lib/permissions";
 import { confirmModal } from "../lib/modal";
 import { useTeamChatUnreadCount } from "../lib/teamChatBadge";
 import { useMissedCallsBadge } from "../lib/missedCallsBadge";
+import { useVoicemailBadge } from "../lib/voicemailBadge";
 import Login from "../pages/login/Login";
 import Dashboard from "../pages/dashboard/Dashboard";
 import Supervisor from "../pages/supervisor/Supervisor";
@@ -129,6 +130,7 @@ function TenantApp() {
   const [supervisorAgents, setSupervisorAgents] = useState([]);
   const teamChatUnread = useTeamChatUnreadCount(session);
   const missedCalls = useMissedCallsBadge(session);
+  const voicemails = useVoicemailBadge(session);
 
   useEffect(() => {
     localStorage.setItem("ringnex.sidebarCollapsed", collapsed ? "1" : "0");
@@ -174,6 +176,10 @@ function TenantApp() {
         socket.on("agent:status", (item) =>
           setLiveAgentStatus((map) => ({ ...map, [item.userId]: item.status }))
         );
+        // Pushed by callTracker.js the moment a declined/unanswered direct
+        // PSTN call falls through to voicemail for this agent (never fires
+        // for the toll-free queue path) — see voicemailBadge.js.
+        socket.on("voicemail:new", () => voicemails.recordNew());
         // Pushed by the server the instant a newer login elsewhere
         // supersedes this session — sign out here immediately rather than
         // waiting for the next API call to hit the revoked-session 401.
@@ -188,7 +194,7 @@ function TenantApp() {
       cancelled = true;
       socket?.disconnect();
     };
-  }, [session, missedCalls.recordCallEnded]);
+  }, [session, missedCalls.recordCallEnded, voicemails.recordNew]);
 
   useEffect(() => {
     if (!session || !hasAny(session, ["MONITOR_CALLS", "VIEW_REPORTS"])) return;
@@ -259,7 +265,8 @@ function TenantApp() {
       return <LazyAutoDialer permissions={session.permissions || []} sipReady={!ownerAccount && Boolean(session.sip)} />;
     }
     if (page === "contacts") return <LazyContactsPage permissions={session.permissions || []} />;
-    if (page === "call-logs") return <LazyCallLogsPage permissions={session.permissions || []} />;
+    if (page === "call-logs")
+      return <LazyCallLogsPage permissions={session.permissions || []} onVoicemailHeard={voicemails.markHeard} />;
     if (page === "recordings") return <LazyRecordingsPage />;
     if (page === "supervisor") {
       return (
@@ -308,7 +315,7 @@ function TenantApp() {
         session={session}
         collapsed={collapsed}
         logout={logout}
-        badges={{ "team-chat": teamChatUnread, "call-logs": missedCalls.count }}
+        badges={{ "team-chat": teamChatUnread, "call-logs": missedCalls.count + voicemails.count }}
       />
       <div
         className="console-content transition-[margin-left] duration-200 lg:!ml-[var(--rn-sidebar-w)]"

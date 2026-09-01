@@ -153,6 +153,25 @@ export async function recordingBlob(callId) {
   return URL.createObjectURL(await response.blob());
 }
 
+export async function voicemailBlob(voicemailId) {
+  const response = await fetch(`${API_BASE}/api/voicemails/${encodeURIComponent(voicemailId)}`, {
+    headers: { Authorization: `Bearer ${getToken()}` }
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || "Voicemail could not be loaded");
+  }
+  return URL.createObjectURL(await response.blob());
+}
+
+export function getVoicemailCounts() {
+  return api("/voicemails/counts");
+}
+
+export function markVoicemailHeard(voicemailId) {
+  return api(`/voicemails/${encodeURIComponent(voicemailId)}/heard`, { method: "POST" });
+}
+
 // ---------------------------
 // Commio DID purchase (Tenant Owner / Tenant Admin only, PURCHASE_DIDS)
 // ---------------------------
