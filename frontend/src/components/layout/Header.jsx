@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CircleUserRound, LogOut, Menu, Phone } from "lucide-react";
+import { CircleUserRound, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Phone } from "lucide-react";
 
 import Button from "../ui/Button";
 import Select from "../ui/Select";
@@ -68,7 +68,18 @@ function DesktopCallPill() {
   );
 }
 
-export default function Header({ session, ownerAccount, activeLabel, agentStatus, changeStatus, logout, setSidebarOpen }) {
+export default function Header({
+  session,
+  ownerAccount,
+  activeLabel,
+  agentStatus,
+  changeStatus,
+  logout,
+  setSidebarOpen,
+  amiConnected,
+  collapsed,
+  setCollapsed
+}) {
   const canSeeAgentState = !ownerAccount && hasAny(session, ["VIEW_DIALER"]) && session.sip;
 
   return (
@@ -80,10 +91,25 @@ export default function Header({ session, ownerAccount, activeLabel, agentStatus
       >
         <Menu size={20} />
       </button>
+      <button
+        onClick={() => setCollapsed((current) => !current)}
+        className="hidden rounded-lg p-2 text-muted hover:bg-surface-2 hover:text-text lg:block"
+        title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+      >
+        {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+      </button>
 
       <div className="hidden text-sm font-semibold text-text sm:block">{activeLabel}</div>
 
       <div className="ml-auto flex items-center gap-3">
+        <span
+          className="flex items-center gap-1.5 rounded-full bg-surface-2 px-2.5 py-1 text-xs font-medium text-muted"
+          title={`Asterisk AMI: ${amiConnected ? "Connected" : "Offline"}`}
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${amiConnected ? "bg-success" : "bg-muted"}`} />
+          <span className="hidden md:inline">{amiConnected ? "Connected" : "Offline"}</span>
+        </span>
         <DesktopCallPill />
         <ThemeToggle />
         {canSeeAgentState && (

@@ -25,6 +25,7 @@ import { notifyError } from "../lib/toast";
 import { api, getToken, setToken } from "../lib/api";
 import { API_BASE } from "../lib/apiConfig";
 import { hasAny } from "../lib/permissions";
+import { confirmModal } from "../lib/modal";
 import { useTeamChatUnreadCount } from "../lib/teamChatBadge";
 import { useMissedCallsBadge } from "../lib/missedCallsBadge";
 import Login from "../pages/login/Login";
@@ -230,6 +231,12 @@ function TenantApp() {
     await api("/agent/status", { method: "POST", body: { status } }).catch(() => undefined);
   };
   const logout = async () => {
+    const confirmed = await confirmModal({
+      title: "Sign out?",
+      message: "You'll need to sign back in to pick up where you left off.",
+      confirmText: "Sign out"
+    });
+    if (!confirmed) return;
     await api("/auth/logout", { method: "POST" }).catch(() => undefined);
     setToken("");
     setSession(null);
@@ -299,9 +306,8 @@ function TenantApp() {
         sidebarOpen={sidebarOpen}
         setSidebarOpen={setSidebarOpen}
         session={session}
-        amiConnected={amiConnected}
         collapsed={collapsed}
-        setCollapsed={setCollapsed}
+        logout={logout}
         badges={{ "team-chat": teamChatUnread, "call-logs": missedCalls.count }}
       />
       <div
@@ -316,6 +322,9 @@ function TenantApp() {
           changeStatus={changeStatus}
           logout={logout}
           setSidebarOpen={setSidebarOpen}
+          amiConnected={amiConnected}
+          collapsed={collapsed}
+          setCollapsed={setCollapsed}
         />
         <main className="console-main">
           {!ownerAccount && session.sip && (

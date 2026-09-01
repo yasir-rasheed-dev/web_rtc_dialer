@@ -1,10 +1,13 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
+import { LogOut, X } from "lucide-react";
 
 export const SIDEBAR_WIDTH = 250;
 export const SIDEBAR_WIDTH_COLLAPSED = 76;
 
-export default function Sidebar({ navigation, page, setPage, sidebarOpen, setSidebarOpen, session, amiConnected, collapsed, setCollapsed, badges = {} }) {
+// Collapse/expand lives in the header now (Header.jsx) — `collapsed` is
+// still read here to render the narrow layout, just no longer toggled
+// from this component.
+export default function Sidebar({ navigation, page, setPage, sidebarOpen, setSidebarOpen, session, collapsed, logout, badges = {} }) {
   return (
     <>
       <AnimatePresence>
@@ -86,25 +89,15 @@ export default function Sidebar({ navigation, page, setPage, sidebarOpen, setSid
           })}
         </div>
 
-        <div className={`mt-3 flex items-center gap-2.5 border-t border-border px-1 pt-4 ${collapsed ? "justify-center" : ""}`}>
-          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${amiConnected ? "bg-success" : "bg-muted"}`} />
-          {!collapsed && (
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-text">Asterisk AMI</p>
-              <p className="truncate text-[11px] text-muted">{amiConnected ? "Connected" : "Offline"}</p>
-            </div>
-          )}
-        </div>
-
         <button
-          onClick={() => setCollapsed((current) => !current)}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className={`mt-3 hidden items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium text-text/60 hover:bg-surface-2 hover:text-text lg:flex ${
+          onClick={logout}
+          title={collapsed ? "Sign out" : undefined}
+          className={`mt-3 flex items-center gap-2.5 rounded-lg border-t border-border px-3 pt-4 text-[13px] font-medium text-text/60 hover:text-danger ${
             collapsed ? "justify-center" : ""
           }`}
         >
-          {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
-          {!collapsed && <span>Collapse</span>}
+          <LogOut size={16} />
+          {!collapsed && <span>Sign out</span>}
         </button>
       </aside>
     </>
