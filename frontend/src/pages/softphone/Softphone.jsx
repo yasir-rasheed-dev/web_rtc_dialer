@@ -973,10 +973,10 @@ const addPstnParticipant = async () => {
       <audio ref={remoteAudioRef} autoPlay playsInline />
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[380px_1fr]">
-        <Card animate={false} className="flex min-h-0 flex-col overflow-y-auto !p-5">
-          <div className="mb-4 flex items-center justify-between gap-3 border-b border-border pb-4">
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand/10 text-base font-bold text-brand">
+        <Card animate={false} className="flex min-h-0 flex-col overflow-y-auto !p-4">
+          <div className="mb-3 flex items-center justify-between gap-3 border-b border-border pb-3">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand/10 text-sm font-bold text-brand">
                 {initials(config.displayName || config.username)}
               </span>
               <div className="min-w-0">
@@ -1235,7 +1235,7 @@ const addPstnParticipant = async () => {
               )}
             </div>
           ) : (
-            <div className="flex flex-1 flex-col gap-5">
+            <div className="flex flex-1 flex-col gap-3.5">
               <div
                 onDragOver={(event) => {
                   event.preventDefault();
@@ -1243,7 +1243,7 @@ const addPstnParticipant = async () => {
                 }}
                 onDragLeave={() => setDialDragOver(false)}
                 onDrop={handleDialDrop}
-                className={`flex items-center gap-2 rounded-xl border bg-surface-2 px-4 py-3 transition-colors ${
+                className={`flex items-center gap-2 rounded-xl border bg-surface-2 px-3.5 py-2.5 transition-colors ${
                   dialDragOver ? "border-brand ring-2 ring-brand/20" : "border-border"
                 }`}
               >
@@ -1276,17 +1276,17 @@ const addPstnParticipant = async () => {
                   between them; capping the grid's own width and keeping
                   the gap small is what actually gives the tight,
                   handset-style cluster instead. */}
-              <div className="mx-auto grid w-[228px] grid-cols-3 gap-x-3 gap-y-2.5">
+              <div className="mx-auto grid w-[188px] grid-cols-3 gap-x-2.5 gap-y-2">
                 {KEYPAD.map(([key, letters]) => (
                   <button
                     type="button"
                     key={key}
                     onClick={() => pressKey(key)}
                     aria-label={`Dial ${key}`}
-                    className="flex h-[68px] w-[68px] flex-col items-center justify-center rounded-full bg-surface-2 text-text transition-colors hover:bg-surface-3 active:scale-95"
+                    className="flex h-14 w-14 flex-col items-center justify-center rounded-full bg-surface-2 text-text transition-colors hover:bg-surface-3 active:scale-95"
                   >
-                    <span className="text-[22px] font-semibold leading-none">{key}</span>
-                    <span className="mt-1 text-[9px] font-medium tracking-wide text-muted">{letters || " "}</span>
+                    <span className="text-lg font-semibold leading-none">{key}</span>
+                    <span className="mt-0.5 text-[8px] font-medium tracking-wide text-muted">{letters || " "}</span>
                   </button>
                 ))}
               </div>
@@ -1296,9 +1296,9 @@ const addPstnParticipant = async () => {
                 onClick={placeCall}
                 disabled={!can("MAKE_CALLS") || !isRegistered || !isValidDialString(dialNumber)}
                 aria-label="Start call"
-                className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-success text-white shadow-[0_10px_24px_-6px_rgb(var(--rn-green)/0.5)] transition-transform hover:scale-105 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
+                className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-success text-white shadow-[0_10px_24px_-6px_rgb(var(--rn-green)/0.5)] transition-transform hover:scale-105 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
               >
-                <PhoneCall size={22} />
+                <PhoneCall size={19} />
               </button>
               <p className="text-center text-xs text-muted">
                 {!can("MAKE_CALLS")
@@ -1311,15 +1311,15 @@ const addPstnParticipant = async () => {
           )}
         </Card>
 
-        <Card animate={false} className="flex min-h-0 flex-col !p-5">
-          <div className="mb-3 flex items-center justify-between gap-2 border-b border-border">
+        <Card animate={false} className="flex min-h-0 flex-col !p-4">
+          <div className="mb-2 flex items-center justify-between gap-2 border-b border-border">
             <div className="flex gap-1">
               {HISTORY_TABS.map((tab) => (
                 <button
                   key={tab.id}
                   type="button"
                   onClick={() => setHistoryTab(tab.id)}
-                  className={`flex items-center gap-1.5 border-b-2 px-3 pb-2.5 text-sm font-medium transition-colors ${
+                  className={`flex items-center gap-1.5 border-b-2 px-2.5 pb-2 text-[13px] font-medium transition-colors ${
                     historyTab === tab.id ? "border-brand text-brand" : "border-transparent text-muted hover:text-text"
                   }`}
                 >
@@ -1387,10 +1387,10 @@ const addPstnParticipant = async () => {
                       type="button"
                       key={item.id}
                       onClick={() => redialFromHistory(item)}
-                      className="-mx-2 flex items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-surface-2"
+                      className="-mx-2 flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-surface-2"
                     >
                       <span
-                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
                           missed ? "bg-danger-soft text-danger" : "bg-brand/10 text-brand"
                         }`}
                       >
