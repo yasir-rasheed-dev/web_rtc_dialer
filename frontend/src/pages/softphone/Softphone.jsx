@@ -950,11 +950,6 @@ const addPstnParticipant = async () => {
     return history;
   }, [history, historyTab]);
 
-  const callsToday = useMemo(() => {
-    const todayKey = new Date().toDateString();
-    return history.filter((item) => new Date(item.startedAt).toDateString() === todayKey).length;
-  }, [history]);
-
   const redialFromHistory = (item) => {
     if (callStatus === "idle") setDialNumber(item.number);
   };
@@ -1317,39 +1312,32 @@ const addPstnParticipant = async () => {
         </Card>
 
         <Card animate={false} className="flex min-h-0 flex-col !p-5">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-base font-semibold text-text">Call History</h2>
-              <p className="text-xs text-muted">
-                {callsToday} call{callsToday === 1 ? "" : "s"} today
-              </p>
+          <div className="mb-3 flex items-center justify-between gap-2 border-b border-border">
+            <div className="flex gap-1">
+              {HISTORY_TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setHistoryTab(tab.id)}
+                  className={`flex items-center gap-1.5 border-b-2 px-3 pb-2.5 text-sm font-medium transition-colors ${
+                    historyTab === tab.id ? "border-brand text-brand" : "border-transparent text-muted hover:text-text"
+                  }`}
+                >
+                  <tab.icon size={14} />
+                  {tab.label}
+                </button>
+              ))}
             </div>
             {history.length > 0 && (
               <button
                 type="button"
                 onClick={clearHistory}
-                className="rounded-lg p-1.5 text-muted hover:bg-danger-soft hover:text-danger"
+                className="mb-1.5 shrink-0 rounded-lg p-1.5 text-muted hover:bg-danger-soft hover:text-danger"
                 aria-label="Clear call history"
               >
                 <Trash2 size={16} />
               </button>
             )}
-          </div>
-
-          <div className="mb-3 flex gap-1 border-b border-border">
-            {HISTORY_TABS.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setHistoryTab(tab.id)}
-                className={`flex items-center gap-1.5 border-b-2 px-3 pb-2.5 text-sm font-medium transition-colors ${
-                  historyTab === tab.id ? "border-brand text-brand" : "border-transparent text-muted hover:text-text"
-                }`}
-              >
-                <tab.icon size={14} />
-                {tab.label}
-              </button>
-            ))}
           </div>
 
           <div className="flex-1 overflow-y-auto">
