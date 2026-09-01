@@ -7,12 +7,12 @@ export default function PageHeader({ eyebrow, title, description, actions }) {
       initial={{ opacity: 0, y: -6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
-      className="flex flex-wrap items-start justify-between gap-4"
+      className="flex flex-wrap items-start justify-between gap-3"
     >
       <div>
-        {eyebrow && <span className="text-[11px] font-extrabold tracking-[0.16em] text-brand">{eyebrow}</span>}
-        <h1 className="mt-1 text-[28px] font-bold leading-tight tracking-tight text-text">{title}</h1>
-        {description && <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-muted">{description}</p>}
+        {eyebrow && <span className="text-[10px] font-bold tracking-[0.14em] text-brand">{eyebrow}</span>}
+        <h1 className="mt-0.5 text-xl font-semibold leading-tight tracking-tight text-text">{title}</h1>
+        {description && <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-muted">{description}</p>}
       </div>
       {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
     </motion.div>

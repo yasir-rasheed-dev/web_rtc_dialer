@@ -30,7 +30,7 @@ export default function Dashboard({ user, tenant, liveCalls, amiConnected }) {
   const maximum = Math.max(1, ...(report?.daily || []).map((row) => Number(row.calls)));
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <PageHeader
         eyebrow={tenant?.name || "WORKSPACE"}
         title={`Good day, ${user.name.split(" ")[0]}`}
@@ -47,7 +47,7 @@ export default function Dashboard({ user, tenant, liveCalls, amiConnected }) {
       {!report && !error ? (
         <SkeletonCards />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <KpiCard label="Total calls" value={summary.total_calls || 0} detail="Last 7 days" icon={PhoneCall} />
           <KpiCard
             label="Completed"
@@ -67,20 +67,20 @@ export default function Dashboard({ user, tenant, liveCalls, amiConnected }) {
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-        <Card title="Call volume" description="Daily activity for the last 7 days" icon={BarChart3}>
+      <div className="grid gap-3 lg:grid-cols-[1.4fr_1fr]">
+        <Card compact title="Call volume" description="Daily activity for the last 7 days" icon={BarChart3}>
           {report?.daily?.length ? (
-            <div className="flex h-[180px] items-end gap-3">
+            <div className="flex h-40 items-end gap-2.5">
               {report.daily.map((row) => (
-                <div key={row.day} className="flex flex-1 flex-col items-center gap-2">
-                  <span className="text-xs font-semibold text-muted">{row.calls}</span>
+                <div key={row.day} className="flex flex-1 flex-col items-center gap-1.5">
+                  <span className="text-[11px] font-semibold text-muted">{row.calls}</span>
                   <motion.div
                     initial={{ height: 0 }}
-                    animate={{ height: Math.max(8, (Number(row.calls) / maximum) * 140) }}
+                    animate={{ height: Math.max(6, (Number(row.calls) / maximum) * 110) }}
                     transition={{ duration: 0.4, ease: "easeOut" }}
                     className="w-full rounded-t-md bg-gradient-to-t from-brand to-brand/70"
                   />
-                  <span className="text-[11px] text-muted">
+                  <span className="text-[10px] text-muted">
                     {new Date(row.day).toLocaleDateString(undefined, { weekday: "short" })}
                   </span>
                 </div>
@@ -92,19 +92,20 @@ export default function Dashboard({ user, tenant, liveCalls, amiConnected }) {
         </Card>
 
         <Card
+          compact
           title="Live activity"
           description="Tenant-isolated Asterisk channels"
           actions={<StatusBadge tone="danger">LIVE</StatusBadge>}
         >
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-2.5">
             {liveCalls.slice(0, 6).map((call) => (
-              <div key={call.linkedid} className="flex items-center gap-3">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-3 text-[11px] font-bold text-text">
+              <div key={call.linkedid} className="flex items-center gap-2.5">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-3 text-[10px] font-bold text-text">
                   {(call.agent || "?").slice(-2).toUpperCase()}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-text">{call.agent || "Unassigned"}</p>
-                  <p className="truncate text-xs text-muted">
+                  <p className="truncate text-[13px] font-medium text-text">{call.agent || "Unassigned"}</p>
+                  <p className="truncate text-[11px] text-muted">
                     {call.from} → {call.to}
                   </p>
                 </div>
