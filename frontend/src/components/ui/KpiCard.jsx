@@ -25,7 +25,7 @@ export default function KpiCard({ label, value, detail, icon: Icon, tone = "blue
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.22, ease: "easeOut" }}
-      className="group relative overflow-hidden rounded-xl border border-border bg-surface p-4 transition-all hover:-translate-y-0.5 hover:border-border-strong"
+      className="group relative overflow-hidden rounded-md border border-border bg-surface p-3.5 transition-all hover:-translate-y-0.5 hover:border-border-strong"
     >
       <span className="absolute inset-y-0 left-0 w-[3px]" style={{ background: t.color }} />
       <span
@@ -47,9 +47,9 @@ export default function KpiCard({ label, value, detail, icon: Icon, tone = "blue
         )}
       </div>
 
-      <p className="relative mt-3 text-[11px] font-semibold uppercase tracking-wide text-muted">{label}</p>
-      <p className="relative mt-1 text-[26px] font-bold leading-none tracking-tight text-text">{value}</p>
-      {detail && <p className="relative mt-1.5 text-xs text-muted">{detail}</p>}
+      <p className="relative mt-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted">{label}</p>
+      <p className="relative mt-1 text-[25px] font-bold leading-none tracking-tight text-text">{value}</p>
+      {detail && <p className="relative mt-1.5 text-[11px] text-muted">{detail}</p>}
     </motion.div>
   );
 }

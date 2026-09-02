@@ -26,8 +26,8 @@ export default function Card({
     <Wrapper
       {...motionProps}
       className={
-        "rounded-xl border border-border bg-surface transition-colors " +
-        (compact ? "p-4 " : "p-5 sm:p-6 ") +
+        "rounded-md border border-border bg-surface transition-colors " +
+        (compact ? "p-3.5 " : "p-4 ") +
         (interactive ? "hover:border-border-strong " : "") +
         className
       }
@@ -36,7 +36,7 @@ export default function Card({
         <div
           className={
             "flex items-start justify-between gap-4 border-b border-border " +
-            (compact ? "-mx-4 mb-4 px-4 pb-3" : "-mx-5 mb-5 px-5 pb-4 sm:-mx-6 sm:px-6")
+            (compact ? "-mx-3.5 mb-3.5 px-3.5 pb-2.5" : "-mx-4 mb-4 px-4 pb-3")
           }
         >
           <div className="min-w-0">

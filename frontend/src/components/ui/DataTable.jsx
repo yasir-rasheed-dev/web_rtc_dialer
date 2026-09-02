@@ -118,7 +118,7 @@ export default function DataTable({
         </div>
       )}
 
-      <div className="overflow-hidden rounded-lg border border-border">
+      <div className="overflow-hidden rounded-md border border-border">
         <div className="overflow-x-auto">
           {loading ? (
             <div className="p-4">
