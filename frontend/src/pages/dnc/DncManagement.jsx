@@ -5,6 +5,7 @@ import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import DataTable from "../../components/ui/DataTable";
 import Input from "../../components/ui/Input";
+import Modal from "../../components/ui/Modal";
 import PageHeader from "../../components/ui/PageHeader";
 import StatusBadge from "../../components/ui/StatusBadge";
 import { api } from "../../lib/api";
@@ -25,6 +26,7 @@ export default function DncManagement() {
   const [newReason, setNewReason] = useState("");
   const [adding, setAdding] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+  const [addOpen, setAddOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
 
   const load = async () => {
@@ -53,6 +55,7 @@ export default function DncManagement() {
       notifySuccess("Number added to the Do-Not-Call list.");
       setNewNumber("");
       setNewReason("");
+      setAddOpen(false);
       load();
     } catch (error) {
       notifyError(error.message);
@@ -141,36 +144,16 @@ export default function DncManagement() {
           "Numbers here are blocked from outbound dialing tenant-wide, unless an agent's role has the “Call Do-Not-Call Numbers” permission."
         }
         actions={
-          <Button variant="secondary" icon={Upload} onClick={() => setUploadOpen(true)}>
-            Upload spreadsheet
-          </Button>
+          <>
+            <Button icon={Plus} onClick={() => setAddOpen(true)}>
+              Add number
+            </Button>
+            <Button variant="secondary" icon={Upload} onClick={() => setUploadOpen(true)}>
+              Upload spreadsheet
+            </Button>
+          </>
         }
       />
-
-      <Card title="Add a number" description="Type a single number, or upload a spreadsheet for bulk imports.">
-        <form onSubmit={addNumber} className="flex flex-wrap items-end gap-3">
-          <label className="flex min-w-[200px] flex-1 flex-col gap-1.5 text-xs font-medium text-muted">
-            Phone number
-            <Input
-              value={newNumber}
-              onChange={(event) => setNewNumber(event.target.value)}
-              placeholder="+1 555 123 4567"
-              required
-            />
-          </label>
-          <label className="flex min-w-[200px] flex-1 flex-col gap-1.5 text-xs font-medium text-muted">
-            Reason <span className="font-normal normal-case text-muted/70">(optional)</span>
-            <Input
-              value={newReason}
-              onChange={(event) => setNewReason(event.target.value)}
-              placeholder="Customer requested no contact"
-            />
-          </label>
-          <Button type="submit" icon={Plus} loading={adding}>
-            Add number
-          </Button>
-        </form>
-      </Card>
 
       {loading || numbers.length ? (
         <DataTable
@@ -203,14 +186,50 @@ export default function DncManagement() {
             </span>
             <div>
               <p className="text-sm font-semibold text-text">The Do-Not-Call list is empty</p>
-              <p className="mt-1 text-xs text-muted">Add a number above, or upload a spreadsheet.</p>
+              <p className="mt-1 text-xs text-muted">Add a single number, or upload a spreadsheet for bulk imports.</p>
             </div>
-            <Button size="sm" variant="secondary" icon={Upload} onClick={() => setUploadOpen(true)}>
-              Upload spreadsheet
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" icon={Plus} onClick={() => setAddOpen(true)}>
+                Add number
+              </Button>
+              <Button size="sm" variant="secondary" icon={Upload} onClick={() => setUploadOpen(true)}>
+                Upload spreadsheet
+              </Button>
+            </div>
           </div>
         </Card>
       )}
+
+      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add number">
+        <form onSubmit={addNumber} className="flex flex-col gap-4">
+          <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
+            Phone number
+            <Input
+              autoFocus
+              value={newNumber}
+              onChange={(event) => setNewNumber(event.target.value)}
+              placeholder="+1 555 123 4567"
+              required
+            />
+          </label>
+          <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
+            Reason <span className="font-normal normal-case text-muted/70">(optional)</span>
+            <Input
+              value={newReason}
+              onChange={(event) => setNewReason(event.target.value)}
+              placeholder="Customer requested no contact"
+            />
+          </label>
+          <div className="flex justify-end gap-2 border-t border-border pt-4">
+            <Button type="button" variant="ghost" size="sm" onClick={() => setAddOpen(false)} disabled={adding}>
+              Cancel
+            </Button>
+            <Button type="submit" size="sm" loading={adding}>
+              Add number
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       <DncUploadModal open={uploadOpen} onClose={() => setUploadOpen(false)} onDone={load} />
     </div>
