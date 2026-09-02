@@ -53,9 +53,9 @@ function groupPermissions(permissions, tenant = {}) {
 }
 
 // Same field look as the Team Chat "Create group" modal — flat white input,
-// 1px border, medium radius, soft focus ring.
+// visible 1px border, medium radius, soft blue focus ring.
 const FIELD_INPUT =
-  "h-9 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text placeholder:text-muted focus:border-border-strong focus:outline-none focus:ring-2 focus:ring-ring/40";
+  "h-10 w-full rounded-lg border border-border-strong bg-surface px-3.5 text-sm text-text placeholder:text-muted transition-colors focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/15";
 
 function CategoryBlock({ category, items, selected, onToggle, onToggleAll }) {
   const on = items.filter((i) => selected.has(i.key)).length;
@@ -166,7 +166,9 @@ function RoleFormModal({ open, onClose, role, grouped, onSaved }) {
       <form onSubmit={submit} className="flex flex-col gap-4">
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
-            Role name<span className="text-danger">*</span>
+            <span>
+              Role name <span className="text-danger">*</span>
+            </span>
             <input
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -177,7 +179,7 @@ function RoleFormModal({ open, onClose, role, grouped, onSaved }) {
             />
           </label>
           <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
-            Description
+            <span>Description</span>
             <input
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
