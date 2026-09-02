@@ -117,22 +117,25 @@ export function HBarList({ items = [], unit = "", emptyLabel = "No data" }) {
 
 /* ---------------------------------------------------------- Column bars -- */
 
-export function BarChart({ data = [], height = 150, color = CHART_COLORS.blue, valueFormat = (v) => v }) {
+export function BarChart({ data = [], height = 160, color = CHART_COLORS.blue, valueFormat = (v) => v }) {
   if (!data.length) return <p className="py-6 text-center text-xs text-muted">No data</p>;
   const max = Math.max(1, ...data.map((d) => Number(d.value) || 0));
 
   return (
-    <div className="flex items-end gap-2" style={{ height }}>
+    <div className="flex items-stretch gap-3" style={{ height }}>
       {data.map((d, i) => {
         const val = Number(d.value) || 0;
-        const h = (val / max) * 100;
+        const pct = Math.max(val > 0 ? 4 : 0, (val / max) * 100);
         return (
-          <div key={i} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-1.5">
+          <div key={i} className="flex h-full min-w-0 flex-1 flex-col items-center gap-1.5">
             <span className="text-[10px] font-semibold tabular-nums text-text">{valueFormat(val)}</span>
-            <div
-              className="w-full max-w-[42px] rounded-t-md transition-[height] duration-500"
-              style={{ height: `${Math.max(h, val > 0 ? 3 : 0)}%`, background: d.color || color }}
-            />
+            {/* fixed-height track so the bar's % resolves */}
+            <div className="flex w-full flex-1 items-end justify-center">
+              <div
+                className="w-full max-w-[46px] rounded-t-md transition-[height] duration-500"
+                style={{ height: `${pct}%`, minHeight: val > 0 ? 3 : 0, background: d.color || color }}
+              />
+            </div>
             <span className="w-full truncate text-center text-[10px] text-muted" title={d.label}>
               {d.label}
             </span>
