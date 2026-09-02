@@ -54,20 +54,11 @@ export default function UsagePage() {
   const pricePerUser = Number(payload?.pricePerUser || 0);
   const seatBill = Number(payload?.estimatedSeatRevenue || 0);
 
-  const utilBars = [
-    { label: "Seats used", value: seats, max: limits.maxUsers || undefined, color: CHART_COLORS.accent },
-    {
-      label: "Outbound minutes",
-      value: Number(usage.outboundMinutes || 0),
-      max: limits.outboundMinutes || undefined,
-      color: CHART_COLORS.blue
-    },
-    {
-      label: "Inbound minutes",
-      value: Number(usage.inboundMinutes || 0),
-      max: limits.inboundMinutes || undefined,
-      color: CHART_COLORS.blue
-    }
+  const outMin = Number(usage.outboundMinutes || 0);
+  const inMin = Number(usage.inboundMinutes || 0);
+  const usageBars = [
+    { label: "Outbound minutes", value: outMin, color: CHART_COLORS.blue },
+    { label: "Inbound minutes", value: inMin, color: CHART_COLORS.accent }
   ];
 
   return (
@@ -128,11 +119,18 @@ export default function UsagePage() {
           </div>
 
           <div className="grid gap-4 lg:grid-cols-[1.5fr_1fr]">
-            <Card title="Plan utilization" description={`Consumed vs your plan allowance — ${formatMonthLabel(month)}`}>
-              <HBarList items={utilBars} emptyLabel="No plan limits configured" />
-              <p className="mt-4 border-t border-border pt-3 text-[11px] text-muted">
-                Bars turn orange when usage goes over the plan allowance.
-              </p>
+            <Card title="Usage this month" description={`What this workspace consumed — ${formatMonthLabel(month)}`}>
+              <HBarList items={usageBars} unit="min" emptyLabel="No calls this month" />
+              <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border pt-3 text-sm">
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-muted">Total calls</p>
+                  <p className="mt-0.5 font-semibold tabular-nums text-text">{(usage.calls || 0).toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-muted">Total minutes</p>
+                  <p className="mt-0.5 font-semibold tabular-nums text-text">{(outMin + inMin).toLocaleString()} min</p>
+                </div>
+              </div>
             </Card>
 
             <Card title="Monthly bill" description={formatMonthLabel(month)}>
