@@ -1,0 +1,12 @@
+-- Call participants: one call log per real conversation, with a list of
+-- everyone who was actually ON it (original agent + any warm-transfer
+-- target agents + any PSTN parties added to the conference). Supervisor
+-- listen/whisper/barge legs are deliberately NOT calls at all (the
+-- tracker drops their events entirely) so they never appear here.
+--
+-- A JSON array column rather than a child table: it's display-only
+-- metadata that rides the existing one-row-per-linkedid upsert, never
+-- queried/joined on its own. Shape: [{ "type":"agent"|"pstn",
+-- "userId":<uuid|null>, "name":<string>, "extension":<string|null>,
+-- "number":<string|null> }].
+ALTER TABLE calls ADD COLUMN IF NOT EXISTS participants_json TEXT NULL AFTER notes;

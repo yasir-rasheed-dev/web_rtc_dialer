@@ -24,17 +24,16 @@ function fieldLabel() {
   return "flex flex-col gap-1.5 text-xs font-medium text-muted";
 }
 
-// Same set of privileges shown in the app today (Monitoring-category items
-// are intentionally excluded here, matching the existing behavior) — only
-// the checkbox -> toggle widget changed, not which privileges appear.
+// Groups every team privilege the backend exposes (Members, Team Settings,
+// Call Visibility AND Monitoring) by category. The Monitoring group
+// (MONITOR/LISTEN/WHISPER/BARGE_TEAM_CALLS) must be editable here — the
+// supervisor Listen/Whisper/Barge actions are gated on these per-team flags.
 function groupedPrivileges(privileges = []) {
-  return privileges
-    .filter((item) => item.category !== "Monitoring")
-    .reduce((groups, item) => {
-      groups[item.category] ||= [];
-      groups[item.category].push(item);
-      return groups;
-    }, {});
+  return privileges.reduce((groups, item) => {
+    groups[item.category] ||= [];
+    groups[item.category].push(item);
+    return groups;
+  }, {});
 }
 
 function PrivilegeToggleGroups({ groups, values, onToggle, onToggleAll, disabled = false }) {

@@ -39,6 +39,38 @@ const TABS = [
   { id: "missed", label: "Missed", countKey: "missed", params: { outcome: "missed" } }
 ];
 
+// Everyone who was actually on the call — the attributed agent plus any
+// warm-transfer targets / added PSTN parties. Supervisor listen/whisper/
+// barge legs are never recorded here (the backend drops them entirely).
+function ParticipantCells({ participants }) {
+  const list = Array.isArray(participants) ? participants : [];
+  if (list.length <= 1) return <span className="text-muted/60">—</span>;
+  const label = (p) => p.name || p.number || p.extension || "Unknown";
+  const shown = list.slice(0, 3);
+  const extra = list.length - shown.length;
+  return (
+    <span className="flex flex-wrap items-center gap-1.5" title={list.map(label).join(", ")}>
+      {shown.map((p, i) => (
+        <span
+          key={i}
+          className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-text"
+        >
+          <span
+            className={
+              "flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold " +
+              (p.type === "pstn" ? "bg-accent/15 text-accent" : "bg-brand/10 text-brand")
+            }
+          >
+            {label(p).slice(0, 1).toUpperCase()}
+          </span>
+          <span className="max-w-[120px] truncate">{label(p)}</span>
+        </span>
+      ))}
+      {extra > 0 && <span className="text-[11px] font-medium text-muted">+{extra}</span>}
+    </span>
+  );
+}
+
 function TabBar({ tab, counts, countsLoading, showVoicemail, vmUnheard, onSelect }) {
   const pill = (id, label, count, highlight) => {
     const active = tab === id;
@@ -356,6 +388,7 @@ export default function CallLogsPage({ permissions = [], onVoicemailHeard }) {
                         ["status", "Status"],
                         ["duration", "Duration"],
                         ["started", "Date & time"],
+                        [null, "Participants"],
                         [null, "Recording"]
                       ].map(([key, label]) => {
                         const active = callSort?.key === key;
@@ -426,6 +459,9 @@ export default function CallLogsPage({ permissions = [], onVoicemailHeard }) {
                             {connected ? formatSeconds(call.billable_sec) : "—"}
                           </td>
                           <td className="whitespace-nowrap px-4 py-3 text-muted">{formatDate(call.started_at)}</td>
+                          <td className="px-4 py-3">
+                            <ParticipantCells participants={call.participants} />
+                          </td>
                           <td className="px-4 py-3">
                             {call.recording_name && canPlayRecordings ? (
                               <Button

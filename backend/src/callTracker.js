@@ -85,8 +85,20 @@ function publicCall(call) {
     status: call.status,
     startedAt: call.startedAt,
     answeredAt: call.answeredAt,
-    channels: [...call.channels]
+    channels: [...call.channels],
+    participants: participantList(call)
   };
+}
+
+// Everyone who was actually on the call — the attributed agent plus any
+// warm-transfer targets / PSTN parties added later. Supervisor monitoring
+// legs never reach here (their events are dropped upstream).
+function participantList(call) {
+  return call.participants instanceof Map ? [...call.participants.values()] : [];
+}
+
+function participantKey(participant) {
+  return participant.userId ? `u:${participant.userId}` : `n:${participant.number || participant.name || ""}`;
 }
 
 export class CallTracker {
@@ -99,6 +111,19 @@ export class CallTracker {
     this.voicemailRoot = path.resolve(voicemailRoot || recordingRoot);
     this.calls = new Map();
     this.presence = new Map();
+    // Uniqueids (and later, resolved channel names) of supervisor
+    // listen/whisper/barge legs. These are ChanSpy Originate()s the
+    // /api/supervisor/monitor route pre-registers here with a known
+    // ChannelId — they are NOT calls, so every AMI event for them is
+    // dropped: no `calls` row, no `call_events` row, no live-call emit.
+    this.monitorChannelIds = new Set();
+    this.monitorChannelNames = new Set();
+    // Warm-transfer / conference legs the tracker should fold into an
+    // EXISTING call as a participant instead of logging as their own call.
+    // channelId -> { linkedid, participant }. Registered by
+    // /api/calls/conference/invite-agent and invite-pstn.
+    this.participantLegs = new Map();
+    this.participantLegChannels = new Set();
     // Optional — server.js passes its applyAgentStatus(tenantId, userId,
     // sipUsername, status) helper here so an agent's status auto-flips to
     // ON_CALL the moment they're actually bridged (inbound or outbound —
@@ -120,6 +145,97 @@ export class CallTracker {
 
   find(linkedid) {
     return this.calls.get(linkedid);
+  }
+
+  // Called by /api/supervisor/monitor right before it fires the ChanSpy
+  // Originate, passing the same value it hands Asterisk as `ChannelId`.
+  // From then on the tracker recognises that channel's events and ignores
+  // them entirely, so a supervisor listening/whispering/barging never
+  // shows up as a call in the logs or the live dashboard.
+  registerMonitorChannel(channelId) {
+    if (!channelId) return;
+    this.monitorChannelIds.add(channelId);
+    // Safety GC — if we somehow never see this channel's Hangup, don't
+    // leak the entry forever.
+    const timer = setTimeout(() => this.monitorChannelIds.delete(channelId), 4 * 60 * 60 * 1000);
+    timer.unref?.();
+  }
+
+  #isMonitorEvent(event) {
+    const id = event.Uniqueid || event.Linkedid;
+    if ((id && this.monitorChannelIds.has(id)) || (event.Channel && this.monitorChannelNames.has(event.Channel))) {
+      if (event.Channel) this.monitorChannelNames.add(event.Channel);
+      if (event.Event === "Hangup") {
+        if (event.Channel) this.monitorChannelNames.delete(event.Channel);
+        if (id) this.monitorChannelIds.delete(id);
+      }
+      return true;
+    }
+    return false;
+  }
+
+  // Called by the warm-transfer / add-participant routes right before they
+  // Originate the new leg, with the same value passed to Asterisk as
+  // `ChannelId`. That leg then never becomes its own call log — instead
+  // the person/number is folded into the existing call's participant list.
+  registerParticipantLeg(channelId, linkedid, participant) {
+    if (!channelId || !linkedid || !participant) return;
+    this.participantLegs.set(channelId, { linkedid, participant });
+    const call = this.calls.get(linkedid);
+    if (call) {
+      this.#addParticipant(call, participant);
+      this.#upsert(call, {}).catch(() => undefined);
+      const visible = publicCall(call);
+      if (call.tenantId) {
+        this.io.to(`tenant:${call.tenantId}:live`).emit("call:update", visible);
+        this.#emitCallTeamEvent(call, "call:update", visible);
+      }
+    }
+    const timer = setTimeout(() => this.participantLegs.delete(channelId), 4 * 60 * 60 * 1000);
+    timer.unref?.();
+  }
+
+  #addParticipant(call, participant) {
+    if (!call || !participant) return;
+    call.participants ||= new Map();
+    const key = participantKey(participant);
+    if (!call.participants.has(key)) {
+      call.participants.set(key, {
+        type: participant.type || (participant.userId ? "agent" : "pstn"),
+        userId: participant.userId || null,
+        name: participant.name || null,
+        extension: participant.extension || null,
+        number: participant.number || null
+      });
+    }
+  }
+
+  // A participant leg's own AMI events (Newchannel/Newstate/Hangup/…) must
+  // not spawn or mutate a `calls` row of their own. On the first event we
+  // fold the person into the target call; every event for that channel is
+  // then swallowed.
+  #isParticipantLegEvent(event) {
+    const id = event.Uniqueid || event.Linkedid;
+    const leg = (id && this.participantLegs.get(id)) || null;
+    if (!leg && !(event.Channel && this.participantLegChannels.has(event.Channel))) return false;
+    if (event.Channel) this.participantLegChannels.add(event.Channel);
+    if (leg) {
+      const call = this.calls.get(leg.linkedid);
+      if (call) {
+        this.#addParticipant(call, leg.participant);
+        this.#upsert(call, event).catch(() => undefined);
+        const visible = publicCall(call);
+        if (call.tenantId) {
+          this.io.to(`tenant:${call.tenantId}:live`).emit("call:update", visible);
+          this.#emitCallTeamEvent(call, "call:update", visible);
+        }
+      }
+    }
+    if (event.Event === "Hangup") {
+      if (event.Channel) this.participantLegChannels.delete(event.Channel);
+      if (id) this.participantLegs.delete(id);
+    }
+    return true;
   }
 
   findByAgent(agent) {
@@ -160,6 +276,12 @@ export class CallTracker {
     call.teamIds = Array.isArray(agentRecord.team_ids) ? agentRecord.team_ids : (call.teamIds || []);
     call.teamNames = Array.isArray(agentRecord.team_names) ? agentRecord.team_names : (call.teamNames || []);
     call.agentExtension = agentRecord.extension || call.agentExtension;
+    this.#addParticipant(call, {
+      type: "agent",
+      userId: agentRecord.id || null,
+      name: agentRecord.name || null,
+      extension: agentRecord.extension || null
+    });
   }
 
   async handle(event) {
@@ -189,6 +311,15 @@ export class CallTracker {
     }
 
     if (!linkedid || !event.Event) return;
+
+    // Supervisor monitoring legs (listen/whisper/barge) are not calls —
+    // drop every event for them before any tracking/persistence happens.
+    if (this.#isMonitorEvent(event)) return;
+
+    // Warm-transfer / add-participant legs fold into an existing call's
+    // participant list rather than becoming a call of their own.
+    if (this.#isParticipantLegEvent(event)) return;
+
     let call = this.calls.get(linkedid);
 
     if (event.Event === "Newchannel") {
@@ -238,6 +369,17 @@ export class CallTracker {
     const alreadyAnswered = call.status === "ANSWERED" || call.status === "HELD" || Boolean(call.answeredAt);
     if (detectedAgent && (!alreadyAnswered || detectedEndpoint === call.agent)) {
       this.#applyAgent(call, detectedEndpoint, detectedAgent);
+    } else if (detectedAgent) {
+      // A different real agent turning up on an already-answered call is a
+      // blind/warm transfer target that rode the same linkedid — keep the
+      // call attributed to the original agent (above), but record this
+      // person as a participant of the same call log.
+      this.#addParticipant(call, {
+        type: "agent",
+        userId: detectedAgent.id || null,
+        name: detectedAgent.name || null,
+        extension: detectedAgent.extension || null
+      });
     }
 
     if (!call.tenantId) {
@@ -383,12 +525,15 @@ export class CallTracker {
       if (resolved.startsWith(`${this.recordingRoot}${path.sep}`)) recordingName = path.basename(resolved);
     }
 
+    const participants = participantList(call);
+    const participantsJson = participants.length ? JSON.stringify(participants) : "[]";
+
     await db.execute(
       `INSERT INTO calls
         (tenant_id, linkedid, uniqueid, agent_user_id, agent_sip_username, direction, from_number, to_number,
          status, started_at, answered_at, ended_at, duration_sec, billable_sec, hangup_cause,
-         recording_path, recording_name)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         recording_path, recording_name, participants_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
          tenant_id=COALESCE(VALUES(tenant_id), tenant_id),
          agent_user_id=COALESCE(VALUES(agent_user_id), agent_user_id),
@@ -398,7 +543,8 @@ export class CallTracker {
          duration_sec=VALUES(duration_sec), billable_sec=VALUES(billable_sec),
          hangup_cause=VALUES(hangup_cause),
          recording_path=COALESCE(VALUES(recording_path), recording_path),
-         recording_name=COALESCE(VALUES(recording_name), recording_name)`,
+         recording_name=COALESCE(VALUES(recording_name), recording_name),
+         participants_json=COALESCE(NULLIF(VALUES(participants_json), '[]'), participants_json)`,
       [
         call.tenantId,
         call.linkedid,
@@ -416,7 +562,8 @@ export class CallTracker {
         billable,
         call.hangupCause || null,
         call.recordingPath,
-        recordingName
+        recordingName,
+        participantsJson
       ]
     );
   }

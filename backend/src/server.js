@@ -2224,7 +2224,20 @@ async function buildCallsFilter(req) {
 
 const CALLS_SELECT_FIELDS =
   "c.id,c.linkedid,c.agent_user_id,c.agent_sip_username,u.name AS agent_name,c.direction,c.from_number,c.to_number,c.status," +
-  "c.disposition,c.started_at,c.answered_at,c.ended_at,c.duration_sec,c.billable_sec,c.hangup_cause,c.recording_name";
+  "c.disposition,c.started_at,c.answered_at,c.ended_at,c.duration_sec,c.billable_sec,c.hangup_cause,c.recording_name,c.participants_json";
+
+// The persisted participants_json is a plain JSON array (see
+// 20260902_call_participants.sql). Parse it defensively — an old row
+// predating the column is NULL, and any legacy junk just yields [].
+function parseParticipants(value) {
+  if (!value) return [];
+  try {
+    const parsed = typeof value === "string" ? JSON.parse(value) : value;
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
 const CALLS_FROM_SQL = "FROM calls c LEFT JOIN users u ON u.id=c.agent_user_id AND u.tenant_id=c.tenant_id";
 
 app.get("/api/calls", authenticate, requirePermission("VIEW_CALL_LOGS", "VIEW_REPORTS"), asyncRoute(async (req, res) => {
@@ -2237,7 +2250,8 @@ app.get("/api/calls", authenticate, requirePermission("VIEW_CALL_LOGS", "VIEW_RE
     `SELECT ${CALLS_SELECT_FIELDS} ${CALLS_FROM_SQL} ${where} ORDER BY c.started_at DESC LIMIT ? OFFSET ?`,
     [...params, pageSize, (page - 1) * pageSize]
   );
-  res.json({ rows, page, pageSize, total: Number(count.total || 0) });
+  const shaped = rows.map(({ participants_json, ...row }) => ({ ...row, participants: parseParticipants(participants_json) }));
+  res.json({ rows: shaped, page, pageSize, total: Number(count.total || 0) });
 }));
 
 // Tab counters for the Call Logs page — all four counts (all/incoming/
@@ -2840,6 +2854,16 @@ app.post("/api/calls/conference/invite-agent", authenticate, requirePermission("
   if (!targetAgent) return res.status(404).json({ error: "Target agent not found in this workspace" });
   if (!targetAgent.active) return res.status(409).json({ error: "Target agent is disabled" });
   if (!targetAgent.sip_username) return res.status(409).json({ error: "Target agent has no SIP endpoint" });
+  const activeCall = tracker.findByAgent(req.user.sip_username);
+  const inviteAgentChannelId = `rnpart-${crypto.randomUUID()}`;
+  if (activeCall) {
+    tracker.registerParticipantLeg(inviteAgentChannelId, activeCall.linkedid, {
+      type: "agent",
+      userId: targetAgent.id,
+      name: targetAgent.name,
+      extension: targetAgent.extension || null
+    });
+  }
   await ami.action({
     Action: "Originate",
     Channel: `PJSIP/${targetAgent.sip_username}`,
@@ -2847,6 +2871,7 @@ app.post("/api/calls/conference/invite-agent", authenticate, requirePermission("
     Data: `${conferenceId},default_bridge,transfer_agent`,
     Timeout: "30000",
     Async: "true",
+    ChannelId: inviteAgentChannelId,
     // Without this, Asterisk originates the leg with no caller identity at
     // all, so the target agent's SIP client falls back to showing
     // "Anonymous" instead of who's actually consulting them.
@@ -2866,6 +2891,15 @@ app.post("/api/calls/conference/invite-pstn", authenticate, requirePermission("A
   if (!conferenceId || !/^\d+$/.test(conferenceId)) return res.status(400).json({ error: "Valid conferenceId is required" });
   if (!targetNumber || targetNumber.length < 7 || targetNumber.length > 15) return res.status(400).json({ error: "Valid participant phone number is required" });
   if (!req.user.caller_id_number) return res.status(409).json({ error: "No outbound DID assigned to this agent" });
+  const activeCallForPstn = tracker.findByAgent(req.user.sip_username);
+  const invitePstnChannelId = `rnpart-${crypto.randomUUID()}`;
+  if (activeCallForPstn) {
+    tracker.registerParticipantLeg(invitePstnChannelId, activeCallForPstn.linkedid, {
+      type: "pstn",
+      number: targetNumber,
+      name: targetNumber
+    });
+  }
   await ami.action({
     Action: "Originate",
     Channel: `PJSIP/${targetNumber}@commio`,
@@ -2873,7 +2907,8 @@ app.post("/api/calls/conference/invite-pstn", authenticate, requirePermission("A
     Data: `${conferenceId},default_bridge,transfer_customer`,
     CallerID: `"Ringnex" <${req.user.caller_id_number}>`,
     Timeout: "30000",
-    Async: "true"
+    Async: "true",
+    ChannelId: invitePstnChannelId
   });
   await audit(req.user.id, "CONFERENCE_PSTN_INVITE", "conference", conferenceId, { targetNumber, callerIdNumber: req.user.caller_id_number }, req.user.tenant_id);
   res.json({ accepted: true, conferenceId, targetNumber });
@@ -2932,7 +2967,11 @@ app.post("/api/supervisor/monitor", authenticate, requirePermission("MONITOR_CAL
   const mode = String(req.body.mode || "listen");
   const modePermissions = { listen: "LISTEN_LIVE_CALLS", whisper: "WHISPER_CALLS", barge: "BARGE_CALLS" };
   const teamModePermissions = { listen: "LISTEN_TEAM_CALLS", whisper: "WHISPER_TEAM_CALLS", barge: "BARGE_TEAM_CALLS" };
-  const flags = { listen: "q", whisper: "qw", barge: "qB" };
+  // `q` quiet (no beep), `w` whisper, `B` barge (talk to both). `E` makes
+  // ChanSpy EXIT the moment the spied channel hangs up instead of hunting
+  // for the next channel to attach to — so the supervisor's leg drops as
+  // soon as the real call ends.
+  const flags = { listen: "qE", whisper: "qwE", barge: "qBE" };
   if (!flags[mode]) return res.status(400).json({ error: "Invalid monitoring mode" });
   if (!hasPermission(req.user, modePermissions[mode])) return res.status(403).json({ error: "You do not have permission for this monitoring mode" });
   if (!req.user.sip_username) return res.status(400).json({ error: "Supervisor has no SIP endpoint" });
@@ -2949,12 +2988,18 @@ app.post("/api/supervisor/monitor", authenticate, requirePermission("MONITOR_CAL
 
   const targetChannel = [...call.channels].find((channel) => call.agent && channel.startsWith(`PJSIP/${call.agent}-`));
   if (!targetChannel) return res.status(409).json({ error: "Agent channel is not available" });
+  // Pre-assign the spy leg's channel id and tell the tracker to ignore
+  // it — a listen/whisper/barge leg must never surface as a call log or
+  // in the live dashboard.
+  const monitorChannelId = `rnmon-${crypto.randomUUID()}`;
+  tracker.registerMonitorChannel(monitorChannelId);
   await ami.action({
     Action: "Originate",
     Channel: `PJSIP/${req.user.sip_username}`,
     Application: "ChanSpy",
     Data: `${targetChannel},${flags[mode]}`,
     CallerID: `Ringnex Monitor <${req.user.extension || "9000"}>`,
+    ChannelId: monitorChannelId,
     Async: "true"
   });
   await audit(req.user.id, `SUPERVISOR_${mode.toUpperCase()}`, "call", linkedid, { targetChannel }, req.user.tenant_id);
