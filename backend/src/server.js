@@ -1888,7 +1888,7 @@ app.delete("/api/teams/:id", authenticate, requirePermission("MANAGE_TEAMS"), as
 // ---------------------------
 app.get("/api/dids", authenticate, requirePermission("VIEW_DIDS", "MANAGE_DIDS", "MANAGE_AGENTS"), asyncRoute(async (req, res) => {
   const [rows] = await db.execute(
-    `SELECT d.id,d.number,d.label,d.status,d.assigned_user_id,u.name AS assigned_user_name
+    `SELECT d.id,d.number,d.number_type,d.label,d.status,d.assigned_user_id,u.name AS assigned_user_name
        FROM tenant_dids d LEFT JOIN users u ON u.id=d.assigned_user_id AND u.tenant_id=d.tenant_id
       WHERE d.tenant_id=? ORDER BY d.number ASC`,
     [req.user.tenant_id]
