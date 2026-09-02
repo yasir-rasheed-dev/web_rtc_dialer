@@ -757,7 +757,7 @@ export default function TeamChat({ session }) {
         .tc-bubble.deleted{background:${isDark?"#1a1a24":"#f3f4f6"} !important;border:1px dashed ${isDark?"#2a2a3a":"#d1d5db"} !important;box-shadow:none !important}
         .tc-sender-name{font-size:11.5px;font-weight:600;margin-bottom:3px;color:${senderName}}
         .tc-msg-time{font-size:10.5px;margin-top:3px;text-align:right;opacity:.55;font-family:'DM Mono',monospace}
-        .tc-footer{background:${footerBg};border-top:1px solid ${footerBorder};padding:10px 16px 12px;position:relative;transition:background 0.2s}
+        .tc-footer{display:block;min-height:0;gap:0;font-size:14px;background:${footerBg};border-top:1px solid ${footerBorder};padding:10px 16px 12px;position:relative;transition:background 0.2s}
         .tc-attach-list{display:flex;flex-direction:column;gap:5px;padding:8px 0 10px;max-height:210px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:${isDark?"#1e1e2a":"#eee"} transparent}
         .tc-attach-list::-webkit-scrollbar{width:3px}
         .tc-attach-list::-webkit-scrollbar-thumb{background:${isDark?"#1e1e2a":"#eee"};border-radius:4px}
