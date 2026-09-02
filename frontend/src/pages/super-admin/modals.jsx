@@ -60,32 +60,93 @@ function Stepper({ step }) {
   );
 }
 
-/** Number field paired with an "Unlimited" checkbox. */
+/** Number field with an "Unlimited" switch below — stacks cleanly in narrow columns. */
 function LimitField({ label, value, unlimited, onValue, onUnlimited, min = "0", hint }) {
   return (
-    <div>
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-muted">{label}</span>
-        <label className="flex cursor-pointer items-center gap-1.5 text-[11px] font-medium text-muted">
-          <input
-            type="checkbox"
-            checked={unlimited}
-            onChange={(e) => onUnlimited(e.target.checked)}
-            className="h-3.5 w-3.5 rounded border-border accent-[rgb(var(--rn-blue))]"
-          />
-          Unlimited
-        </label>
-      </div>
+    <div className="flex flex-col gap-1.5">
+      <span className="text-xs font-medium text-muted">{label}</span>
       <Input
         type="number"
         min={min}
-        className="mt-1.5"
         disabled={unlimited}
         value={unlimited ? "" : value}
         placeholder={unlimited ? "Unlimited" : undefined}
         onChange={(e) => onValue(e.target.value)}
       />
-      {hint && <p className="mt-1 text-[11px] text-muted">{hint}</p>}
+      <label className="mt-0.5 flex cursor-pointer select-none items-center gap-2 text-[11px] font-medium text-muted">
+        <Toggle checked={unlimited} onChange={onUnlimited} label={`${label}: unlimited`} />
+        Unlimited
+      </label>
+      {hint && <p className="text-[11px] text-muted">{hint}</p>}
+    </div>
+  );
+}
+
+/** Horizontal allowance row: label · number input · Unlimited switch. */
+function AllowanceRow({ label, value, unlimited, onValue, onUnlimited, min = "0" }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="w-32 shrink-0 text-xs font-medium text-text">{label}</span>
+      <Input
+        type="number"
+        min={min}
+        className="flex-1"
+        disabled={unlimited}
+        value={unlimited ? "" : value}
+        placeholder={unlimited ? "Unlimited" : undefined}
+        onChange={(e) => onValue(e.target.value)}
+      />
+      <label className="flex shrink-0 cursor-pointer select-none items-center gap-1.5 text-[11px] font-medium text-muted">
+        <Toggle checked={unlimited} onChange={onUnlimited} label={`${label}: unlimited`} />
+        <span className="hidden sm:inline">Unlimited</span>
+      </label>
+    </div>
+  );
+}
+
+/** Live pricing-card preview shown beside the plan form. */
+function PlanPreview({ form, editing }) {
+  const fmt = (v, unl) => (unl ? "Unlimited" : v === "" || v == null ? "—" : Number(v).toLocaleString());
+  const rows = [
+    ["Users", fmt(form.maxUsers, form.unlimitedUsers)],
+    ["Outbound min", fmt(form.outboundMinutes, form.unlimitedOutbound)],
+    ["Inbound min", fmt(form.inboundMinutes, form.unlimitedInbound)]
+  ];
+  return (
+    <div className="rounded-xl border border-border bg-surface p-4">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-text">{form.name || "Plan name"}</p>
+          {form.code ? <p className="font-mono text-[11px] text-muted">{form.code}</p> : null}
+        </div>
+        {editing && (
+          <span
+            className={
+              "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold " +
+              (form.active ? "bg-success-soft text-success" : "bg-surface-2 text-muted")
+            }
+          >
+            {form.active ? "Active" : "Inactive"}
+          </span>
+        )}
+      </div>
+      {form.description ? (
+        <p className="mt-1.5 line-clamp-3 text-[11px] leading-relaxed text-muted">{form.description}</p>
+      ) : null}
+      <div className="mt-3 flex items-baseline gap-1">
+        <span className="text-2xl font-bold tracking-tight text-text">
+          ${Number(form.pricePerUser || 0).toFixed(0)}
+        </span>
+        <span className="text-[11px] text-muted">/ user / mo</span>
+      </div>
+      <div className="mt-3 space-y-1.5 border-t border-border pt-3 text-[11px]">
+        {rows.map(([l, v]) => (
+          <div key={l} className="flex items-center justify-between gap-2">
+            <span className="text-muted">{l}</span>
+            <span className="font-semibold tabular-nums text-text">{v}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -559,12 +620,14 @@ function planToForm(plan) {
 export function PlanModal({ open, onClose, onSaved, plan = null }) {
   const editing = Boolean(plan);
   const [form, setForm] = useState(emptyPlanForm);
+  const [codeTouched, setCodeTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (!open) return;
     setForm(plan ? planToForm(plan) : emptyPlanForm);
+    setCodeTouched(false);
     setError("");
   }, [open, plan]);
 
@@ -593,88 +656,107 @@ export function PlanModal({ open, onClose, onSaved, plan = null }) {
     }
   };
 
+  const setName = (name) =>
+    setForm((f) => ({ ...f, name, code: !editing && !codeTouched ? slugify(name) : f.code }));
+
   return (
-    <Modal open={open} onClose={onClose} title={editing ? "Edit pricing plan" : "Add pricing plan"} width="max-w-lg">
-      <form onSubmit={submit} className="flex flex-col gap-4">
+    <Modal open={open} onClose={onClose} title={editing ? "Edit pricing plan" : "Add pricing plan"} width="max-w-3xl">
+      <form onSubmit={submit} className="flex flex-col gap-5">
         {error && (
           <div className="rounded-lg border border-danger/30 bg-danger-soft px-4 py-2.5 text-sm text-danger">{error}</div>
         )}
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className={fieldLabelClass()}>
-            Plan name
-            <Input autoFocus value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          </label>
-          <label className={fieldLabelClass()}>
-            Code
-            {editing ? (
-              <span className={`${FIELD_CLASS} flex items-center font-mono text-muted`}>{form.code || "—"}</span>
-            ) : (
+        <div className="grid gap-6 lg:grid-cols-[1fr_236px]">
+          <div className="flex flex-col gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className={fieldLabelClass()}>
+                Plan name
+                <Input autoFocus value={form.name} onChange={(e) => setName(e.target.value)} />
+              </label>
+              <label className={fieldLabelClass()}>
+                Code
+                {editing ? (
+                  <span className={`${FIELD_CLASS} flex items-center font-mono text-muted`}>{form.code || "—"}</span>
+                ) : (
+                  <Input
+                    value={form.code}
+                    onChange={(e) => {
+                      setCodeTouched(true);
+                      setForm({ ...form, code: slugify(e.target.value) });
+                    }}
+                    placeholder="starter"
+                  />
+                )}
+              </label>
+            </div>
+
+            <label className={fieldLabelClass()}>
+              Description
               <Input
-                value={form.code}
-                onChange={(e) => setForm({ ...form, code: slugify(e.target.value) })}
-                placeholder="starter"
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                placeholder="Who this plan is for"
               />
+            </label>
+
+            <label className={`${fieldLabelClass()} max-w-[220px]`}>
+              Price per user / month
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted">$</span>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="pl-7"
+                  value={form.pricePerUser}
+                  onChange={(e) => setForm({ ...form, pricePerUser: e.target.value })}
+                />
+              </div>
+            </label>
+
+            <div className="rounded-lg border border-border p-4">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">Allowances / month</p>
+              <div className="flex flex-col gap-3">
+                <AllowanceRow
+                  label="Max users"
+                  value={form.maxUsers}
+                  unlimited={form.unlimitedUsers}
+                  onValue={(v) => setForm({ ...form, maxUsers: v })}
+                  onUnlimited={(v) => setForm({ ...form, unlimitedUsers: v })}
+                  min="1"
+                />
+                <AllowanceRow
+                  label="Outbound minutes"
+                  value={form.outboundMinutes}
+                  unlimited={form.unlimitedOutbound}
+                  onValue={(v) => setForm({ ...form, outboundMinutes: v })}
+                  onUnlimited={(v) => setForm({ ...form, unlimitedOutbound: v })}
+                />
+                <AllowanceRow
+                  label="Inbound minutes"
+                  value={form.inboundMinutes}
+                  unlimited={form.unlimitedInbound}
+                  onValue={(v) => setForm({ ...form, inboundMinutes: v })}
+                  onUnlimited={(v) => setForm({ ...form, unlimitedInbound: v })}
+                />
+              </div>
+            </div>
+
+            {editing && (
+              <ToggleRow
+                title="Active"
+                description="Inactive plans stay attached to their setups but are hidden when creating new ones."
+              >
+                <Toggle checked={form.active} onChange={(v) => setForm({ ...form, active: v })} label="Plan active" />
+              </ToggleRow>
             )}
-          </label>
-        </div>
-
-        <label className={fieldLabelClass()}>
-          Description
-          <Input
-            value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
-            placeholder="Who this plan is for"
-          />
-        </label>
-
-        <label className={`${fieldLabelClass()} sm:w-1/2`}>
-          Price per user / month
-          <Input
-            type="number"
-            min="0"
-            step="0.01"
-            value={form.pricePerUser}
-            onChange={(e) => setForm({ ...form, pricePerUser: e.target.value })}
-          />
-        </label>
-
-        <div className="rounded-lg border border-border p-4">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">Included per month</p>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <LimitField
-              label="Max users"
-              value={form.maxUsers}
-              unlimited={form.unlimitedUsers}
-              onValue={(v) => setForm({ ...form, maxUsers: v })}
-              onUnlimited={(v) => setForm({ ...form, unlimitedUsers: v })}
-              min="1"
-            />
-            <LimitField
-              label="Outbound minutes"
-              value={form.outboundMinutes}
-              unlimited={form.unlimitedOutbound}
-              onValue={(v) => setForm({ ...form, outboundMinutes: v })}
-              onUnlimited={(v) => setForm({ ...form, unlimitedOutbound: v })}
-            />
-            <LimitField
-              label="Inbound minutes"
-              value={form.inboundMinutes}
-              unlimited={form.unlimitedInbound}
-              onValue={(v) => setForm({ ...form, inboundMinutes: v })}
-              onUnlimited={(v) => setForm({ ...form, unlimitedInbound: v })}
-            />
           </div>
-        </div>
 
-        {editing && (
-          <ToggleRow
-            title="Active"
-            description="Inactive plans stay attached to their setups but are hidden when creating new ones."
-          >
-            <Toggle checked={form.active} onChange={(v) => setForm({ ...form, active: v })} label="Plan active" />
-          </ToggleRow>
-        )}
+          <aside className="hidden lg:block">
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted">Live preview</p>
+            <PlanPreview form={form} editing={editing} />
+          </aside>
+        </div>
 
         <div className="flex justify-end gap-2 border-t border-border pt-4">
           <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
