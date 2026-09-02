@@ -26,7 +26,7 @@ export default function Card({
     <Wrapper
       {...motionProps}
       className={
-        "rounded-md border border-border bg-surface transition-colors " +
+        "rounded-lg border border-border bg-surface transition-colors " +
         (compact ? "p-3.5 " : "p-4 ") +
         (interactive ? "hover:border-border-strong " : "") +
         className

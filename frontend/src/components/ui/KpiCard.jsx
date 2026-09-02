@@ -25,13 +25,9 @@ export default function KpiCard({ label, value, detail, icon: Icon, tone = "blue
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.22, ease: "easeOut" }}
-      className="group relative overflow-hidden rounded-md border border-border bg-surface p-3.5 transition-all hover:-translate-y-0.5 hover:border-border-strong"
+      className="relative overflow-hidden rounded-lg border border-border bg-surface p-3.5 transition-colors hover:border-border-strong"
     >
       <span className="absolute inset-y-0 left-0 w-[3px]" style={{ background: t.color }} />
-      <span
-        className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full opacity-[0.08] transition-opacity group-hover:opacity-[0.14]"
-        style={{ background: t.color }}
-      />
 
       <div className="relative flex items-center justify-between">
         {Icon && (
