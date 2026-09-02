@@ -50,6 +50,12 @@ export function fieldLabelClass() {
   return "flex flex-col gap-1.5 text-xs font-medium text-muted";
 }
 
+// Matches the Create Role modal field — flat white, visible border, h-10,
+// soft blue focus ring. Used for the free-text filter inputs so every
+// control in the filter row is the same height.
+export const FILTER_INPUT =
+  "h-10 w-full rounded-lg border border-border-strong bg-surface px-3.5 text-sm text-text placeholder:text-muted transition-colors focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/15";
+
 export function ReportFilters({ filters, setFilters, onApply, agents, loading }) {
   const agentOptions = [
     { value: "", label: "All agents" },
@@ -101,7 +107,7 @@ export function ReportFilters({ filters, setFilters, onApply, agents, loading })
           value={filters.durationMin}
           onChange={(event) => setFilters({ ...filters, durationMin: event.target.value })}
           placeholder="0"
-          className={FIELD_CLASS}
+          className={FILTER_INPUT}
         />
       </label>
       <label className={`${fieldLabelClass()} w-[120px]`}>
@@ -112,10 +118,10 @@ export function ReportFilters({ filters, setFilters, onApply, agents, loading })
           value={filters.durationMax}
           onChange={(event) => setFilters({ ...filters, durationMax: event.target.value })}
           placeholder="Any"
-          className={FIELD_CLASS}
+          className={FILTER_INPUT}
         />
       </label>
-      <Button type="submit" icon={Filter} loading={loading}>
+      <Button type="submit" icon={Filter} loading={loading} className="h-10">
         Apply
       </Button>
     </form>

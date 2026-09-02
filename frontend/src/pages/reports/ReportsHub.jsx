@@ -1,13 +1,25 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, ArrowRight, FileSpreadsheet, FileText, Headset, PhoneIncoming, PhoneOutgoing, RefreshCw, Timer } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  ChevronDown,
+  ChevronsUpDown,
+  ChevronUp,
+  FileSpreadsheet,
+  FileText,
+  Headset,
+  PhoneIncoming,
+  PhoneOutgoing,
+  RefreshCw,
+  Timer
+} from "lucide-react";
 
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import EmptyState from "../../components/ui/EmptyState";
 import PageHeader from "../../components/ui/PageHeader";
 import { SkeletonTable } from "../../components/ui/Skeleton";
-import StatusBadge from "../../components/ui/StatusBadge";
 import { api, exportCallReport } from "../../lib/api";
 import { notifyError, notifySuccess } from "../../lib/toast";
 import TollFreeReportPage from "./TollFreeReport";
@@ -26,8 +38,36 @@ export function CallDirectionReportPage({ direction, eyebrow, title, description
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [exportState, setExportState] = useState(null);
+  const [sort, setSort] = useState(null); // { key, dir }
 
   const extraParamsKey = JSON.stringify(extraParams);
+
+  const outbound = direction === "OUTBOUND";
+  const otherParty = (call) => (outbound ? call.to_number : call.from_number) || "";
+  const SORT_VALUE = {
+    number: otherParty,
+    agent: (c) => c.agent_name || c.agent_sip_username || "",
+    status: (c) => (c.answered_at ? 1 : 0),
+    duration: (c) => Number(c.billable_sec) || 0,
+    started: (c) => c.started_at || ""
+  };
+  const sortedRows = useMemo(() => {
+    if (!sort) return result.rows;
+    const get = SORT_VALUE[sort.key] || (() => "");
+    return [...result.rows].sort((a, b) => {
+      const av = get(a);
+      const bv = get(b);
+      const cmp = typeof av === "number" ? av - bv : String(av).localeCompare(String(bv));
+      return sort.dir === "desc" ? -cmp : cmp;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result.rows, sort]);
+  const toggleSort = (key) =>
+    setSort((cur) => {
+      if (!cur || cur.key !== key) return { key, dir: "asc" };
+      if (cur.dir === "asc") return { key, dir: "desc" };
+      return null;
+    });
 
   const load = useCallback(
     async (page = 1, size = pageSize) => {
@@ -98,42 +138,109 @@ export function CallDirectionReportPage({ direction, eyebrow, title, description
         <ReportFilters filters={filters} setFilters={setFilters} onApply={() => load(1, pageSize)} agents={agents} loading={loading} />
       </Card>
 
-      {error && <div className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>}
+      {error && (
+        <div className="rounded-lg border border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>
+      )}
 
-      <Card title={`${title} records`} description={`${result.total} matching calls — export includes every matching record, not just this page`}>
-        <div className="overflow-x-auto">
-          {loading ? (
-            <SkeletonTable rows={8} cols={5} />
-          ) : (
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-border text-[11px] font-semibold uppercase tracking-wide text-muted">
-                  <th className="pb-2 pr-4">To</th>
-                  <th className="pb-2 pr-4">From</th>
-                  <th className="pb-2 pr-4">Duration</th>
-                  <th className="pb-2 pr-4">Status</th>
-                  <th className="pb-2">Time</th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.rows.map((call) => (
-                  <tr key={call.id} className="border-b border-border/60 last:border-0">
-                    <td className="py-3 pr-4 text-text">{call.to_number || "—"}</td>
-                    <td className="py-3 pr-4 text-muted">{call.from_number || "—"}</td>
-                    <td className="py-3 pr-4 text-muted">{formatSeconds(call.billable_sec)}</td>
-                    <td className="py-3 pr-4">
-                      <StatusBadge tone={call.answered_at ? "success" : "neutral"}>
-                        {call.answered_at ? "Connected" : "Not connected"}
-                      </StatusBadge>
-                    </td>
-                    <td className="py-3 text-muted">{formatDate(call.started_at)}</td>
+      <Card
+        compact
+        title={`${title} records`}
+        description={`${result.total} matching calls — export includes every matching record, not just this page`}
+      >
+        {loading ? (
+          <SkeletonTable rows={8} cols={5} />
+        ) : sortedRows.length ? (
+          <div className="overflow-hidden rounded-lg border border-border">
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="bg-surface-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
+                    {[
+                      ["number", "Number"],
+                      ["agent", "Agent"],
+                      ["direction", "Direction"],
+                      ["status", "Status"],
+                      ["duration", "Duration"],
+                      ["started", "Date & time"]
+                    ].map(([key, label]) => {
+                      const active = sort?.key === key;
+                      const sortable = key !== "direction";
+                      return (
+                        <th key={label} className="h-10 whitespace-nowrap px-4 text-left font-semibold">
+                          {sortable ? (
+                            <button
+                              type="button"
+                              onClick={() => toggleSort(key)}
+                              className={"inline-flex items-center gap-1 transition-colors hover:text-text " + (active ? "text-text" : "")}
+                            >
+                              {label}
+                              {active ? (
+                                sort.dir === "asc" ? <ChevronUp size={13} /> : <ChevronDown size={13} />
+                              ) : (
+                                <ChevronsUpDown size={13} className="opacity-50" />
+                              )}
+                            </button>
+                          ) : (
+                            label
+                          )}
+                        </th>
+                      );
+                    })}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          {!loading && !result.rows.length && <EmptyState title="No matching calls" />}
-        </div>
+                </thead>
+                <tbody>
+                  {sortedRows.map((call) => {
+                    const connected = Boolean(call.answered_at);
+                    const agentName = call.agent_name || call.agent_sip_username || "—";
+                    return (
+                      <tr key={call.id} className="border-t border-border transition-colors hover:bg-surface-2">
+                        <td className="whitespace-nowrap px-4 py-3 font-semibold tabular-nums text-text">
+                          {otherParty(call) || "—"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="flex items-center gap-2.5">
+                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand/10 text-[11px] font-bold text-brand">
+                              {agentName.slice(0, 1).toUpperCase()}
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block truncate text-text">{agentName}</span>
+                              {call.agent_sip_username && (
+                                <span className="block truncate text-[11px] text-muted">{call.agent_sip_username}</span>
+                              )}
+                            </span>
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={"inline-flex items-center gap-1.5 font-medium " + (outbound ? "text-brand" : "text-accent")}>
+                            {outbound ? <PhoneOutgoing size={14} /> : <PhoneIncoming size={14} />}
+                            {outbound ? "Outbound" : "Inbound"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {connected ? (
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-success-soft px-2 py-0.5 text-[11px] font-semibold text-success">
+                              <span className="h-1.5 w-1.5 rounded-full bg-success" /> Connected
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-3 px-2 py-0.5 text-[11px] font-semibold text-muted">
+                              <span className="h-1.5 w-1.5 rounded-full bg-muted" /> Not connected
+                            </span>
+                          )}
+                        </td>
+                        <td className={"whitespace-nowrap px-4 py-3 tabular-nums " + (connected ? "font-semibold text-success" : "text-muted")}>
+                          {connected ? formatSeconds(call.billable_sec) : "—"}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-muted">{formatDate(call.started_at)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : (
+          <EmptyState title="No matching calls" />
+        )}
         <CustomPagination
           result={result}
           pageSize={pageSize}
