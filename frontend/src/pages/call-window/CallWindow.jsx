@@ -181,6 +181,11 @@ export default function CallWindow() {
           <span className="relative">{initials(primaryParty)}</span>
         </span>
         <p className="mt-2 max-w-[260px] truncate text-center text-base font-semibold text-text">{primaryParty}</p>
+        {(state.currentParty?.jobTitle || state.currentParty?.company) && (
+          <p className="max-w-[260px] truncate text-center text-xs text-muted">
+            {[state.currentParty?.jobTitle, state.currentParty?.company].filter(Boolean).join(" · ")}
+          </p>
+        )}
         <p className="truncate text-xs text-muted">{state.currentParty?.number || ""}</p>
         <p className="mt-1 text-xs font-medium text-muted">
           {isEstablished ? formatDuration(elapsed) : CALL_STATUS_LABEL[state.callStatus] || state.callStatus}

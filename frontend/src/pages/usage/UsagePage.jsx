@@ -96,7 +96,7 @@ export default function UsagePage() {
               <p className="mt-1 text-xs text-muted">{formatMonthLabel(month)}</p>
             </Card>
             <Card>
-              <p className="text-xs font-medium uppercase tracking-wide text-brand">Estimated bill</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-brand">Total bill</p>
               <p className="mt-1 text-2xl font-bold text-brand">${seatBill.toFixed(2)}</p>
               <p className="mt-1 text-xs text-muted">{payload?.activeUsers || 0} seats × ${Number(payload?.pricePerUser || 0).toFixed(2)}</p>
             </Card>

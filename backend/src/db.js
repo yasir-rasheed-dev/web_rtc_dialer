@@ -1,11 +1,17 @@
 import mysql from "mysql2/promise";
 import { config } from "./config.js";
 
+// connectionLimit was 12 — sized for early single-tenant testing. Bumped
+// for real multi-tenant concurrency (dashboards polling + live call-event
+// writes across many simultaneous agents/tenants sharing this one pool).
+// MySQL's own max_connections here is 151 with only a handful ever in use
+// (realtimeDb's separate pool takes 3, everything else is occasional), so
+// 30 leaves plenty of headroom for other processes on the same server.
 export const db = mysql.createPool({
   ...config.db,
   waitForConnections: true,
-  connectionLimit: 12,
-  queueLimit: 50,
+  connectionLimit: 30,
+  queueLimit: 100,
   charset: "utf8mb4",
   timezone: "Z",
   namedPlaceholders: true,

@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
+  AlarmClock,
   BarChart3,
   ContactRound,
   CreditCard,
@@ -14,6 +15,7 @@ import {
   PhoneOff,
   RefreshCw,
   ShieldCheck,
+  Target,
   Users,
   UsersRound
 } from "lucide-react";
@@ -27,6 +29,7 @@ import { API_BASE } from "../lib/apiConfig";
 import { hasAny } from "../lib/permissions";
 import { confirmModal } from "../lib/modal";
 import { useTeamChatUnreadCount } from "../lib/teamChatBadge";
+import { useFollowUpsBadge } from "../lib/followUpsBadge";
 import { useMissedCallsBadge } from "../lib/missedCallsBadge";
 import { useVoicemailBadge } from "../lib/voicemailBadge";
 import Login from "../pages/login/Login";
@@ -36,6 +39,7 @@ import Supervisor from "../pages/supervisor/Supervisor";
 // Softphone stays eagerly imported and permanently mounted (see TenantApp) so
 // an in-progress SIP call never drops when the agent navigates to another
 // page. Everything else below is lazy-loaded to keep the initial bundle lean.
+import EndCallPopup from "../components/ui/EndCallPopup";
 import GlobalCallOverlay from "../components/ui/GlobalCallOverlay";
 import DesktopCallBridge from "../components/DesktopCallBridge";
 import Softphone from "../pages/softphone/Softphone";
@@ -54,6 +58,8 @@ const LazyUsagePage = lazy(() => import("../pages/usage/UsagePage"));
 const LazyUsersAdmin = lazy(() => import("../pages/users/UsersAdmin"));
 const LazyTollFreePage = lazy(() => import("../pages/toll-free/TollFreePage"));
 const LazyDncManagement = lazy(() => import("../pages/dnc/DncManagement"));
+const LazyLeadsPage = lazy(() => import("../pages/leads/LeadsPage"));
+const LazyFollowUpsPage = lazy(() => import("../pages/leads/FollowUpsPage"));
 const LazySuperAdminApp = lazy(() => import("../pages/super-admin/SuperAdminApp"));
 
 const NAVIGATION = [
@@ -75,6 +81,8 @@ const NAVIGATION = [
     ]
   },
   { id: "contacts", label: "Contacts", icon: ContactRound, permissions: ["VIEW_CONTACTS"] },
+  { id: "leads", label: "Leads", icon: Target, permissions: ["VIEW_LEADS"] },
+  { id: "follow-ups", label: "Follow-ups", icon: AlarmClock, permissions: ["VIEW_LEADS"] },
   { id: "call-logs", label: "Call Logs", icon: PhoneCall, permissions: ["VIEW_CALL_LOGS"] },
   { id: "recordings", label: "Recordings", icon: FileAudio, permissions: ["VIEW_RECORDINGS"] },
   { id: "supervisor", label: "Live supervisor", icon: Headphones, permissions: ["MONITOR_CALLS"] },
@@ -131,6 +139,7 @@ function TenantApp() {
   const teamChatUnread = useTeamChatUnreadCount(session);
   const missedCalls = useMissedCallsBadge(session);
   const voicemails = useVoicemailBadge(session);
+  const followUps = useFollowUpsBadge(session);
 
   useEffect(() => {
     localStorage.setItem("ringnex.sidebarCollapsed", collapsed ? "1" : "0");
@@ -143,6 +152,15 @@ function TenantApp() {
     }
     api("/auth/session").then(setSession).catch(() => setToken("")).finally(() => setLoading(false));
   }, []);
+
+  // Seeds the header dropdown from the real backend value (sanitizeUser()
+  // already includes users.status) the moment session loads/refreshes —
+  // otherwise it would sit on the useState("OFFLINE") default until the
+  // first agent:status socket event arrives, which can lag a beat behind
+  // login's own auto-READY.
+  useEffect(() => {
+    if (session?.user?.status) setAgentStatus(session.user.status);
+  }, [session?.user?.status]);
 
   useEffect(() => {
     if (!session) return undefined;
@@ -173,9 +191,14 @@ function TenantApp() {
         socket.on("presence:update", (item) =>
           setPresence((items) => [...items.filter((entry) => entry.agent !== item.agent), item])
         );
-        socket.on("agent:status", (item) =>
-          setLiveAgentStatus((map) => ({ ...map, [item.userId]: item.status }))
-        );
+        socket.on("agent:status", (item) => {
+          setLiveAgentStatus((map) => ({ ...map, [item.userId]: item.status }));
+          // Keeps the header's own Ready/Paused/On call dropdown in sync
+          // with the real backend status — applyAgentStatus() sets this
+          // automatically (READY on login, ON_CALL the moment a call
+          // bridges), not just when the agent picks something themselves.
+          if (item.userId === session.user.id) setAgentStatus(item.status);
+        });
         // Pushed by callTracker.js the moment a declined/unanswered direct
         // PSTN call falls through to voicemail for this agent (never fires
         // for the toll-free queue path) — see voicemailBadge.js.
@@ -219,6 +242,10 @@ function TenantApp() {
         // isn't suddenly missing nav items.
         if (item.id === "auto-dialer" && session?.tenant?.canUseAutoDialer === false) return false;
         if (item.id === "toll-free" && session?.tenant?.canUseTollFree === false) return false;
+        // Opt-in (defaults to false, unlike the two above) — a brand-new
+        // feature, so hidden unless Super Admin has explicitly turned it on
+        // for this workspace.
+        if ((item.id === "leads" || item.id === "follow-ups") && !session?.tenant?.canUseLeads) return false;
         return hasAny(session, item.permissions);
       }),
     [session, ownerAccount]
@@ -265,6 +292,8 @@ function TenantApp() {
       return <LazyAutoDialer permissions={session.permissions || []} sipReady={!ownerAccount && Boolean(session.sip)} />;
     }
     if (page === "contacts") return <LazyContactsPage permissions={session.permissions || []} />;
+    if (page === "leads") return <LazyLeadsPage permissions={session.permissions || []} />;
+    if (page === "follow-ups") return <LazyFollowUpsPage />;
     if (page === "call-logs")
       return <LazyCallLogsPage permissions={session.permissions || []} onVoicemailHeard={voicemails.markHeard} />;
     if (page === "recordings") return <LazyRecordingsPage />;
@@ -315,7 +344,7 @@ function TenantApp() {
         session={session}
         collapsed={collapsed}
         logout={logout}
-        badges={{ "team-chat": teamChatUnread, "call-logs": missedCalls.count + voicemails.count }}
+        badges={{ "team-chat": teamChatUnread, "call-logs": missedCalls.count + voicemails.count, "follow-ups": followUps.count }}
       />
       <div
         className="console-content transition-[margin-left] duration-200 lg:!ml-[var(--rn-sidebar-w)]"
@@ -351,6 +380,9 @@ function TenantApp() {
           Web: window.ringnexDesktop never exists, so this is unchanged. */}
       {!ownerAccount && session.sip && !window.ringnexDesktop && <GlobalCallOverlay onDialerPage={page === "dialer"} />}
       {!ownerAccount && session.sip && <DesktopCallBridge />}
+      {!ownerAccount && session.sip && session.tenant?.canUseLeads && hasAny(session, ["SHOW_END_CALL_POPUP"]) && (
+        <EndCallPopup enabled={page !== "auto-dialer"} />
+      )}
     </div>
   );
 }

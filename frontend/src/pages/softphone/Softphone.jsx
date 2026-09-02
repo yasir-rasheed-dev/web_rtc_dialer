@@ -34,7 +34,7 @@ import {
   isValidDialString,
   normalizeDialString
 } from "../../lib/phone";
-import { api } from "../../lib/api";
+import { api, lookupCallerIdentity } from "../../lib/api";
 import {
   loadConfig,
   loadHistory,
@@ -140,6 +140,14 @@ function Softphone({ sip = null, permissions = [] }) {
   const [conferenceId, setConferenceId] = useState(null);
 const [transferTarget, setTransferTarget] = useState("");
 const [transferStage, setTransferStage] = useState("idle");
+  // Replaces window.prompt() for blind transfer / warm transfer / add
+  // participant — a proper themed modal instead of the raw OS prompt box.
+  // `promptConfig` holds { title, label, placeholder, submitLabel, onSubmit }
+  // and null means the modal is closed.
+  const [promptConfig, setPromptConfig] = useState(null);
+  const [promptValue, setPromptValue] = useState("");
+  const [promptBusy, setPromptBusy] = useState(false);
+  const [promptError, setPromptError] = useState("");
 
   // UI-only state for the redesigned layout (call-history tabs, the audio
   // settings popover, and a drag-over highlight on the dial input) — none of
@@ -238,7 +246,12 @@ const [transferStage, setTransferStage] = useState("idle");
       }
 
       if (call) {
-        // The Auto Dialer listens for this to open its disposition panel.
+        // The Auto Dialer listens for this to open its disposition panel,
+        // and the End Call popup (EndCallPopup.jsx) listens for it too —
+        // contactName/company/jobTitle piggyback on whatever the
+        // contact-lookup enrichment already put on currentParty/
+        // activeCallRef.current (see onCallReceived above) so the popup
+        // doesn't need a second lookup round-trip for the common case.
         window.dispatchEvent(
           new CustomEvent("ringnex:call-ended", {
             detail: {
@@ -246,6 +259,9 @@ const [transferStage, setTransferStage] = useState("idle");
               direction: call.direction,
               duration: call.connectedAt ? Math.max(0, Math.floor((Date.now() - call.connectedAt) / 1000)) : 0,
               connected: Boolean(call.connectedAt),
+              contactName: call.displayName || "",
+              company: call.company || null,
+              jobTitle: call.jobTitle || null,
               outcome:
                 forcedOutcome ||
                 (call.connectedAt ? "completed" : call.direction === "incoming" ? "missed" : "not answered")
@@ -417,6 +433,29 @@ const [transferStage, setTransferStage] = useState("idle");
 
           setCurrentParty(party);
 
+          // Fills in a saved contact's real name/company/job title over the
+          // raw SIP caller-ID text (often blank or just the bare number) —
+          // fire-and-forget so a slow/failed lookup never holds up ringing.
+          // Guarded on number match so a lookup for a call that's already
+          // moved on (answered/declined/a newer call arrived) can't
+          // clobber currentParty with stale info.
+          if (!isMonitoringCall && party.number && party.number !== "Unknown caller") {
+            lookupCallerIdentity(party.number)
+              .then((result) => {
+                if (!result?.name) return;
+                if (activeCallRef.current?.number !== party.number) return;
+                const enriched = {
+                  ...party,
+                  displayName: result.name,
+                  company: result.company || null,
+                  jobTitle: result.jobTitle || null
+                };
+                activeCallRef.current = { ...activeCallRef.current, ...enriched };
+                setCurrentParty((prev) => (prev.number === party.number ? enriched : prev));
+              })
+              .catch(() => undefined);
+          }
+
           if (isMonitoringCall) {
             setCallStatus("connecting");
 
@@ -437,7 +476,28 @@ const [transferStage, setTransferStage] = useState("idle");
         },
         onCallAnswered: (identity) => {
           if (activeCallRef.current) activeCallRef.current.connectedAt = Date.now();
-          if (identity?.number) setCurrentParty((current) => ({ ...current, ...identity }));
+          // sip.js's own identity at answer time rarely carries a real
+          // display name for a PSTN party (usually blank, or just the bare
+          // number again) — blindly spreading it over currentParty was
+          // clobbering the saved-contact name/company/jobTitle the lookup
+          // in startCall()/onCallReceived() had already resolved. Only take
+          // identity.displayName when it's actually something more useful
+          // than the number itself; number itself is still worth taking
+          // (e.g. a redirected/normalized form at answer time).
+          if (identity?.number) {
+            setCurrentParty((current) => {
+              const merged = {
+                ...current,
+                number: identity.number,
+                displayName:
+                  identity.displayName && identity.displayName !== identity.number
+                    ? identity.displayName
+                    : current.displayName
+              };
+              if (activeCallRef.current) activeCallRef.current = { ...activeCallRef.current, ...merged };
+              return merged;
+            });
+          }
           setCallStatus("active");
           refreshDevices(false);
         },
@@ -556,6 +616,21 @@ const [transferStage, setTransferStage] = useState("idle");
     setCurrentParty(party);
     setCallStatus("dialing");
     window.dispatchEvent(new CustomEvent("ringnex:call-started", { detail: { number, direction: "outgoing" } }));
+
+    // Same saved-contact enrichment as onCallReceived — was only ever
+    // wired for incoming calls before, so a manually-dialed number that's
+    // already a saved Contact just sat there as raw digits everywhere
+    // (dial screen, live activity list, the End Call popup's header) for
+    // the whole call.
+    lookupCallerIdentity(number)
+      .then((result) => {
+        if (!result?.name) return;
+        if (activeCallRef.current?.number !== number) return;
+        const enriched = { ...party, displayName: result.name, company: result.company || null, jobTitle: result.jobTitle || null };
+        activeCallRef.current = { ...activeCallRef.current, ...enriched };
+        setCurrentParty((prev) => (prev.number === number ? enriched : prev));
+      })
+      .catch(() => undefined);
 
     try {
       await clientRef.current.call(number);
@@ -729,29 +804,21 @@ const [transferStage, setTransferStage] = useState("idle");
     return target;
   };
 
-  const transferCall = async () => {
+  const transferCall = () => {
     if (!clientRef.current || !callEstablished) {
       setError("No active call available to transfer.");
       return;
     }
-
-    const input = window.prompt(
-      "Transfer call to agent extension or phone number:",
-      ""
-    );
-
-    if (input === null) return;
-
     setError("");
-
-    try {
-      await runBlindTransfer(input);
-    } catch (transferError) {
-      setError(
-        transferError?.message ||
-        "The call could not be transferred."
-      );
-    }
+    setPromptValue("");
+    setPromptError("");
+    setPromptConfig({
+      title: "Transfer call",
+      label: "Agent extension or phone number",
+      placeholder: "1002",
+      submitLabel: "Transfer",
+      onSubmit: (value) => runBlindTransfer(value)
+    });
   };
   // Core of a warm/supervised transfer, taking the target directly rather
   // than prompting for it — same reasoning and same split as
@@ -796,19 +863,21 @@ const [transferStage, setTransferStage] = useState("idle");
     }
   };
 
-  const startWarmTransfer = async () => {
+  const startWarmTransfer = () => {
     if (!callEstablished) {
       setError("No active call available to transfer.");
       return;
     }
-    const input = window.prompt("Enter agent extension for warm transfer:", "1002");
-    if (input === null) return;
     setError("");
-    try {
-      await runWarmTransferStart(input);
-    } catch (warmTransferError) {
-      setError(warmTransferError?.message || "Warm transfer could not be started.");
-    }
+    setPromptValue("");
+    setPromptError("");
+    setPromptConfig({
+      title: "Warm transfer",
+      label: "Agent extension",
+      placeholder: "1002",
+      submitLabel: "Start transfer",
+      onSubmit: (value) => runWarmTransferStart(value)
+    });
   };
 
   // Reusable as-is (no prompt involved) — both the in-page "Complete"
@@ -832,64 +901,45 @@ const [transferStage, setTransferStage] = useState("idle");
       setError(completeTransferError?.message || "Could not complete the transfer.");
     }
   };
-const addPstnParticipant = async () => {
+// Core of "add participant", taking the target directly — same split as
+// runBlindTransfer/runWarmTransferStart above, called by the themed
+// prompt modal's submit instead of a native window.prompt.
+const runAddParticipant = async (rawTarget) => {
+  const target = String(rawTarget || "").trim();
+  if (!target) throw new Error("Enter a valid phone number.");
+
+  let activeConferenceId = conferenceId;
+  // If normal 2-party call is active, create conference first
+  if (!activeConferenceId) {
+    const conference = await api("/calls/conference/start", { method: "POST" });
+    activeConferenceId = conference.conferenceId;
+    setConferenceId(activeConferenceId);
+  }
+
+  // Invite external PSTN participant
+  await api("/calls/conference/invite-pstn", {
+    method: "POST",
+    body: { conferenceId: activeConferenceId, number: target }
+  });
+
+  flashNotice(`Participant ${target} invited`);
+};
+
+const addPstnParticipant = () => {
   if (!callEstablished) {
     setError("No active call available.");
     return;
   }
-
-  const input = window.prompt(
-    "Enter participant phone number with country code:"
-  );
-
-  if (input === null) return;
-
-  const target = input.trim();
-
-  if (!target) {
-    setError("Enter a valid phone number.");
-    return;
-  }
-
   setError("");
-
-  try {
-    let activeConferenceId = conferenceId;
-
-    // If normal 2-party call is active, create conference first
-    if (!activeConferenceId) {
-      const conference = await api(
-        "/calls/conference/start",
-        {
-          method: "POST"
-        }
-      );
-
-      activeConferenceId = conference.conferenceId;
-      setConferenceId(activeConferenceId);
-    }
-
-    // Invite external PSTN participant
-    await api(
-      "/calls/conference/invite-pstn",
-      {
-        method: "POST",
-        body: {
-          conferenceId: activeConferenceId,
-          number: target
-        }
-      }
-    );
-
-    flashNotice(
-      `Participant ${target} invited`
-    );
-  } catch (participantError) {
-    setError(
-      participantError?.message ||
-        "Could not add participant."
-    );
-  }
+  setPromptValue("");
+  setPromptError("");
+  setPromptConfig({
+    title: "Add participant",
+    label: "Phone number with country code",
+    placeholder: "+1 202 555 0100",
+    submitLabel: "Add",
+    onSubmit: (value) => runAddParticipant(value)
+  });
 };
 
   const pressKey = async (key) => {
@@ -1121,6 +1171,11 @@ const addPstnParticipant = async () => {
                     {currentParty.displayName || (callStatus === "incoming" ? "Incoming call" : "Calling")}
                   </p>
                   <p className="text-lg font-semibold text-text">{currentParty.number || "Unknown caller"}</p>
+                  {(currentParty.jobTitle || currentParty.company) && (
+                    <p className="text-xs text-muted">
+                      {[currentParty.jobTitle, currentParty.company].filter(Boolean).join(" · ")}
+                    </p>
+                  )}
                   <p className="mt-0.5 text-xs text-muted">{callEstablished ? formatDuration(elapsed) : CALL_LABELS[callStatus]}</p>
                 </div>
               </div>
@@ -1490,6 +1545,51 @@ const addPstnParticipant = async () => {
             <span>Your SIP password is never written into the app bundle or permanent browser storage.</span>
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        open={Boolean(promptConfig)}
+        onClose={() => (promptBusy ? undefined : setPromptConfig(null))}
+        title={promptConfig?.title || ""}
+        width="max-w-sm"
+      >
+        {promptConfig && (
+          <form
+            onSubmit={async (event) => {
+              event.preventDefault();
+              setPromptBusy(true);
+              setPromptError("");
+              try {
+                await promptConfig.onSubmit(promptValue);
+                setPromptConfig(null);
+              } catch (submitError) {
+                setPromptError(submitError?.message || "That didn't work — try again.");
+              } finally {
+                setPromptBusy(false);
+              }
+            }}
+            className="flex flex-col gap-4"
+          >
+            {promptError && <div className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">{promptError}</div>}
+            <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
+              {promptConfig.label}
+              <Input
+                autoFocus
+                value={promptValue}
+                onChange={(event) => setPromptValue(event.target.value)}
+                placeholder={promptConfig.placeholder}
+              />
+            </label>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="secondary" onClick={() => setPromptConfig(null)} disabled={promptBusy}>
+                Cancel
+              </Button>
+              <Button type="submit" loading={promptBusy}>
+                {promptConfig.submitLabel}
+              </Button>
+            </div>
+          </form>
+        )}
       </Modal>
 
       {(error || notice || !online) && (

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { FileAudio, RefreshCw, X } from "lucide-react";
 
+import AudioPlayer from "../../components/ui/AudioPlayer";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import EmptyState from "../../components/ui/EmptyState";
@@ -150,7 +151,7 @@ export default function RecordingsPage() {
                 <X size={16} />
               </button>
             </div>
-            <audio src={audio.url} controls autoPlay className="w-full" />
+            <AudioPlayer src={audio.url} autoPlay />
           </motion.div>
         )}
       </AnimatePresence>

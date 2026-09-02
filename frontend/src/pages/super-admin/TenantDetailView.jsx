@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, CircleDollarSign, Phone, Plus, Search } from "lucide-react";
+import { ArrowLeft, CircleDollarSign, KeyRound, Phone, Plus, Search, Settings2 } from "lucide-react";
 
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
@@ -19,6 +19,7 @@ import {
   searchCommioNumbersAsSuperAdmin,
   superApi
 } from "../../lib/api";
+import { EditSetupModal, ResetOwnerPasswordModal } from "./modals";
 import { STATUS_OPTIONS, DESTRUCTIVE_STATUSES } from "./shared";
 
 function formatDidDisplay(number) {
@@ -245,6 +246,8 @@ function formatMonthLabel(monthStr) {
 export default function TenantDetailView({ tenant, onBack, onStatusChanged }) {
   const [statusBusy, setStatusBusy] = useState(false);
   const [buyOpen, setBuyOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
   const [purchaseFlagBusy, setPurchaseFlagBusy] = useState(false);
 
   const togglePurchaseFlag = async (value) => {
@@ -380,13 +383,21 @@ export default function TenantDetailView({ tenant, onBack, onStatusChanged }) {
         title={tenant.name}
         description={`${tenant.workspace} · ${tenant.plan_name || "Custom plan"}`}
         actions={
-          <div className="w-44">
-            <Select
-              options={STATUS_OPTIONS}
-              value={STATUS_OPTIONS.find((o) => o.value === tenant.status)}
-              onChange={(o) => changeStatus(o.value)}
-              isDisabled={statusBusy}
-            />
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="secondary" icon={Settings2} onClick={() => setEditOpen(true)}>
+              Edit limits
+            </Button>
+            <Button size="sm" variant="secondary" icon={KeyRound} onClick={() => setResetPasswordOpen(true)}>
+              Reset owner password
+            </Button>
+            <div className="w-44">
+              <Select
+                options={STATUS_OPTIONS}
+                value={STATUS_OPTIONS.find((o) => o.value === tenant.status)}
+                onChange={(o) => changeStatus(o.value)}
+                isDisabled={statusBusy}
+              />
+            </div>
           </div>
         }
       />
@@ -408,102 +419,148 @@ export default function TenantDetailView({ tenant, onBack, onStatusChanged }) {
         </Card>
       </div>
 
-      <Card
-        title="Phone numbers"
-        description="Whether this workspace can search and buy its own numbers, and a way to hand them one directly regardless."
-        icon={Phone}
-      >
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <label className="flex items-center gap-2 text-sm font-medium text-text">
-            <Toggle
-              checked={Boolean(tenant.can_purchase_numbers)}
-              onChange={togglePurchaseFlag}
-              disabled={purchaseFlagBusy}
-              label="Workspace can buy its own phone numbers"
-            />
-            Workspace can buy its own phone numbers
-          </label>
-          <Button icon={Plus} onClick={() => setBuyOpen(true)}>
-            Buy number for this tenant
-          </Button>
-        </div>
-      </Card>
-
-      <Card title="Feature access" description="Turn whole features on or off for this workspace, on top of whatever roles inside it are permitted.">
-        <div className="flex flex-col gap-3">
-          <label className="flex items-center gap-2 text-sm font-medium text-text">
-            <Toggle
-              checked={Boolean(tenant.can_use_auto_dialer)}
-              onChange={(v) =>
-                toggleFeatureFlag(
-                  "autoDialer",
-                  "canUseAutoDialer",
-                  v,
-                  "Auto Dialer is now enabled for this workspace.",
-                  "Auto Dialer is now disabled for this workspace."
-                )
-              }
-              disabled={featureFlagBusy === "autoDialer"}
-              label="Auto Dialer enabled"
-            />
-            Auto Dialer
-          </label>
-          <label className="flex items-center gap-2 text-sm font-medium text-text">
-            <Toggle
-              checked={Boolean(tenant.can_use_toll_free)}
-              onChange={(v) =>
-                toggleFeatureFlag(
-                  "tollFree",
-                  "canUseTollFree",
-                  v,
-                  "Toll-Free is now enabled for this workspace.",
-                  "Toll-Free is now disabled for this workspace."
-                )
-              }
-              disabled={featureFlagBusy === "tollFree"}
-              label="Toll-Free enabled"
-            />
-            Toll-Free
-          </label>
-        </div>
-      </Card>
-
-      <Card title="Commio incoming routing profile" description="DIDs this setup buys are assigned to this profile. Each setup gets its own, so routing changes for one tenant never affect another.">
-        <div className="flex flex-col gap-3">
-          <StatusBadge tone={tenant.commio_routing_profile_id ? "success" : "warning"}>
-            {tenant.commio_routing_profile_id
-              ? `Assigned: ${tenant.commio_routing_profile_name || "Unnamed"} (#${tenant.commio_routing_profile_id})`
-              : "No routing profile assigned yet"}
-          </StatusBadge>
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="flex gap-2">
-              <Button type="button" size="sm" variant={routingMode === "new" ? "primary" : "secondary"} onClick={() => setRoutingMode("new")}>
-                Create new
-              </Button>
-              <Button type="button" size="sm" variant={routingMode === "existing" ? "primary" : "secondary"} onClick={() => setRoutingMode("existing")}>
-                Use existing profile
-              </Button>
+      <div className="grid items-start gap-4 lg:grid-cols-2">
+        <Card
+          title="Setup limits"
+          description="Max users and monthly minutes for this workspace — edit anytime, without touching the pricing plan template."
+          icon={Settings2}
+        >
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div>
+              <p className="text-xs text-muted">Max users</p>
+              <p className="mt-1 text-lg font-semibold text-text">{tenant.max_users ?? "Unlimited"}</p>
             </div>
-            {routingMode === "existing" && (
-              <div className="w-64">
-                <Select
-                  isLoading={routingProfilesLoading}
-                  options={routingProfileOptions}
-                  value={routingProfileOptions.find((o) => o.value === routingSelectedId) || null}
-                  onChange={(o) => {
-                    setRoutingSelectedId(o?.value || "");
-                    setRoutingSelectedName(o?.label?.replace(/\s*\(#\d+\)$/, "") || "");
-                  }}
-                  placeholder="Select a profile…"
-                />
-              </div>
-            )}
-            <Button size="sm" loading={routingBusy} onClick={saveRoutingProfile}>
-              {tenant.commio_routing_profile_id ? "Replace" : "Assign"}
+            <div>
+              <p className="text-xs text-muted">Outbound min / mo</p>
+              <p className="mt-1 text-lg font-semibold text-text">{tenant.outbound_minutes ?? "Unlimited"}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted">Inbound min / mo</p>
+              <p className="mt-1 text-lg font-semibold text-text">{tenant.inbound_minutes ?? "Unlimited"}</p>
+            </div>
+          </div>
+        </Card>
+
+        <Card
+          title="Phone numbers"
+          description="Whether this workspace can search and buy its own numbers, and a way to hand them one directly regardless."
+          icon={Phone}
+        >
+          <div className="flex flex-col gap-3">
+            <label className="flex items-center gap-2 text-sm font-medium text-text">
+              <Toggle
+                checked={Boolean(tenant.can_purchase_numbers)}
+                onChange={togglePurchaseFlag}
+                disabled={purchaseFlagBusy}
+                label="Workspace can buy its own phone numbers"
+              />
+              Workspace can buy its own numbers
+            </label>
+            <Button size="sm" icon={Plus} onClick={() => setBuyOpen(true)} className="self-start">
+              Buy number for this tenant
             </Button>
           </div>
-        </div>
-      </Card>
+        </Card>
+
+        <Card
+          title="Feature access"
+          description="Turn whole features on or off for this workspace, on top of whatever roles inside it are permitted."
+        >
+          <div className="flex flex-col gap-3">
+            <label className="flex items-center gap-2 text-sm font-medium text-text">
+              <Toggle
+                checked={Boolean(tenant.can_use_auto_dialer)}
+                onChange={(v) =>
+                  toggleFeatureFlag(
+                    "autoDialer",
+                    "canUseAutoDialer",
+                    v,
+                    "Auto Dialer is now enabled for this workspace.",
+                    "Auto Dialer is now disabled for this workspace."
+                  )
+                }
+                disabled={featureFlagBusy === "autoDialer"}
+                label="Auto Dialer enabled"
+              />
+              Auto Dialer
+            </label>
+            <label className="flex items-center gap-2 text-sm font-medium text-text">
+              <Toggle
+                checked={Boolean(tenant.can_use_toll_free)}
+                onChange={(v) =>
+                  toggleFeatureFlag(
+                    "tollFree",
+                    "canUseTollFree",
+                    v,
+                    "Toll-Free is now enabled for this workspace.",
+                    "Toll-Free is now disabled for this workspace."
+                  )
+                }
+                disabled={featureFlagBusy === "tollFree"}
+                label="Toll-Free enabled"
+              />
+              Toll-Free
+            </label>
+            <label className="flex items-center gap-2 text-sm font-medium text-text">
+              <Toggle
+                checked={Boolean(tenant.can_use_leads)}
+                onChange={(v) =>
+                  toggleFeatureFlag(
+                    "leads",
+                    "canUseLeads",
+                    v,
+                    "Lead Management is now enabled for this workspace.",
+                    "Lead Management is now disabled for this workspace."
+                  )
+                }
+                disabled={featureFlagBusy === "leads"}
+                label="Lead Management enabled"
+              />
+              Lead Management
+            </label>
+          </div>
+        </Card>
+
+        <Card
+          title="Commio incoming routing profile"
+          description="DIDs this setup buys are assigned to this profile. Each setup gets its own, so routing changes for one tenant never affect another."
+        >
+          <div className="flex flex-col gap-3">
+            <StatusBadge tone={tenant.commio_routing_profile_id ? "success" : "warning"}>
+              {tenant.commio_routing_profile_id
+                ? `Assigned: ${tenant.commio_routing_profile_name || "Unnamed"} (#${tenant.commio_routing_profile_id})`
+                : "No routing profile assigned yet"}
+            </StatusBadge>
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="flex gap-2">
+                <Button type="button" size="sm" variant={routingMode === "new" ? "primary" : "secondary"} onClick={() => setRoutingMode("new")}>
+                  Create new
+                </Button>
+                <Button type="button" size="sm" variant={routingMode === "existing" ? "primary" : "secondary"} onClick={() => setRoutingMode("existing")}>
+                  Use existing profile
+                </Button>
+              </div>
+              {routingMode === "existing" && (
+                <div className="w-64">
+                  <Select
+                    isLoading={routingProfilesLoading}
+                    options={routingProfileOptions}
+                    value={routingProfileOptions.find((o) => o.value === routingSelectedId) || null}
+                    onChange={(o) => {
+                      setRoutingSelectedId(o?.value || "");
+                      setRoutingSelectedName(o?.label?.replace(/\s*\(#\d+\)$/, "") || "");
+                    }}
+                    placeholder="Select a profile…"
+                  />
+                </div>
+              )}
+              <Button size="sm" loading={routingBusy} onClick={saveRoutingProfile}>
+                {tenant.commio_routing_profile_id ? "Replace" : "Assign"}
+              </Button>
+            </div>
+          </div>
+        </Card>
+      </div>
 
       <Card
         title="Actual Commio cost"
@@ -574,6 +631,19 @@ export default function TenantDetailView({ tenant, onBack, onStatusChanged }) {
         onClose={() => setBuyOpen(false)}
         tenantId={tenant.id}
         onPurchased={onStatusChanged}
+      />
+
+      <EditSetupModal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        tenant={tenant}
+        onUpdated={onStatusChanged}
+      />
+
+      <ResetOwnerPasswordModal
+        open={resetPasswordOpen}
+        onClose={() => setResetPasswordOpen(false)}
+        tenant={tenant}
       />
     </div>
   );

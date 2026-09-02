@@ -16,10 +16,21 @@ export const PERMISSIONS = Object.freeze([
   // plain busy-tone hangup, so it needs the same "opt in per role, never
   // bundled" treatment as PURCHASE_DIDS/CALL_DNC_NUMBERS above.
   { key: "REDIRECT_TO_VOICEMAIL", name: "Redirect Declined Calls to Voicemail", category: "Call & Media" },
+  // Editing the shared disposition list (Auto Dialer + Leads + the End
+  // Call popup all read from the same tenant-wide list) — admin action,
+  // opt-in like PURCHASE_DIDS/CALL_DNC_NUMBERS above.
+  { key: "MANAGE_DISPOSITIONS", name: "Manage Dispositions", category: "Call & Media" },
+  // Whether the End Call popup auto-opens for THIS agent when a connected
+  // call they were on ends. Deliberately opt-in, never bundled — most
+  // agents should just see the plain call-ended state, only ones doing
+  // lead capture need this.
+  { key: "SHOW_END_CALL_POPUP", name: "Show End Call Popup", category: "Call & Media" },
   { key: "VIEW_CALL_LOGS", name: "View Call Logs", category: "Agent Dashboard" },
   { key: "EDIT_CALL_DISPOSITION", name: "Edit Call Disposition", category: "Agent Dashboard" },
   { key: "VIEW_RECORDINGS", name: "Play Recordings", category: "Agent Dashboard" },
   { key: "VIEW_VOICEMAILS", name: "Play Voicemails", category: "Agent Dashboard" },
+  { key: "VIEW_LEADS", name: "View Leads", category: "Agent Dashboard" },
+  { key: "MANAGE_LEADS", name: "Create/Edit Leads", category: "Agent Dashboard" },
   { key: "VIEW_CONTACTS", name: "View Contacts", category: "Agent Dashboard" },
   { key: "CREATE_CONTACTS", name: "Create Contacts", category: "Agent Dashboard" },
   { key: "EDIT_CONTACTS", name: "Edit Contacts", category: "Agent Dashboard" },
@@ -76,6 +87,9 @@ const OWNER_BLOCKED = new Set([
   "ADD_PARTICIPANT",
   "RECORD_CALL",
   "REDIRECT_TO_VOICEMAIL",
+  // The popup fires off a connected call the Owner never took in the
+  // first place (RECEIVE_CALLS/MAKE_CALLS are already Owner-blocked above).
+  "SHOW_END_CALL_POPUP",
   "MONITOR_CALLS",
   "LISTEN_LIVE_CALLS",
   "WHISPER_CALLS",
@@ -94,6 +108,7 @@ export const DEFAULT_ROLE_PERMISSIONS = Object.freeze({
     "VIEW_DASHBOARD", "VIEW_DIALER", "MAKE_CALLS", "RECEIVE_CALLS", "HOLD_CALL", "SEND_DTMF",
     "BLIND_TRANSFER", "WARM_TRANSFER", "ADD_PARTICIPANT", "RECORD_CALL", "VIEW_CALL_LOGS",
     "EDIT_CALL_DISPOSITION", "VIEW_RECORDINGS", "VIEW_VOICEMAILS", "VIEW_CONTACTS", "CREATE_CONTACTS", "EDIT_CONTACTS",
+    "VIEW_LEADS", "MANAGE_LEADS",
     "VIEW_AGENTS", "VIEW_TEAMS", "VIEW_REPORTS", "MONITOR_CALLS", "LISTEN_LIVE_CALLS",
     "WHISPER_CALLS", "BARGE_CALLS",
     "VIEW_CAMPAIGNS", "ASSIGN_CONTACTS", "USE_AUTO_DIALER", "SKIP_CONTACT",
@@ -104,6 +119,7 @@ export const DEFAULT_ROLE_PERMISSIONS = Object.freeze({
     "VIEW_DASHBOARD", "VIEW_DIALER", "MAKE_CALLS", "RECEIVE_CALLS", "HOLD_CALL", "SEND_DTMF",
     "BLIND_TRANSFER", "WARM_TRANSFER", "ADD_PARTICIPANT", "RECORD_CALL", "VIEW_CALL_LOGS",
     "EDIT_CALL_DISPOSITION", "VIEW_RECORDINGS", "VIEW_VOICEMAILS", "VIEW_CONTACTS", "CREATE_CONTACTS", "EDIT_CONTACTS",
+    "VIEW_LEADS", "MANAGE_LEADS",
     "VIEW_CAMPAIGNS", "USE_AUTO_DIALER", "SKIP_CONTACT"
   ]
 });

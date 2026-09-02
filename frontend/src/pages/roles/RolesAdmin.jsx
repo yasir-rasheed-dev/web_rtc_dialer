@@ -29,7 +29,13 @@ const FEATURE_PERMISSION_KEYS = {
     "VIEW_CAMPAIGNS", "CREATE_CAMPAIGNS", "MANAGE_CAMPAIGNS", "UPLOAD_CONTACTS",
     "ASSIGN_CONTACTS", "USE_AUTO_DIALER", "SKIP_CONTACT", "VIEW_CAMPAIGN_REPORTS", "EXPORT_CAMPAIGN_REPORTS"
   ],
-  canUseTollFree: ["VIEW_TOLL_FREE", "MANAGE_TOLL_FREE_CAMPAIGNS"]
+  canUseTollFree: ["VIEW_TOLL_FREE", "MANAGE_TOLL_FREE_CAMPAIGNS"],
+  // MANAGE_DISPOSITIONS is deliberately NOT listed here — the disposition
+  // picklist it manages is shared with the Auto Dialer (backend leaves
+  // that route ungated by can_use_leads for exactly this reason), so
+  // hiding it whenever Leads is off would break disposition management
+  // for a tenant that only has Auto Dialer enabled.
+  canUseLeads: ["VIEW_LEADS", "MANAGE_LEADS", "SHOW_END_CALL_POPUP"]
 };
 
 function groupPermissions(permissions, tenant = {}) {

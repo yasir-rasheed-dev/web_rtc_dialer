@@ -4,3 +4,4 @@ dist/
 .env.electron
 .DS_Store
 npm-debug.log*
+.env.production

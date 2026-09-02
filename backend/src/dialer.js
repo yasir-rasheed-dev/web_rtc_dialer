@@ -132,7 +132,7 @@ export async function getNextDialerContact(req, res) {
     const pending = await pendingCount(tenantId, campaignId, agentId, maxAttempts);
 
     const [dispositions] = await db.execute(
-      `SELECT name FROM campaign_dispositions
+      `SELECT name FROM dispositions
         WHERE tenant_id=? AND active=1 ORDER BY name ASC`,
       [tenantId]
     );

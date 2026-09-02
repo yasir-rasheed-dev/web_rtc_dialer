@@ -78,7 +78,15 @@ export default function Dashboard({ user, tenant, liveCalls, amiConnected }) {
                     initial={{ height: 0 }}
                     animate={{ height: Math.max(6, (Number(row.calls) / maximum) * 110) }}
                     transition={{ duration: 0.4, ease: "easeOut" }}
-                    className="w-full rounded-t-md bg-gradient-to-t from-brand to-brand/70"
+                    className="w-full rounded-t-md"
+                    // Tailwind's `to-brand/70` never compiles here — `brand` is
+                    // a nested {DEFAULT, soft} color object, and Tailwind 3.4's
+                    // opacity-modifier resolution for gradient stops silently
+                    // drops that class instead of erroring, leaving
+                    // --tw-gradient-to at its 0-alpha default (fully
+                    // transparent) — the bar fades to invisible instead of a
+                    // visible top color. Inline style sidesteps that entirely.
+                    style={{ backgroundImage: "linear-gradient(to top, rgb(var(--rn-blue)), rgb(var(--rn-blue) / 0.7))" }}
                   />
                   <span className="text-[10px] text-muted">
                     {new Date(row.day).toLocaleDateString(undefined, { weekday: "short" })}

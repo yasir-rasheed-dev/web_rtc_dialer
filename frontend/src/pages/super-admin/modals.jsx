@@ -6,6 +6,7 @@ import Input, { FIELD_CLASS } from "../../components/ui/Input";
 import Modal from "../../components/ui/Modal";
 import Select from "../../components/ui/Select";
 import Toggle from "../../components/ui/Toggle";
+import { confirmModal } from "../../lib/modal";
 import { notifyError, notifySuccess } from "../../lib/toast";
 import { superApi } from "../../lib/api";
 import { fieldLabelClass } from "./shared";
@@ -31,6 +32,9 @@ const initialTenant = {
   canPurchaseNumbers: true,
   canUseAutoDialer: true,
   canUseTollFree: true,
+  // Opt-in, unlike the two above — brand new feature, nothing should
+  // switch on for a new tenant unless explicitly checked here.
+  canUseLeads: false,
   routingProfileMode: "new",
   routingProfileId: "",
   routingProfileName: ""
@@ -252,6 +256,14 @@ export function CreateSetupModal({ open, onClose, plans, tenants = [], onCreated
             />
             Toll-Free
           </label>
+          <label className="flex items-center gap-2 text-sm font-medium text-text">
+            <Toggle
+              checked={form.canUseLeads}
+              onChange={(v) => setForm({ ...form, canUseLeads: v })}
+              label="Enable Lead Management"
+            />
+            Lead Management
+          </label>
         </div>
 
         <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface-2 px-4 py-3.5">
@@ -396,6 +408,158 @@ export function CreatePlanModal({ open, onClose, onCreated }) {
           </Button>
           <Button type="submit" loading={busy}>
             Add plan
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+// Edits an EXISTING tenant's limits (PATCH /super-admin/tenants/:id, same
+// endpoint CreateSetupModal's counterpart hits on creation) — mirrors that
+// modal's Max users / Outbound minutes / Inbound minutes block exactly,
+// just pre-filled from the tenant's current values instead of a plan.
+export function EditSetupModal({ open, onClose, tenant, onUpdated }) {
+  const [form, setForm] = useState({ maxUsers: "", outboundMinutes: "", inboundMinutes: "", unlimitedUsers: false, unlimitedOutbound: false, unlimitedInbound: false });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!open || !tenant) return;
+    setForm({
+      maxUsers: tenant.max_users == null ? "" : String(tenant.max_users),
+      outboundMinutes: tenant.outbound_minutes == null ? "" : String(tenant.outbound_minutes),
+      inboundMinutes: tenant.inbound_minutes == null ? "" : String(tenant.inbound_minutes),
+      unlimitedUsers: tenant.max_users == null,
+      unlimitedOutbound: tenant.outbound_minutes == null,
+      unlimitedInbound: tenant.inbound_minutes == null
+    });
+    setError("");
+  }, [open, tenant]);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      await superApi(`/super-admin/tenants/${tenant.id}`, { method: "PATCH", body: form });
+      notifySuccess("Setup limits updated");
+      onUpdated();
+      onClose();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Edit setup limits" width="max-w-lg">
+      <form onSubmit={submit} className="flex flex-col gap-4">
+        {error && <div className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>}
+        <div className="flex items-end gap-3">
+          <label className={`${fieldLabelClass()} flex-1`}>
+            Max users
+            <Input type="number" min="0" disabled={form.unlimitedUsers} value={form.maxUsers} onChange={(e) => setForm({ ...form, maxUsers: e.target.value })} />
+          </label>
+          <label className="flex items-center gap-2 pb-2.5 text-xs font-medium text-muted">
+            <Toggle checked={form.unlimitedUsers} onChange={(v) => setForm({ ...form, unlimitedUsers: v })} label="Unlimited users" />
+            Unlimited
+          </label>
+        </div>
+        <div className="flex items-end gap-3">
+          <label className={`${fieldLabelClass()} flex-1`}>
+            Outbound minutes
+            <Input type="number" min="0" disabled={form.unlimitedOutbound} value={form.outboundMinutes} onChange={(e) => setForm({ ...form, outboundMinutes: e.target.value })} />
+          </label>
+          <label className="flex items-center gap-2 pb-2.5 text-xs font-medium text-muted">
+            <Toggle checked={form.unlimitedOutbound} onChange={(v) => setForm({ ...form, unlimitedOutbound: v })} label="Unlimited outbound" />
+            Unlimited
+          </label>
+        </div>
+        <div className="flex items-end gap-3">
+          <label className={`${fieldLabelClass()} flex-1`}>
+            Inbound minutes
+            <Input type="number" min="0" disabled={form.unlimitedInbound} value={form.inboundMinutes} onChange={(e) => setForm({ ...form, inboundMinutes: e.target.value })} />
+          </label>
+          <label className="flex items-center gap-2 pb-2.5 text-xs font-medium text-muted">
+            <Toggle checked={form.unlimitedInbound} onChange={(v) => setForm({ ...form, unlimitedInbound: v })} label="Unlimited inbound" />
+            Unlimited
+          </label>
+        </div>
+        <div className="flex justify-end gap-2 pt-1">
+          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button type="submit" loading={busy}>
+            Save changes
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+// Lets Super Admin set a brand new password for a tenant's Owner account —
+// e.g. the Owner is locked out and no one else in that workspace can reset
+// it for them. Hits its own dedicated route (Super Admin has no session
+// inside the tenant, so it can't use the regular PATCH /users/:id flow).
+export function ResetOwnerPasswordModal({ open, onClose, tenant }) {
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setPassword("");
+    setConfirmPassword("");
+    setError("");
+  }, [open]);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    if (password !== confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+    const confirmed = await confirmModal({
+      title: "Reset Owner password?",
+      message: `${tenant.name}'s Owner will be signed out everywhere immediately and must use this new password to log back in.`,
+      danger: true
+    });
+    if (!confirmed) return;
+    setBusy(true);
+    setError("");
+    try {
+      await superApi(`/super-admin/tenants/${tenant.id}/owner-password`, { method: "POST", body: { password } });
+      notifySuccess("Owner password reset");
+      onClose();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Reset Owner password" width="max-w-md">
+      <form onSubmit={submit} className="flex flex-col gap-4">
+        {error && <div className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>}
+        <label className={fieldLabelClass()}>
+          New password
+          <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={6} required />
+        </label>
+        <label className={fieldLabelClass()}>
+          Confirm password
+          <Input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} minLength={6} required />
+        </label>
+        <div className="flex justify-end gap-2 pt-1">
+          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button type="submit" loading={busy}>
+            Reset password
           </Button>
         </div>
       </form>

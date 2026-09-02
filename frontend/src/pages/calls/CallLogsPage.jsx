@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { FileAudio, PlayCircle, RefreshCw, Voicemail, X } from "lucide-react";
 
+import AudioPlayer from "../../components/ui/AudioPlayer";
 import Card from "../../components/ui/Card";
 import EmptyState from "../../components/ui/EmptyState";
 import PageHeader from "../../components/ui/PageHeader";
@@ -392,7 +393,7 @@ export default function CallLogsPage({ permissions = [], onVoicemailHeard }) {
                 <X size={16} />
               </button>
             </div>
-            <audio src={audio.url} controls autoPlay className="w-full" />
+            <AudioPlayer src={audio.url} autoPlay />
           </motion.div>
         )}
       </AnimatePresence>

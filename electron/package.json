@@ -26,8 +26,10 @@
     },
     "files": [
       "main.js",
-      "preload.js",
-      "app/**/*"
+      "preload.js"
+    ],
+    "extraResources": [
+      { "from": "app", "to": "frontend-dist" }
     ],
     "win": {
       "target": [

@@ -222,7 +222,7 @@ export default function OwnerDashboard({ tenant, user, amiConnected, socketLiveC
 
           <div className="flex flex-col gap-4">
             <SectionCaption eyebrow="CALL ACTIVITY" title="Call outcomes" note="Filtered by date and agent" />
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               <StatCard label="Dialed" value={metrics.dialed} detail="Outbound attempts" icon={PhoneOutgoing} />
               <StatCard label="Missed" value={metrics.missed} detail="Unanswered inbound" icon={PhoneMissed} tone="orange" />
               <StatCard label="Voicemails" value={metrics.voicemails} detail="Marked voicemail" icon={Voicemail} tone="purple" />

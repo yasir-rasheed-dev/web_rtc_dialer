@@ -46,6 +46,7 @@ import createTeamChatRoutes from "./teamChatRoutes.js";
 import createTollFreeRoutes, { getQueueStatus, syncQueuePauseForAgent } from "./tollFreeRoutes.js";
 import createDncRoutes from "./dncRoutes.js";
 import createVoicemailRoutes from "./voicemailRoutes.js";
+import createLeadsRoutes, { createDispositionsRoutes } from "./leadsRoutes.js";
 import { fileURLToPath } from "node:url";
 import {
   DEFAULT_TEAM_PRIVILEGES,
@@ -99,6 +100,13 @@ async function applyAgentStatus(tenantId, userId, sipUsername, status) {
   // a campaign's assigned/roster member.
   if (sipUsername) await syncQueuePauseForAgent(sipUsername, status);
   const payload = { tenantId, userId, agent: sipUsername, status, updatedAt: new Date().toISOString() };
+  // A plain agent's own socket never joins tenant:*:live (that room is
+  // MONITOR_CALLS/VIEW_REPORTS/MANAGE_AGENTS-only, for supervisors/owners
+  // watching OTHER agents) or any tenant:*:team:* room unless they're a
+  // Supervisor — every socket does join user:<id> though (line ~2881), so
+  // that's the one room guaranteed to reach the agent this status change
+  // is actually about, letting their own header dropdown stay in sync.
+  io.to(`user:${userId}`).emit("agent:status", payload);
   io.to(`tenant:${tenantId}:live`).emit("agent:status", payload);
   try {
     const [teamIds] = await db.execute(
@@ -458,7 +466,7 @@ async function loadTenantUser(userId) {
             t.name AS tenant_name, t.workspace, t.status AS tenant_status, t.plan_id,
             t.features_json, t.price_per_user, t.max_users, t.outbound_minutes, t.inbound_minutes,
             t.extension_start, t.next_extension, t.timezone, t.can_purchase_numbers,
-            t.can_use_auto_dialer, t.can_use_toll_free
+            t.can_use_auto_dialer, t.can_use_toll_free, t.can_use_leads
        FROM users u
        JOIN tenants t ON t.id=u.tenant_id
        LEFT JOIN roles r ON r.id=u.role_id AND r.tenant_id=u.tenant_id
@@ -542,6 +550,7 @@ function authPayload(user) {
       canPurchaseNumbers: Boolean(user.can_purchase_numbers),
       canUseAutoDialer: Boolean(user.can_use_auto_dialer),
       canUseTollFree: Boolean(user.can_use_toll_free),
+      canUseLeads: Boolean(user.can_use_leads),
       limits: {
         maxUsers: user.max_users,
         outboundMinutes: user.outbound_minutes,
@@ -575,6 +584,11 @@ app.use("/api/dnc", createDncRoutes(authenticate));
 app.use(
   "/api/voicemails",
   createVoicemailRoutes(authenticate, { callAccessScope, appendCallAgentScope, appendRequestedAgent, normalizeDateFilter })
+);
+app.use("/api/dispositions", createDispositionsRoutes(authenticate));
+app.use(
+  "/api/leads",
+  createLeadsRoutes(authenticate, { callAccessScope, appendCallAgentScope, appendRequestedAgent, normalizeDateFilter })
 );
 app.use("/api/team-chat", createTeamChatRoutes(authenticate));
 // Chat attachments — filenames are random UUIDs (see teamChatRoutes.js), so
@@ -632,7 +646,7 @@ app.get("/api/super-admin/overview", authenticateSuperAdmin, asyncRoute(async (_
   const [tenants] = await db.execute(
     `SELECT t.id,t.name,t.workspace,t.status,t.price_per_user,t.max_users,t.outbound_minutes,t.inbound_minutes,
             t.extension_start,t.timezone,t.commio_routing_profile_id,t.commio_routing_profile_name,
-            t.can_purchase_numbers,t.can_use_auto_dialer,t.can_use_toll_free,p.name AS plan_name,
+            t.can_purchase_numbers,t.can_use_auto_dialer,t.can_use_toll_free,t.can_use_leads,p.name AS plan_name,
             COUNT(CASE WHEN COALESCE(ur.name,'')<>'Tenant Owner' THEN u.id END) AS users,
             COALESCE(SUM(CASE WHEN COALESCE(ur.name,'')<>'Tenant Owner' AND u.active=1 THEN 1 ELSE 0 END),0) AS active_users
        FROM tenants t
@@ -772,8 +786,8 @@ app.post("/api/super-admin/tenants", authenticateSuperAdmin, asyncRoute(async (r
       `INSERT INTO tenants
         (id,name,workspace,status,plan_id,price_per_user,max_users,outbound_minutes,inbound_minutes,features_json,
          extension_start,next_extension,timezone,country,billing_cycle,commio_routing_profile_id,commio_routing_profile_name,
-         can_purchase_numbers,can_use_auto_dialer,can_use_toll_free)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         can_purchase_numbers,can_use_auto_dialer,can_use_toll_free,can_use_leads)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         id,
         name,
@@ -794,7 +808,11 @@ app.post("/api/super-admin/tenants", authenticateSuperAdmin, asyncRoute(async (r
         existingRoutingProfileName,
         req.body.canPurchaseNumbers === false ? 0 : 1,
         req.body.canUseAutoDialer === false ? 0 : 1,
-        req.body.canUseTollFree === false ? 0 : 1
+        req.body.canUseTollFree === false ? 0 : 1,
+        // Opt-in, not opt-out like the two above — a brand-new feature, so
+        // nothing should switch on for a new tenant unless Super Admin
+        // explicitly turns it on.
+        req.body.canUseLeads === true ? 1 : 0
       ]
     );
 
@@ -858,7 +876,7 @@ app.patch("/api/super-admin/tenants/:id", authenticateSuperAdmin, asyncRoute(asy
   const allowedStatuses = ["TRIAL", "ACTIVE", "INACTIVE", "SUSPENDED", "CANCELLED"];
   if (!allowedStatuses.includes(status)) return res.status(400).json({ error: "Invalid tenant status" });
   await db.execute(
-    `UPDATE tenants SET name=?,status=?,plan_id=?,price_per_user=?,max_users=?,outbound_minutes=?,inbound_minutes=?,features_json=?,timezone=?,can_purchase_numbers=?,can_use_auto_dialer=?,can_use_toll_free=? WHERE id=?`,
+    `UPDATE tenants SET name=?,status=?,plan_id=?,price_per_user=?,max_users=?,outbound_minutes=?,inbound_minutes=?,features_json=?,timezone=?,can_purchase_numbers=?,can_use_auto_dialer=?,can_use_toll_free=?,can_use_leads=? WHERE id=?`,
     [
       req.body.name ?? tenant.name,
       status,
@@ -872,6 +890,7 @@ app.patch("/api/super-admin/tenants/:id", authenticateSuperAdmin, asyncRoute(asy
       req.body.canPurchaseNumbers === undefined ? tenant.can_purchase_numbers : (req.body.canPurchaseNumbers ? 1 : 0),
       req.body.canUseAutoDialer === undefined ? tenant.can_use_auto_dialer : (req.body.canUseAutoDialer ? 1 : 0),
       req.body.canUseTollFree === undefined ? tenant.can_use_toll_free : (req.body.canUseTollFree ? 1 : 0),
+      req.body.canUseLeads === undefined ? tenant.can_use_leads : (req.body.canUseLeads ? 1 : 0),
       req.params.id
     ]
   );
@@ -999,6 +1018,27 @@ app.get("/api/super-admin/tenants/:id/commio-cost", authenticateSuperAdmin, asyn
     totalCost: outboundCost + flatDidCost,
     byNumber
   });
+}));
+
+// Lets Super Admin reset a tenant's Owner password directly — e.g. the
+// Owner is locked out and there's no one else in that workspace who can
+// reset it for them. Rotates current_session_id and force-disconnects the
+// Owner's socket the same way finalizeLogin() does on a new-device login,
+// so a password changed by a third party can't leave an old session valid.
+app.post("/api/super-admin/tenants/:id/owner-password", authenticateSuperAdmin, asyncRoute(async (req, res) => {
+  const password = String(req.body.password || "");
+  if (password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters" });
+  const [[owner]] = await db.execute(
+    `SELECT u.id FROM users u JOIN roles r ON r.id=u.role_id AND r.tenant_id=u.tenant_id
+      WHERE u.tenant_id=? AND r.name='Tenant Owner' LIMIT 1`,
+    [req.params.id]
+  );
+  if (!owner) return res.status(404).json({ error: "This workspace has no Owner account" });
+  const sessionId = crypto.randomUUID();
+  await db.execute("UPDATE users SET password_hash=?,current_session_id=? WHERE id=?", [await hashPassword(password), sessionId, owner.id]);
+  io.to(`user:${owner.id}`).emit("auth:force-logout", { message: "Your password was reset by an administrator." });
+  io.in(`user:${owner.id}`).disconnectSockets(true);
+  res.status(204).end();
 }));
 
 // ---------------------------
@@ -1856,11 +1896,13 @@ app.get("/api/dids", authenticate, requirePermission("VIEW_DIDS", "MANAGE_DIDS",
   res.json({ dids: rows });
 }));
 
-// Resolves a raw caller number into something a human recognizes, for
-// call-activity displays (currently the Toll-Free Live Dashboard's
-// activity table). Priority: an internal agent's own extension (it's not
-// really "unknown" — it's someone on the team calling) > a saved contact
-// > "Unknown caller" (left to the frontend when this returns null).
+// Resolves a raw caller number into something a human recognizes — used by
+// the Toll-Free Live Dashboard's activity table, and by Softphone.jsx to
+// fill in the incoming-call popup/call window with a saved contact's name,
+// company and job title. Priority: an internal agent's own extension (it's
+// not really "unknown" — it's someone on the team calling) > a saved
+// contact (company/jobTitle included when set) > "Unknown caller" (left to
+// the frontend when this returns null).
 app.get(
   "/api/contacts/lookup",
   authenticate,
@@ -1881,13 +1923,32 @@ app.get(
     );
     if (agent) return res.json({ type: "agent", name: agent.name });
 
+    // contact_phones.number is saved inconsistently — some rows carry a
+    // leading "+" (e.g. "+17127307170"), some don't — so the candidates
+    // above (always bare digits) would silently match nothing against a
+    // "+"-prefixed row without stripping it here too.
+    // ORDER BY c.created_at ASC so that if the same number ever ends up on
+    // more than one Contact (e.g. a stray duplicate from testing), the
+    // oldest/original one always wins deterministically, instead of
+    // whichever one MySQL's join happened to produce first.
     const [[contact]] = await db.execute(
-      `SELECT c.first_name, c.last_name FROM contact_phones p
+      `SELECT c.id, c.first_name, c.last_name, c.company, c.job_title FROM contact_phones p
          JOIN contacts c ON c.id = p.contact_id AND c.tenant_id = p.tenant_id
-        WHERE p.tenant_id=? AND p.number IN (${candidates.map(() => "?").join(",")}) LIMIT 1`,
+        WHERE p.tenant_id=? AND REPLACE(p.number,'+','') IN (${candidates.map(() => "?").join(",")})
+        ORDER BY c.created_at ASC LIMIT 1`,
       [req.user.tenant_id, ...candidates]
     );
-    if (contact) return res.json({ type: "contact", name: [contact.first_name, contact.last_name].filter(Boolean).join(" ") });
+    if (contact) {
+      return res.json({
+        type: "contact",
+        // Lets a caller (the End Call popup) know a Contact already exists
+        // for this number, without a second round-trip to search for it.
+        contactId: contact.id,
+        name: [contact.first_name, contact.last_name].filter(Boolean).join(" "),
+        company: contact.company || null,
+        jobTitle: contact.job_title || null
+      });
+    }
 
     res.json({ type: null, name: null });
   })
@@ -2639,7 +2700,11 @@ app.post("/api/calls/conference/invite-agent", authenticate, requirePermission("
     Application: "ConfBridge",
     Data: `${conferenceId},default_bridge,transfer_agent`,
     Timeout: "30000",
-    Async: "true"
+    Async: "true",
+    // Without this, Asterisk originates the leg with no caller identity at
+    // all, so the target agent's SIP client falls back to showing
+    // "Anonymous" instead of who's actually consulting them.
+    CallerID: `${req.user.name} <${req.user.extension || req.user.sip_username}>`
   });
   await audit(req.user.id, "CONFERENCE_AGENT_INVITE", "conference", conferenceId, {
     targetAgentId: targetAgent.id,

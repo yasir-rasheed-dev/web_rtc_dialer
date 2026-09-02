@@ -72,6 +72,11 @@ export default function GlobalCallOverlay({ onDialerPage = false }) {
               </span>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold text-text">{state.currentParty?.displayName || "Incoming call"}</p>
+                {(state.currentParty?.jobTitle || state.currentParty?.company) && (
+                  <p className="truncate text-xs text-muted">
+                    {[state.currentParty?.jobTitle, state.currentParty?.company].filter(Boolean).join(" · ")}
+                  </p>
+                )}
                 <p className="truncate text-xs text-muted">{state.currentParty?.number || "Unknown caller"}</p>
               </div>
             </div>

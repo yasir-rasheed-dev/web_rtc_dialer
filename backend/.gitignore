@@ -8,3 +8,5 @@ src/uploads/
 tts-audio/
 dist/
 *.log
+
+storage/voicemails/
