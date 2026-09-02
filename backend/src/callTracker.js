@@ -350,6 +350,9 @@ export class CallTracker {
       call.channels.add(event.Channel);
       this.calls.set(linkedid, call);
       await this.#upsert(call, event);
+      // Optional hook (server.js): a new call for this agent ends any
+      // pending "old device" hand-off grace.
+      if (agentRecord?.id) this.onAgentCallStarted?.(agentRecord.id, linkedid);
     }
 
     if (!call) return;

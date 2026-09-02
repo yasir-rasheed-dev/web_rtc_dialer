@@ -122,6 +122,13 @@ async function applyAgentStatus(tenantId, userId, sipUsername, status) {
 }
 
 const tracker = new CallTracker(io, config.recordingRoot, applyAgentStatus, config.voicemailRoot);
+// Ends a superseded device's hand-off grace the moment that agent's NEXT
+// call begins — see onAgentCallStarted / finalizeLogin. (onAgentCallStarted
+// is a hoisted function declaration further down.)
+tracker.onAgentCallStarted = (userId, linkedid) =>
+  onAgentCallStarted(userId, linkedid).catch((error) =>
+    console.error("[auth] onAgentCallStarted failed:", error.message)
+  );
 let amiConnected = false;
 const loginAttempts = new Map();
 
@@ -463,7 +470,8 @@ async function loadTenantUser(userId) {
     `SELECT u.id, u.tenant_id, u.email, u.name, u.role, u.role_id,
             u.sip_username, u.sip_secret_ciphertext, u.extension, u.caller_id_number,
             u.team_name, u.status, u.active,
-            u.current_session_id, u.totp_required, u.totp_secret_ciphertext, u.totp_confirmed_at, u.restrict_ip,
+            u.current_session_id, u.grace_session_id, u.grace_call_linkedid, u.grace_expires_at,
+            u.totp_required, u.totp_secret_ciphertext, u.totp_confirmed_at, u.restrict_ip,
             r.name AS role_name, r.active AS role_active,
             t.name AS tenant_name, t.workspace, t.status AS tenant_status, t.plan_id,
             t.features_json, t.price_per_user, t.max_users, t.outbound_minutes, t.inbound_minutes,
@@ -481,6 +489,66 @@ async function loadTenantUser(userId) {
   user.permissions = await loadRolePermissions(user.role_id, user);
   return user;
 }
+
+// True while the OLD device still holds a valid hand-off grace: right
+// session id, not past the hard cap.
+function isGraceSessionValid(user, sid) {
+  return Boolean(
+    user?.grace_session_id &&
+    sid === user.grace_session_id &&
+    user.grace_expires_at &&
+    new Date(user.grace_expires_at).getTime() > Date.now()
+  );
+}
+
+// Ends the hand-off grace: clears the grace columns, revokes the old
+// session's refresh tokens, and hard-logs-out only that old device
+// (targeted by its session room, so the new device is untouched).
+async function endSessionGrace(userId, reason) {
+  const [[u]] = await db.execute(
+    "SELECT grace_session_id FROM users WHERE id=? LIMIT 1",
+    [userId]
+  );
+  const graceSid = u?.grace_session_id;
+  if (!graceSid) return;
+  await db.execute(
+    "UPDATE users SET grace_session_id=NULL, grace_call_linkedid=NULL, grace_expires_at=NULL WHERE id=?",
+    [userId]
+  );
+  await db.execute(
+    "UPDATE refresh_tokens SET revoked_at=UTC_TIMESTAMP() WHERE session_id=? AND revoked_at IS NULL",
+    [graceSid]
+  );
+  io.to(`session:${graceSid}`).emit("auth:force-logout", {
+    message: "You've been signed out — this account is now active on another device."
+  });
+  io.in(`session:${graceSid}`).disconnectSockets(true);
+  console.log(`[auth] session grace ended for user ${userId}: ${reason}`);
+}
+
+// Called by CallTracker on every Newchannel that resolves to an agent.
+// If that agent is in grace and this is a DIFFERENT call from the one
+// live at hand-off, the wrap-up window is over — log the old device out.
+async function onAgentCallStarted(userId, linkedid) {
+  if (!userId || !linkedid) return;
+  const [[u]] = await db.execute(
+    "SELECT grace_session_id, grace_call_linkedid FROM users WHERE id=? LIMIT 1",
+    [userId]
+  ).catch(() => [[]]);
+  if (u?.grace_session_id && u.grace_call_linkedid !== linkedid) {
+    await endSessionGrace(userId, `next call ${linkedid} started`);
+  }
+}
+
+// Hard-cap sweep — grace that never resolved (agent left the tab open,
+// call stuck) is force-ended once grace_expires_at passes.
+setInterval(() => {
+  db.execute(
+    "SELECT id FROM users WHERE grace_session_id IS NOT NULL AND grace_expires_at < UTC_TIMESTAMP()"
+  )
+    .then(([rows]) => Promise.all(rows.map((row) => endSessionGrace(row.id, "hard cap"))))
+    .catch((error) => console.error("[auth] grace sweep failed:", error.message));
+}, 60 * 1000).unref();
 
 export const authenticate = asyncRoute(async (req, res, next) => {
   const token = bearer(req);
@@ -506,7 +574,13 @@ export const authenticate = asyncRoute(async (req, res, next) => {
   // this scheme yet (e.g. legacy token from before the migration), so we
   // don't lock those out.
   if (user.current_session_id && claims.sid !== user.current_session_id) {
-    return res.status(401).json({ error: "SESSION_REVOKED", message: "You were signed out because this account logged in on another device." });
+    // The previous device is allowed to keep working through its live
+    // call + wrap-up when a hand-off grace is in effect (see finalizeLogin
+    // / endSessionGrace). Any other stale session is rejected as before.
+    if (!isGraceSessionValid(user, claims.sid)) {
+      return res.status(401).json({ error: "SESSION_REVOKED", message: "You were signed out because this account logged in on another device." });
+    }
+    req.graceSession = true;
   }
   req.user = user;
   req.tenant = {
@@ -1081,21 +1155,54 @@ async function issueRefreshToken(user, sessionId, familyId, req, replaces = null
 
 async function finalizeLogin(user, req) {
   const sessionId = crypto.randomUUID();
-  await db.execute("UPDATE users SET current_session_id=?, last_login_at=UTC_TIMESTAMP() WHERE id=?", [sessionId, user.id]);
-  io.to(`user:${user.id}`).emit("auth:force-logout", {
-    message: "You were signed out because this account logged in on another device."
-  });
-  io.in(`user:${user.id}`).disconnectSockets(true);
-  // A fresh login supersedes every prior session for this user — kill any
-  // still-live refresh tokens so an old device can't silently refresh
-  // back in.
-  await db.execute(
-    "UPDATE refresh_tokens SET revoked_at=UTC_TIMESTAMP() WHERE user_id=? AND revoked_at IS NULL",
-    [user.id]
-  );
+  const previousSessionId = user.current_session_id || null;
+
+  // If the previous device is mid-call, don't yank it — let it finish the
+  // call + wrap-up. It's logged out the moment it starts the NEXT call
+  // (onAgentCallStarted) or when the hard cap passes (grace sweep).
+  const liveCall = previousSessionId && user.sip_username ? tracker.findByAgent(user.sip_username) : null;
+  const GRACE_CAP_MS = 4 * 60 * 60 * 1000;
+
+  if (liveCall) {
+    const graceExpiry = new Date(Date.now() + GRACE_CAP_MS);
+    await db.execute(
+      `UPDATE users SET current_session_id=?, last_login_at=UTC_TIMESTAMP(),
+              grace_session_id=?, grace_call_linkedid=?, grace_expires_at=?
+        WHERE id=?`,
+      [sessionId, previousSessionId, liveCall.linkedid, graceExpiry, user.id]
+    );
+    // Soft notice to the old device — it stays functional for now.
+    io.to(`session:${previousSessionId}`).emit("auth:session-superseded", {
+      message: "You've signed in on another device. This session will end when your current call is over."
+    });
+    // Keep the old session's refresh family alive so it can renew its
+    // access token during the grace window; revoke every other one.
+    await db.execute(
+      "UPDATE refresh_tokens SET revoked_at=UTC_TIMESTAMP() WHERE user_id=? AND revoked_at IS NULL AND session_id<>?",
+      [user.id, previousSessionId]
+    );
+  } else {
+    await db.execute(
+      `UPDATE users SET current_session_id=?, last_login_at=UTC_TIMESTAMP(),
+              grace_session_id=NULL, grace_call_linkedid=NULL, grace_expires_at=NULL
+        WHERE id=?`,
+      [sessionId, user.id]
+    );
+    io.to(`user:${user.id}`).emit("auth:force-logout", {
+      message: "You were signed out because this account logged in on another device."
+    });
+    io.in(`user:${user.id}`).disconnectSockets(true);
+    // A fresh login supersedes every prior session — kill any still-live
+    // refresh tokens so an old device can't silently refresh back in.
+    await db.execute(
+      "UPDATE refresh_tokens SET revoked_at=UTC_TIMESTAMP() WHERE user_id=? AND revoked_at IS NULL",
+      [user.id]
+    );
+  }
+
   const tokenUser = { ...user, current_session_id: sessionId };
   const refreshToken = await issueRefreshToken(tokenUser, sessionId, crypto.randomUUID(), req);
-  await audit(user.id, "AUTH_LOGIN", "user", user.id, { ip: req.ip }, user.tenant_id);
+  await audit(user.id, "AUTH_LOGIN", "user", user.id, { ip: req.ip, grace: Boolean(liveCall) }, user.tenant_id);
   // A telephony agent logging in is available to take calls by default —
   // same "not the Tenant Owner, has a SIP endpoint" guard as the manual
   // status endpoint. Fire-and-forget: a failure here shouldn't block
@@ -1265,11 +1372,14 @@ app.post("/api/auth/refresh", asyncRoute(async (req, res) => {
   const user = await loadTenantUser(row.user_id);
   if (!user) return res.status(401).json({ error: "REFRESH_INVALID" });
 
-  // A newer login rotated current_session_id — this family belongs to the
-  // old session and must not refresh back in.
+  // A newer login rotated current_session_id. The old session can still
+  // refresh while its hand-off grace is valid (mid-call + wrap-up); any
+  // other stale family is rejected.
   if (user.current_session_id && row.session_id !== user.current_session_id) {
-    await db.execute("UPDATE refresh_tokens SET revoked_at=UTC_TIMESTAMP() WHERE id=?", [row.id]);
-    return res.status(401).json({ error: "SESSION_REVOKED", message: "You were signed out because this account logged in on another device." });
+    if (!isGraceSessionValid(user, row.session_id)) {
+      await db.execute("UPDATE refresh_tokens SET revoked_at=UTC_TIMESTAMP() WHERE id=?", [row.id]);
+      return res.status(401).json({ error: "SESSION_REVOKED", message: "You were signed out because this account logged in on another device." });
+    }
   }
 
   // Rotate: revoke the presented token, issue a new one in the same family.
@@ -3172,8 +3282,11 @@ io.use(async (socket, next) => {
     if (claims.scope !== "tenant") return next(new Error("Unauthorized"));
     const user = await loadTenantUser(claims.sub);
     if (!user) return next(new Error("Unauthorized"));
-    if (user.current_session_id && claims.sid !== user.current_session_id) return next(new Error("Unauthorized"));
+    if (user.current_session_id && claims.sid !== user.current_session_id && !isGraceSessionValid(user, claims.sid)) {
+      return next(new Error("Unauthorized"));
+    }
     socket.user = user;
+    socket.sessionId = claims.sid || null;
     next();
   } catch {
     next(new Error("Unauthorized"));
@@ -3183,10 +3296,11 @@ io.use(async (socket, next) => {
 io.on("connection", async (socket) => {
   const user = socket.user;
   let calls = tracker.list(user.tenant_id);
-  // Per-user room — lets finalizeLogin() reach exactly this device's
-  // socket(s) with an immediate "auth:force-logout" push when a newer
-  // login elsewhere supersedes this session.
+  // Per-user room — tenant-wide "this account" pushes.
   socket.join(`user:${user.id}`);
+  // Per-session room — lets the server hard-logout exactly ONE device
+  // (the superseded one) without touching the device that just logged in.
+  if (socket.sessionId) socket.join(`session:${socket.sessionId}`);
 
   try {
     if (isSupervisor(user)) {

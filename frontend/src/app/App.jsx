@@ -23,7 +23,7 @@ import {
 import Sidebar, { SIDEBAR_WIDTH, SIDEBAR_WIDTH_COLLAPSED } from "../components/layout/Sidebar";
 import Header from "../components/layout/Header";
 import { SkeletonCards } from "../components/ui/Skeleton";
-import { notifyError } from "../lib/toast";
+import { notifyError, notifyWarning } from "../lib/toast";
 import { api, getToken, getRefreshToken, refreshSession, clearAuth } from "../lib/api";
 import { API_BASE } from "../lib/apiConfig";
 import { hasAny } from "../lib/permissions";
@@ -239,6 +239,16 @@ function TenantApp() {
           notifyError(item?.message || "You were signed out because this account logged in on another device.");
           clearAuth();
           setSession(null);
+        });
+        // Soft version: this account signed in elsewhere, but there's a
+        // live call here — stay usable through the call + wrap-up. The
+        // server sends "auth:force-logout" to THIS device once the next
+        // call starts (or the grace cap passes).
+        socket.on("auth:session-superseded", (item) => {
+          notifyWarning(
+            item?.message ||
+              "You've signed in on another device. This session will end when your current call is over."
+          );
         });
       })
       .catch(() => setAmiConnected(false));
