@@ -16,6 +16,7 @@ import Card from "../../components/ui/Card";
 import EmptyState from "../../components/ui/EmptyState";
 import Input from "../../components/ui/Input";
 import Modal from "../../components/ui/Modal";
+import Segmented from "../../components/ui/Segmented";
 import Select from "../../components/ui/Select";
 import { SkeletonTable } from "../../components/ui/Skeleton";
 import Toggle from "../../components/ui/Toggle";
@@ -287,29 +288,6 @@ function SettingRow({ title, description, children }) {
   );
 }
 
-/** Small pill segmented control. */
-function Segmented({ value, onChange, options }) {
-  return (
-    <div className="inline-flex rounded-lg border border-border bg-surface-2 p-0.5 text-xs font-semibold">
-      {options.map((o) => {
-        const active = value === o.value;
-        return (
-          <button
-            key={o.value}
-            type="button"
-            onClick={() => onChange(o.value)}
-            className={
-              "rounded-md px-3 py-1.5 transition-colors " +
-              (active ? "bg-surface text-text ring-1 ring-border" : "text-muted hover:text-text")
-            }
-          >
-            {o.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 export default function TenantDetailView({ tenant, onBack, onStatusChanged }) {
   const [statusBusy, setStatusBusy] = useState(false);
