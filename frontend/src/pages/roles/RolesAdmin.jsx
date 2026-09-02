@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pencil, Plus, Trash2, UserCog } from "lucide-react";
+import { Pencil, Plus, Search, Trash2, UserCog } from "lucide-react";
 
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
+import DataTable from "../../components/ui/DataTable";
 import EmptyState from "../../components/ui/EmptyState";
 import Input from "../../components/ui/Input";
 import Modal from "../../components/ui/Modal";
 import PageHeader from "../../components/ui/PageHeader";
-import { SkeletonTable } from "../../components/ui/Skeleton";
 import StatusBadge from "../../components/ui/StatusBadge";
 import Toggle from "../../components/ui/Toggle";
 import { confirmModal } from "../../lib/modal";
@@ -53,8 +53,41 @@ function groupPermissions(permissions, tenant = {}) {
     }, {});
 }
 
+function CategoryBlock({ category, items, selected, onToggle, onToggleAll }) {
+  const on = items.filter((i) => selected.has(i.key)).length;
+  const all = on === items.length && items.length > 0;
+  return (
+    <div className="overflow-hidden rounded-lg border border-border">
+      <div className="flex items-center justify-between gap-3 border-b border-border bg-surface-2 px-3 py-2">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-text">{category}</span>
+        <div className="flex items-center gap-3">
+          <span className="text-[11px] tabular-nums text-muted">
+            {on}/{items.length}
+          </span>
+          <button
+            type="button"
+            onClick={() => onToggleAll(items, !all)}
+            className="text-[11px] font-semibold text-brand hover:underline"
+          >
+            {all ? "Clear" : "Select all"}
+          </button>
+        </div>
+      </div>
+      <div className="divide-y divide-border">
+        {items.map((p) => (
+          <label key={p.key} className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2.5">
+            <span className="text-[13px] text-text">{p.name}</span>
+            <Toggle checked={selected.has(p.key)} onChange={() => onToggle(p.key)} label={p.name} />
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function RoleFormModal({ open, onClose, role, grouped, onSaved }) {
   const [form, setForm] = useState(null);
+  const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -65,23 +98,42 @@ function RoleFormModal({ open, onClose, role, grouped, onSaved }) {
       description: role?.description || "",
       permissions: Array.isArray(role?.permissions) ? [...role.permissions] : []
     });
+    setQuery("");
     setError("");
   }, [open, role]);
+
+  const selected = useMemo(() => new Set(form?.permissions || []), [form]);
+  const totalCount = useMemo(() => Object.values(grouped).reduce((n, arr) => n + arr.length, 0), [grouped]);
+
+  const filteredCategories = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return Object.entries(grouped)
+      .map(([cat, items]) => [cat, q ? items.filter((i) => i.name.toLowerCase().includes(q)) : items])
+      .filter(([, items]) => items.length);
+  }, [grouped, query]);
 
   if (!form) return <Modal open={false} />;
 
   const togglePermission = (key) =>
-    setForm((current) => ({
-      ...current,
-      permissions: current.permissions.includes(key)
-        ? current.permissions.filter((item) => item !== key)
-        : [...current.permissions, key]
+    setForm((cur) => ({
+      ...cur,
+      permissions: cur.permissions.includes(key)
+        ? cur.permissions.filter((k) => k !== key)
+        : [...cur.permissions, key]
     }));
+
+  const toggleAll = (items, value) =>
+    setForm((cur) => {
+      const keys = items.map((i) => i.key);
+      const next = new Set(cur.permissions);
+      keys.forEach((k) => (value ? next.add(k) : next.delete(k)));
+      return { ...cur, permissions: [...next] };
+    });
 
   const submit = async (event) => {
     event.preventDefault();
     if (!form.name.trim()) {
-      setError("Role name is required");
+      setError("Role name is required.");
       return;
     }
     setBusy(true);
@@ -105,7 +157,7 @@ function RoleFormModal({ open, onClose, role, grouped, onSaved }) {
   return (
     <Modal open={open} onClose={onClose} title={role ? `Edit ${role.name}` : "New role"} width="max-w-2xl">
       <form onSubmit={submit} className="flex flex-col gap-4">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
             Role name<span className="text-danger">*</span>
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus required />
@@ -116,32 +168,48 @@ function RoleFormModal({ open, onClose, role, grouped, onSaved }) {
           </label>
         </div>
 
-        <div className="flex flex-col gap-4">
-          {Object.entries(grouped).map(([category, items]) => (
-            <div key={category}>
-              <p className="mb-2 text-[11px] font-extrabold uppercase tracking-wide text-brand">{category}</p>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {items.map((permission) => (
-                  <div key={permission.key} className="flex items-center justify-between gap-3 rounded-xl bg-surface-2 px-4 py-3">
-                    <span className="text-sm font-medium text-text">{permission.name}</span>
-                    <Toggle
-                      checked={form.permissions.includes(permission.key)}
-                      onChange={() => togglePermission(permission.key)}
-                      label={permission.name}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
+        <div className="flex items-center gap-3">
+          <div className="relative flex-1">
+            <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Filter privileges…"
+              className="h-9 w-full rounded-lg border border-border bg-surface pl-8 pr-3 text-sm text-text placeholder:text-muted focus:border-border-strong focus:outline-none focus:ring-2 focus:ring-ring/40"
+            />
+          </div>
+          <span className="shrink-0 text-xs font-medium text-muted">
+            {form.permissions.length} / {totalCount} selected
+          </span>
         </div>
 
-        {error && <div className="rounded-lg bg-danger-soft px-3 py-2 text-xs font-medium text-danger">{error}</div>}
-        <div className="mt-1 flex justify-end gap-2 border-t border-border pt-4">
-          <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+        <div className="flex max-h-[46vh] flex-col gap-3 overflow-y-auto pr-1">
+          {filteredCategories.length ? (
+            filteredCategories.map(([category, items]) => (
+              <CategoryBlock
+                key={category}
+                category={category}
+                items={items}
+                selected={selected}
+                onToggle={togglePermission}
+                onToggleAll={toggleAll}
+              />
+            ))
+          ) : (
+            <p className="py-8 text-center text-xs text-muted">No privileges match “{query}”.</p>
+          )}
+        </div>
+
+        {error && (
+          <div className="rounded-lg border border-danger/30 bg-danger-soft px-3 py-2 text-xs font-medium text-danger">
+            {error}
+          </div>
+        )}
+        <div className="flex justify-end gap-2 border-t border-border pt-4">
+          <Button type="button" variant="ghost" size="sm" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button type="submit" size="sm" icon={Plus} loading={busy}>
+          <Button type="submit" size="sm" loading={busy}>
             {role ? "Save changes" : "Create role"}
           </Button>
         </div>
@@ -182,7 +250,7 @@ export default function RolesAdmin({ permissions = [], tenant = {} }) {
   const deleteRole = async (role) => {
     const confirmed = await confirmModal({
       title: "Delete role",
-      message: `Delete role "${role.name}"? Users assigned to it will need a new role. This cannot be undone.`,
+      message: `Delete "${role.name}"? Users on this role keep their account but lose its privileges.`,
       confirmText: "Delete",
       danger: true
     });
@@ -190,8 +258,8 @@ export default function RolesAdmin({ permissions = [], tenant = {} }) {
     setDeletingId(role.id);
     try {
       await api(`/roles/${role.id}`, { method: "DELETE" });
+      setRoles((current) => current.filter((r) => r.id !== role.id));
       notifySuccess("Role deleted.");
-      await load();
     } catch (requestError) {
       notifyError(requestError.message);
     } finally {
@@ -199,82 +267,126 @@ export default function RolesAdmin({ permissions = [], tenant = {} }) {
     }
   };
 
+  const columns = useMemo(
+    () => [
+      {
+        key: "name",
+        header: "Role",
+        sortable: true,
+        cellClassName: "text-text",
+        cell: (r) => (
+          <div className="min-w-0">
+            <p className="font-medium">{r.name}</p>
+            {r.description && <p className="max-w-xs truncate text-xs text-muted">{r.description}</p>}
+          </div>
+        )
+      },
+      {
+        key: "privileges",
+        header: "Privileges",
+        align: "right",
+        sortable: true,
+        sortValue: (r) => r.permissions?.length || 0,
+        cell: (r) => <span className="tabular-nums">{r.permissions?.length || 0}</span>
+      },
+      {
+        key: "is_system",
+        header: "Type",
+        sortable: true,
+        cell: (r) => (
+          <StatusBadge tone={r.is_system ? "neutral" : "brand"}>{r.is_system ? "System" : "Custom"}</StatusBadge>
+        )
+      },
+      {
+        key: "actions",
+        header: "",
+        align: "right",
+        cell: (r) =>
+          r.is_system ? (
+            <span className="text-xs text-muted">Protected</span>
+          ) : canManage ? (
+            <div className="flex items-center justify-end gap-1">
+              <button
+                onClick={() => setModalRole(r)}
+                className="rounded-lg p-1.5 text-muted hover:bg-surface-2 hover:text-text"
+                aria-label={`Edit ${r.name}`}
+              >
+                <Pencil size={14} />
+              </button>
+              <button
+                onClick={() => deleteRole(r)}
+                disabled={deletingId === r.id}
+                className="rounded-lg p-1.5 text-muted hover:bg-danger-soft hover:text-danger disabled:opacity-40"
+                aria-label={`Delete ${r.name}`}
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ) : null
+      }
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [canManage, deletingId]
+  );
+
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <PageHeader
         eyebrow="ROLE-BASED ACCESS CONTROL"
         title="Roles & Privileges"
         description="Create tenant-specific roles and assign exactly what each user can see or do."
         actions={
-          canManage && (
+          canManage ? (
             <Button icon={Plus} onClick={() => setModalRole(null)}>
               New role
             </Button>
-          )
+          ) : null
         }
       />
 
-      {error && <div className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>}
+      {error && (
+        <div className="rounded-lg border border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>
+      )}
 
-      <Card title="Current roles" description="System roles are protected; custom roles can be edited or removed." icon={UserCog}>
-        {loading ? (
-          <SkeletonTable rows={5} cols={4} />
-        ) : roles.length ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-border text-[11px] font-semibold uppercase tracking-wide text-muted">
-                  <th className="pb-2 pr-4">Role</th>
-                  <th className="pb-2 pr-4">Privileges</th>
-                  <th className="pb-2 pr-4">Type</th>
-                  <th className="pb-2">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {roles.map((role) => (
-                  <tr key={role.id} className="border-b border-border/60 last:border-0">
-                    <td className="py-3 pr-4">
-                      <p className="font-medium text-text">{role.name}</p>
-                      {role.description && <p className="max-w-xs truncate text-xs text-muted">{role.description}</p>}
-                    </td>
-                    <td className="py-3 pr-4 text-muted">{role.permissions?.length || 0}</td>
-                    <td className="py-3 pr-4">
-                      <StatusBadge tone={role.is_system ? "neutral" : "brand"}>{role.is_system ? "System" : "Custom"}</StatusBadge>
-                    </td>
-                    <td className="py-3">
-                      {role.is_system ? (
-                        <span className="text-xs text-muted">Protected</span>
-                      ) : (
-                        canManage && (
-                          <div className="flex gap-1">
-                            <button
-                              onClick={() => setModalRole(role)}
-                              className="rounded-lg p-1.5 text-muted hover:bg-surface-2 hover:text-text"
-                              aria-label={`Edit ${role.name}`}
-                            >
-                              <Pencil size={14} />
-                            </button>
-                            <button
-                              onClick={() => deleteRole(role)}
-                              disabled={deletingId === role.id}
-                              className="rounded-lg p-1.5 text-muted hover:bg-danger-soft hover:text-danger disabled:opacity-40"
-                              aria-label={`Delete ${role.name}`}
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        )
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <EmptyState icon={UserCog} title="No roles yet" />
-        )}
-      </Card>
+      {loading || roles.length ? (
+        <DataTable
+          columns={columns}
+          data={roles}
+          loading={loading}
+          getRowKey={(r) => r.id}
+          searchKeys={["name", "description"]}
+          searchPlaceholder="Filter roles…"
+          filters={[
+            {
+              key: "type",
+              label: "All types",
+              getValue: (r) => (r.is_system ? "System" : "Custom"),
+              options: [
+                { value: "Custom", label: "Custom" },
+                { value: "System", label: "System" }
+              ]
+            }
+          ]}
+          initialSort={{ key: "name", dir: "asc" }}
+          pageSize={15}
+          emptyState={<EmptyState icon={UserCog} title="No roles match" />}
+        />
+      ) : (
+        <Card animate={false}>
+          <EmptyState
+            icon={UserCog}
+            title="No roles yet"
+            description="Create a role, pick its privileges, then assign users to it."
+            action={
+              canManage ? (
+                <Button size="sm" icon={Plus} onClick={() => setModalRole(null)}>
+                  New role
+                </Button>
+              ) : undefined
+            }
+          />
+        </Card>
+      )}
 
       <RoleFormModal
         open={modalRole !== undefined}
