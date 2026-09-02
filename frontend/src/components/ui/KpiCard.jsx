@@ -1,36 +1,41 @@
 import { motion } from "framer-motion";
 import { TrendingDown, TrendingUp } from "lucide-react";
 
-const TONES = {
-  blue: "bg-brand/10 text-brand",
-  green: "bg-success-soft text-success",
-  orange: "bg-accent-soft text-accent",
-  purple: "bg-violet-500/10 text-violet-500",
-  red: "bg-danger-soft text-danger",
-  neutral: "bg-surface-2 text-muted"
+const TONE = {
+  blue: { chip: "bg-brand/10 text-brand", color: "rgb(var(--rn-blue))" },
+  green: { chip: "bg-success-soft text-success", color: "rgb(var(--rn-green))" },
+  orange: { chip: "bg-accent-soft text-accent", color: "rgb(var(--rn-accent))" },
+  purple: { chip: "bg-violet-500/10 text-violet-500", color: "rgb(139 92 246)" },
+  red: { chip: "bg-danger-soft text-danger", color: "rgb(var(--rn-red))" },
+  neutral: { chip: "bg-surface-2 text-muted", color: "rgb(var(--rn-muted))" }
 };
 
 /**
- * shadcn-style stat tile — icon chip, tiny uppercase label, big number,
- * optional sub-line and a coloured delta pill (`delta` = number or string,
- * `deltaDir` = "up" | "down").
+ * Stat tile — coloured spine + faint corner wash in the tone colour, icon
+ * chip, tiny label, big number, sub-line, and an optional delta pill.
  */
 export default function KpiCard({ label, value, detail, icon: Icon, tone = "blue", delta, deltaDir }) {
+  const t = TONE[tone] || TONE.blue;
   const showDelta = delta !== undefined && delta !== null && delta !== "";
   const DeltaIcon = deltaDir === "down" ? TrendingDown : TrendingUp;
-  const deltaClass =
-    deltaDir === "down" ? "bg-danger-soft text-danger" : "bg-success-soft text-success";
+  const deltaClass = deltaDir === "down" ? "bg-danger-soft text-danger" : "bg-success-soft text-success";
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.22, ease: "easeOut" }}
-      className="rounded-xl border border-border bg-surface p-4 transition-colors hover:border-border-strong"
+      className="group relative overflow-hidden rounded-xl border border-border bg-surface p-4 transition-all hover:-translate-y-0.5 hover:border-border-strong"
     >
-      <div className="flex items-center justify-between">
+      <span className="absolute inset-y-0 left-0 w-[3px]" style={{ background: t.color }} />
+      <span
+        className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full opacity-[0.08] transition-opacity group-hover:opacity-[0.14]"
+        style={{ background: t.color }}
+      />
+
+      <div className="relative flex items-center justify-between">
         {Icon && (
-          <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${TONES[tone] || TONES.blue}`}>
+          <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${t.chip}`}>
             <Icon size={17} />
           </span>
         )}
@@ -41,9 +46,10 @@ export default function KpiCard({ label, value, detail, icon: Icon, tone = "blue
           </span>
         )}
       </div>
-      <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-muted">{label}</p>
-      <p className="mt-1 text-2xl font-bold tracking-tight text-text">{value}</p>
-      {detail && <p className="mt-1 text-xs text-muted">{detail}</p>}
+
+      <p className="relative mt-3 text-[11px] font-semibold uppercase tracking-wide text-muted">{label}</p>
+      <p className="relative mt-1 text-[26px] font-bold leading-none tracking-tight text-text">{value}</p>
+      {detail && <p className="relative mt-1.5 text-xs text-muted">{detail}</p>}
     </motion.div>
   );
 }
