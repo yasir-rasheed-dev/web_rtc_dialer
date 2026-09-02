@@ -57,9 +57,9 @@ function CategoryBlock({ category, items, selected, onToggle, onToggleAll }) {
   const on = items.filter((i) => selected.has(i.key)).length;
   const all = on === items.length && items.length > 0;
   return (
-    <div className="overflow-hidden rounded-lg border border-border">
-      <div className="flex items-center justify-between gap-3 border-b border-border bg-surface-2 px-3 py-2">
-        <span className="text-[11px] font-bold uppercase tracking-wide text-text">{category}</span>
+    <div>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-brand">{category}</span>
         <div className="flex items-center gap-3">
           <span className="text-[11px] tabular-nums text-muted">
             {on}/{items.length}
@@ -69,16 +69,19 @@ function CategoryBlock({ category, items, selected, onToggle, onToggleAll }) {
             onClick={() => onToggleAll(items, !all)}
             className="text-[11px] font-semibold text-brand hover:underline"
           >
-            {all ? "Clear" : "Select all"}
+            {all ? "Clear all" : "Select all"}
           </button>
         </div>
       </div>
-      <div className="divide-y divide-border">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {items.map((p) => (
-          <label key={p.key} className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2.5">
-            <span className="text-[13px] text-text">{p.name}</span>
+          <div
+            key={p.key}
+            className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface-2 px-3 py-2.5"
+          >
+            <span className="text-[13px] font-medium text-text">{p.name}</span>
             <Toggle checked={selected.has(p.key)} onChange={() => onToggle(p.key)} label={p.name} />
-          </label>
+          </div>
         ))}
       </div>
     </div>
@@ -183,7 +186,7 @@ function RoleFormModal({ open, onClose, role, grouped, onSaved }) {
           </span>
         </div>
 
-        <div className="flex max-h-[46vh] flex-col gap-3 overflow-y-auto pr-1">
+        <div className="flex max-h-[52vh] flex-col gap-5 overflow-y-auto pr-1">
           {filteredCategories.length ? (
             filteredCategories.map(([category, items]) => (
               <CategoryBlock
