@@ -1,0 +1,764 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ringNex — User Guide</title>
+<meta name="description" content="ringNex user guide — how to sign in to your workspace, use the softphone, transfer and conference calls, run campaigns, supervise live calls, and read your reports." />
+<link rel="icon" type="image/png" href="./ringnex.png" />
+<style>
+  :root{
+    --p:#0684BC; --p2:#38A8D8; --p-soft:#E7F4FA; --p-bd:rgba(6,132,188,0.18);
+    --green:#16A34A; --green-soft:#ECFDF5; --green-bd:rgba(22,163,74,0.18);
+    --amber:#FF7A00; --amber-soft:#FFF4EA; --amber-bd:rgba(255,122,0,0.22);
+    --red:#DC2626; --red-soft:#FEF2F2; --red-bd:rgba(220,38,38,0.18);
+    --ink:#0B0E1A; --ink2:#1E2230; --muted:#5B6072; --faint:#9AA0B4;
+    --bg:#F3F5F8; --card:rgba(255,255,255,0.86); --card-solid:#FFFFFF;
+    --border:rgba(15,17,32,0.07); --hair:rgba(15,17,32,0.05);
+    --shadow-sm:0 1px 2px rgba(16,19,38,0.04);
+    --shadow-lg:0 18px 50px -12px rgba(16,19,38,0.16), 0 0 0 1px rgba(16,19,38,0.03);
+    --radius-lg:22px; --radius-md:16px; --radius-sm:11px;
+    --mono:'JetBrains Mono','SF Mono','Fira Code',ui-monospace,monospace;
+  }
+  *,*::before,*::after{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Roboto,Arial,sans-serif;
+    background:var(--bg); color:var(--ink); line-height:1.6; -webkit-font-smoothing:antialiased; font-size:15px;
+  }
+  a{color:var(--p); text-decoration:none}
+  h1,h2,h3{font-family:inherit; letter-spacing:-0.02em}
+  svg.ic{ width:18px; height:18px; flex-shrink:0; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+
+  /* ─────── HERO ─────── */
+  .hero{position:relative; overflow:hidden; padding:80px 24px 130px; background:linear-gradient(180deg,#050A12 0%,#0A121C 100%); color:#fff; text-align:center;}
+  #hero-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1;}
+  .hero-inner{position:relative;z-index:2;max-width:760px;margin:0 auto}
+  .backlink{position:absolute;left:24px;top:22px;z-index:3;display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:rgba(255,255,255,0.72);background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.14);padding:7px 13px;border-radius:999px;backdrop-filter:blur(10px)}
+  .backlink:hover{color:#fff}
+  .kicker{display:inline-flex; align-items:center; gap:8px; margin-bottom:22px; background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.14); padding:7px 16px 7px 12px; border-radius:999px; font-size:12px; font-weight:600; letter-spacing:0.04em; color:rgba(255,255,255,0.88); backdrop-filter:blur(10px);}
+  .kicker .dot{width:7px;height:7px;border-radius:50%;background:#FF7A00;box-shadow:0 0 0 3px rgba(255,122,0,0.25);animation:pulse-dot 2s ease-in-out infinite}
+  @keyframes pulse-dot{0%,100%{box-shadow:0 0 0 3px rgba(255,122,0,0.25)}50%{box-shadow:0 0 0 6px rgba(255,122,0,0.10)}}
+  .hero h1{margin:0 0 16px;font-size:clamp(34px,5vw,54px);font-weight:800;line-height:1.07}
+  .hero h1 .accent{background:linear-gradient(135deg,#8FD2EE,#FF9A3D);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero p.sub{margin:0 auto;max-width:560px;font-size:16.5px;color:rgba(255,255,255,0.68);font-weight:400}
+  .hero-meta{display:flex;justify-content:center;gap:28px;margin-top:36px;flex-wrap:wrap}
+  .hero-meta .m{display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,0.60);font-weight:600}
+  .hero-meta svg{color:#8FD2EE}
+
+  /* ─────── LAYOUT ─────── */
+  .layout{max-width:1240px; margin:-80px auto 80px; padding:0 24px; display:grid; grid-template-columns:266px 1fr; gap:32px; align-items:start; position:relative; z-index:3;}
+  @media(max-width:920px){.layout{grid-template-columns:1fr;margin-top:-40px}}
+
+  .toc{position:sticky;top:24px;background:rgba(255,255,255,0.92);backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);padding:10px;max-height:calc(100vh - 48px);overflow:auto;}
+  .toc-label{padding:14px 14px 8px;font-size:10.5px;font-weight:800;letter-spacing:0.10em;text-transform:uppercase;color:var(--faint)}
+  .toc a{display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:var(--radius-sm);color:var(--muted);font-size:13px;font-weight:600;margin-bottom:1px;transition:all .12s ease;}
+  .toc a svg{color:var(--faint);transition:color .12s ease}
+  .toc a:hover{background:var(--p-soft);color:var(--p);text-decoration:none}
+  .toc a:hover svg{color:var(--p)}
+  .toc-divider{height:1px;background:var(--hair);margin:6px 12px}
+  @media(max-width:920px){.toc{position:relative;top:0;max-height:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr))}.toc-label{grid-column:1/-1}}
+
+  .content section{background:var(--card-solid);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);padding:36px 38px;margin-bottom:24px;scroll-margin-top:24px;}
+  @media(max-width:600px){.content section{padding:26px 22px}}
+  .sec-head{display:flex;align-items:flex-start;gap:16px;margin-bottom:8px}
+  .sec-icon{width:46px;height:46px;border-radius:14px;background:linear-gradient(150deg,var(--p-soft),#fff);border:1px solid var(--p-bd);color:var(--p);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .sec-icon svg{width:21px;height:21px}
+  .sec-head h2{margin:0 0 4px;font-size:22px;font-weight:800}
+  .sec-head .eyebrow{font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:var(--p);margin-bottom:4px;display:block}
+  .lead{margin:0 0 24px;color:var(--muted);font-size:14.5px;max-width:660px}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+  .card{position:relative;border:1px solid var(--hair);border-radius:var(--radius-md);padding:18px 19px;background:linear-gradient(180deg,rgba(6,132,188,0.03),transparent 60%);transition:border-color .15s ease,transform .15s ease,box-shadow .15s ease;}
+  .card:hover{border-color:var(--p-bd);transform:translateY(-2px);box-shadow:0 8px 24px rgba(6,132,188,0.09)}
+  .card .card-head{display:flex;align-items:center;gap:10px;margin-bottom:7px}
+  .card .card-icon{width:30px;height:30px;border-radius:9px;background:var(--p-soft);color:var(--p);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .card .card-icon svg{width:15px;height:15px}
+  .card .card-icon.green{background:var(--green-soft);color:var(--green)}
+  .card .card-icon.amber{background:var(--amber-soft);color:var(--amber)}
+  .card .card-icon.red{background:var(--red-soft);color:var(--red)}
+  .card .title{font-weight:700;font-size:14px;color:var(--ink)}
+  .card p{margin:0;color:var(--muted);font-size:13px;line-height:1.55}
+  .card .new-badge{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;font-size:10px;font-weight:800;background:linear-gradient(135deg,#0684BC,#38A8D8);color:#fff;letter-spacing:0.04em;vertical-align:middle}
+
+  .steps{list-style:none;margin:0;padding:0;counter-reset:step}
+  .steps li{counter-increment:step;position:relative;padding:13px 0 13px 44px;font-size:13.8px;color:var(--ink);border-bottom:1px solid var(--hair);}
+  .steps li:last-child{border-bottom:none}
+  .steps li::before{content:counter(step);position:absolute;left:0;top:11px;width:26px;height:26px;border-radius:9px;background:linear-gradient(150deg,var(--p),var(--p2));color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;font-family:var(--mono);}
+  .steps li strong{font-weight:700}
+
+  .badge-row{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 2px}
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:5px 13px;border-radius:999px;font-size:11.5px;font-weight:700;border:1px solid;letter-spacing:0.01em;}
+  .pill svg{width:12px;height:12px}
+  .pill.green{background:var(--green-soft);color:#166534;border-color:var(--green-bd)}
+  .pill.amber{background:var(--amber-soft);color:#9A4A00;border-color:var(--amber-bd)}
+  .pill.red{background:var(--red-soft);color:#991B1B;border-color:var(--red-bd)}
+  .pill.purple{background:var(--p-soft);color:var(--p);border-color:var(--p-bd)}
+
+  .callout{margin-top:18px;padding:14px 16px;border-radius:var(--radius-md);font-size:13.3px;background:var(--amber-soft);border:1px solid var(--amber-bd);color:#7A3D00;display:flex;gap:11px;align-items:flex-start;}
+  .callout.info{background:var(--p-soft);border-color:var(--p-bd);color:#0A4C6B}
+  .callout.green{background:var(--green-soft);border-color:var(--green-bd);color:#14532D}
+  .callout svg{flex-shrink:0;margin-top:1px;color:inherit}
+  .callout strong{font-weight:800}
+
+  table{width:100%;border-collapse:collapse;font-size:13.3px;margin-top:6px}
+  th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--hair)}
+  th{color:var(--faint);font-size:10.5px;text-transform:uppercase;letter-spacing:0.06em;font-weight:800}
+  tr:last-child td{border-bottom:none}
+  td:first-child{font-weight:700;white-space:nowrap}
+  .row-icon{display:inline-flex;align-items:center;gap:9px}
+  .row-icon .ico{width:26px;height:26px;border-radius:8px;background:var(--p-soft);color:var(--p);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .row-icon .ico svg{width:13px;height:13px}
+
+  kbd{background:var(--ink);color:#fff;border-radius:6px;padding:2px 8px;font-size:11px;font-family:var(--mono);border-bottom:2px solid rgba(255,255,255,0.15)}
+  .shortcut-box{display:inline-flex;align-items:center;gap:6px;background:var(--p-soft);border:1px solid var(--p-bd);border-radius:9px;padding:6px 12px;font-size:13px;color:var(--p);font-weight:700;margin:10px 0}
+
+  footer{text-align:center;padding:10px 20px 60px;color:var(--faint);font-size:12.5px;font-weight:600}
+  footer .fbrand{color:var(--ink);font-weight:800}
+  footer a{font-weight:700}
+
+  @media print{
+    .hero{background:#fff;color:#000}
+    #hero-canvas,.backlink{display:none}
+    .toc{display:none}
+    .layout{grid-template-columns:1fr;margin-top:0}
+    section{box-shadow:none;break-inside:avoid;border:1px solid #ddd}
+  }
+</style>
+</head>
+<body>
+
+<!-- ─────────────── HERO ─────────────── -->
+<div class="hero">
+  <canvas id="hero-canvas"></canvas>
+  <a class="backlink" href="./index.html">
+    <svg class="ic" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+    ringnex.co
+  </a>
+  <div class="hero-inner">
+    <span class="kicker"><span class="dot"></span> User Guide · 2026 Edition</span>
+    <h1>ringNex <span class="accent">User Guide</span></h1>
+    <p class="sub">A complete walkthrough of every workflow inside ringNex — signing in to your workspace, taking and transferring calls, running campaigns, supervising live calls, and reading your reports.</p>
+    <div class="hero-meta">
+      <span class="m"><svg class="ic" viewBox="0 0 24 24"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>18 sections</span>
+      <span class="m"><svg class="ic" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>Browser &amp; desktop</span>
+      <span class="m"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Permission-aware</span>
+    </div>
+  </div>
+</div>
+
+<div class="layout">
+
+  <!-- ─────────────── TOC ─────────────── -->
+  <nav class="toc">
+    <div class="toc-label">Contents</div>
+    <a href="#getting-started"><svg class="ic" viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></svg>Getting Started</a>
+    <a href="#softphone"><svg class="ic" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>The Softphone</a>
+    <a href="#during-call"><svg class="ic" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>In-Call Controls</a>
+    <a href="#endcall"><svg class="ic" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg>End-Call &amp; Dispositions</a>
+    <a href="#transfer"><svg class="ic" viewBox="0 0 24 24"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>Transfers &amp; Conference</a>
+    <a href="#voicemail"><svg class="ic" viewBox="0 0 24 24"><path d="M3 8l9 6 9-6"/><rect x="3" y="5" width="18" height="14" rx="2"/></svg>Voicemail &amp; Recording</a>
+    <a href="#logs"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>Logs, Recordings &amp; Contacts</a>
+    <a href="#leads"><svg class="ic" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M19 9l-5 5-4-4-4 4"/></svg>Leads &amp; Follow-ups</a>
+    <a href="#autodialer"><svg class="ic" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>Auto Dialer</a>
+    <a href="#tollfree"><svg class="ic" viewBox="0 0 24 24"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg>Toll-Free &amp; IVR</a>
+    <a href="#chat"><svg class="ic" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Team Chat</a>
+    <a href="#supervisor"><svg class="ic" viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg>Supervisor Monitoring</a>
+    <div class="toc-divider"></div>
+    <a href="#admin"><svg class="ic" viewBox="0 0 24 24"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Workspace Administration</a>
+    <a href="#roles"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Roles &amp; Permissions</a>
+    <a href="#users"><svg class="ic" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>Users &amp; Agents</a>
+    <a href="#reports"><svg class="ic" viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>Reports &amp; Analytics</a>
+    <div class="toc-divider"></div>
+    <a href="#desktop"><svg class="ic" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>Desktop App</a>
+    <a href="#faq"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.9.4-1.5 1-1.5 2.2"/><path d="M12 17h.01"/></svg>Troubleshooting</a>
+  </nav>
+
+  <!-- ─────────────── CONTENT ─────────────── -->
+  <div class="content">
+
+    <!-- 1 -->
+    <section id="getting-started">
+      <div class="sec-head">
+        <div class="sec-icon"><svg viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></svg></div>
+        <div><span class="eyebrow">Onboarding</span><h2>Getting Started</h2></div>
+      </div>
+      <p class="lead">ringNex is multi-tenant — every login belongs to a workspace, and every record you see is scoped to that workspace.</p>
+      <ol class="steps">
+        <li>Open ringNex in your browser (or the desktop app). Enter your <strong>workspace</strong>, <strong>email</strong> and <strong>password</strong>.</li>
+        <li>If two-factor authentication is enabled on your account, enter the 6-digit code from your authenticator app. First-time enrolment shows a QR code to scan.</li>
+        <li>On sign-in your presence is set to <strong>Ready</strong> automatically, so calls can route to you straight away. A new login instantly ends any older session for the same account.</li>
+        <li>Grant <strong>microphone</strong> access when the browser asks. Without it, calls cannot connect.</li>
+        <li>The sidebar only shows the pages your <strong>role</strong> allows — if you don't see a feature described in this guide, your role hasn't been granted it.</li>
+      </ol>
+      <div class="callout info">
+        <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><strong>Keep your status accurate.</strong> Switch to Paused or Offline during breaks so customer calls aren't routed to an unavailable agent. Your status also flips to <em>On-Call</em> automatically while you're on a call and back to <em>Ready</em> when it ends.</div>
+      </div>
+    </section>
+
+    <!-- 2 -->
+    <section id="softphone">
+      <div class="sec-head">
+        <div class="sec-icon"><svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg></div>
+        <div><span class="eyebrow">Core Workflow</span><h2>The Softphone</h2></div>
+      </div>
+      <p class="lead">A real SIP phone in the browser — one registration per session. Every call starts here.</p>
+      <div class="grid">
+        <div class="card">
+          <div class="card-head"><div class="card-icon"><svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M9 18h6"/></svg></div><div class="title">Manual dial</div></div>
+          <p>Type the number into the field and press the green call button. Use the on-screen keypad or your keyboard.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-icon"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div><div class="title">Dial from a record</div></div>
+          <p>Start a call straight from a Contact, a Lead, or any row in Call Logs — the number populates automatically.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-icon"><svg viewBox="0 0 24 24"><path d="M16 2v4M8 2v4M3 10h18"/><rect x="3" y="4" width="18" height="18" rx="2"/></svg></div><div class="title">Incoming calls</div></div>
+          <p>A call overlay appears for every inbound call with <strong>Answer</strong> and <strong>Decline</strong>. The caller ID is matched against your saved contacts.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-icon amber"><svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg></div><div class="title">Missed calls</div></div>
+          <p>If your role has voicemail enabled, an unanswered call falls through to voicemail. Otherwise the caller hears a busy tone and the call is logged as missed.</p>
+        </div>
+      </div>
+      <div class="callout info">
+        <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><strong>Outbound caller ID.</strong> Your outbound calls present the DID assigned to your agent account. If no DID is assigned, your workspace's default number is used.</div>
+      </div>
+    </section>
+
+    <!-- 3 -->
+    <section id="during-call">
+      <div class="sec-head">
+        <div class="sec-icon"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></svg></div>
+        <div><span class="eyebrow">Active Call</span><h2>In-Call Controls</h2></div>
+      </div>
+      <p class="lead">The call overlay surfaces these controls during any live call. In the desktop app you can pop the overlay out into a detachable, always-on-top window mid-call.</p>
+      <table>
+        <thead><tr><th>Control</th><th>Function</th></tr></thead>
+        <tbody>
+          <tr><td><div class="row-icon"><span class="ico"><svg class="ic" viewBox="0 0 24 24" style="width:13px;height:13px"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg></span>Mute</div></td><td>Disables your outgoing audio. The customer can't hear you while muted; you still hear them.</td></tr>
+          <tr><td><div class="row-icon"><span class="ico"><svg class="ic" viewBox="0 0 24 24" style="width:13px;height:13px"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg></span>Hold / Resume</div></td><td>Places the <strong>customer</strong> on hold with hold music. You're free to speak or check notes. Resume to reconnect instantly. Requires the <em>Hold Call</em> permission.</td></tr>
+          <tr><td><div class="row-icon"><span class="ico"><svg class="ic" viewBox="0 0 24 24" style="width:13px;height:13px"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M9 7h.01M12 7h.01M15 7h.01M9 11h.01M12 11h.01M15 11h.01"/></svg></span>Keypad (DTMF)</div></td><td>Sends touch-tones for IVR navigation during the call.</td></tr>
+          <tr><td><div class="row-icon"><span class="ico"><svg class="ic" viewBox="0 0 24 24" style="width:13px;height:13px"><path d="M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3"/></svg></span>Transfer</div></td><td>Blind or warm/attended transfer to another agent in your workspace. See the Transfers section.</td></tr>
+          <tr><td><div class="row-icon"><span class="ico"><svg class="ic" viewBox="0 0 24 24" style="width:13px;height:13px"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg></span>Add participant</div></td><td>Pulls another agent or an external number into a multi-party conference bridge. Requires the <em>Add Participant</em> permission.</td></tr>
+          <tr><td><div class="row-icon"><span class="ico"><svg class="ic" viewBox="0 0 24 24" style="width:13px;height:13px"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></span>Save as lead</div></td><td>Creates or updates a Lead record for the current caller without leaving the call.</td></tr>
+          <tr><td><div class="row-icon"><span class="ico" style="background:var(--red-soft);color:var(--red)"><svg class="ic" viewBox="0 0 24 24" style="width:13px;height:13px"><path d="M23 1L1 23"/></svg></span>Hang up</div></td><td>Ends the call. If the call was connected, the End-Call popup opens for wrap-up.</td></tr>
+        </tbody>
+      </table>
+      <div class="callout">
+        <svg class="ic" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+        <div><strong>Hold behaviour:</strong> only the customer is held. You hear silence and can talk freely; the customer hears music until you resume.</div>
+      </div>
+    </section>
+
+    <!-- 4 -->
+    <section id="endcall">
+      <div class="sec-head">
+        <div class="sec-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
+        <div><span class="eyebrow">Wrap-up</span><h2>End-Call Popup &amp; Dispositions</h2></div>
+      </div>
+      <p class="lead">When a <strong>connected</strong> call ends, the End-Call popup opens automatically so nothing is lost (role-gated — an admin can turn it off).</p>
+      <div class="grid">
+        <div class="card">
+          <div class="card-head"><div class="card-icon"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></div><div class="title">Prefilled details</div></div>
+          <p>Number and call duration are filled in for you. Edit the client's name and details, and toggle <strong>save to contact</strong> to keep them.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg></div><div class="title">Disposition</div></div>
+          <p>Pick a disposition from your workspace's shared list (each has a name and colour). The same list is used in the softphone, the auto-dialer and the logs.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-icon amber"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div><div class="title">Next follow-up</div></div>
+          <p>Set a follow-up <strong>date and time</strong>. It appears on the Follow-ups dashboard and adds to the due badge.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-icon"><svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></div><div class="title">Remarks, tags &amp; files</div></div>
+          <p>Remarks are required. Add tags for filtering later, and attach files (screenshots, documents) to the call/lead.</p>
+        </div>
+      </div>
+      <div class="callout green">
+        <svg class="ic" viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></svg>
+        <div>Everything captured here is written to the call log and, where relevant, mirrored onto the Lead record so the customer's history stays in one place.</div>
+      </div>
+    </section>
+
+    <!-- 5 -->
+    <section id="transfer">
+      <div class="sec-head">
+        <div class="sec-icon"><svg viewBox="0 0 24 24"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></div>
+        <div><span class="eyebrow">Call Routing</span><h2>Transfers &amp; Conference</h2></div>
+      </div>
+      <p class="lead">Move a call to a colleague, or bring more people in. Transfer targets are agents within your own workspace.</p>
+      <div class="grid">
+        <div class="card">
+          <div class="card-head"><div class="card-icon"><svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></div><div class="title">Blind transfer</div></div>
+          <p>Sends the customer straight to another agent and drops you from the call. Fastest, with no briefing. Requires <em>Blind Transfer</em>.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-icon"><svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><circle cx="19" cy="8" r="3"/></svg></div><div class="title">Warm / attended transfer</div></div>
+          <p>Rings the other agent first so you can brief them, then <strong>Complete transfer</strong> to hand off. The customer stays on hold music throughout. Requires <em>Warm Transfer</em>.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-icon"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg></div><div class="title">Add participant</div></div>
+          <p>Keeps you on the line and adds another agent or an external number into a conference bridge. Requires <em>Add Participant</em>.</p>
+        </div>
+      </div>
+      <div class="callout info">
+        <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><strong>One call log, not two.</strong> A transfer or conference doesn't create a separate call record — the original log keeps a <strong>Participants</strong> column listing everyone who was on the call (original agent, transfer targets, added numbers). Supervisors who listen/whisper/barge never appear there.</div>
+      </div>
+      <div class="callout">
+        <svg class="ic" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+        <div>If the receiving agent declines or doesn't answer a warm transfer, the customer is reconnected to you — the call isn't dropped.</div>
+      </div>
+    </section>
+
+    <!-- 6 -->
+    <section id="voicemail">
+      <div class="sec-head">
+        <div class="sec-icon"><svg viewBox="0 0 24 24"><path d="M3 8l9 6 9-6"/><rect x="3" y="5" width="18" height="14" rx="2"/></svg></div>
+        <div><span class="eyebrow">Capture</span><h2>Voicemail &amp; Recording</h2></div>
+      </div>
+      <div class="grid">
+        <div class="card">
+          <div class="card-head"><div class="card-icon"><svg viewBox="0 0 24 24"><path d="M3 8l9 6 9-6"/><rect x="3" y="5" width="18" height="14" rx="2"/></svg></div><div class="title">Voicemail</div></div>
+          <p>When enabled for your role, a declined or unanswered direct call drops to voicemail. Messages appear on the <strong>Voicemail</strong> tab with a themed player, an unread badge, and the real message length.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="9"/></svg></div><div class="title">Call recording</div></div>
+          <p>Recording runs automatically on outbound, inbound-to-agent and toll-free queue calls when your workspace/role allows it. Recordings attach to the matching row in <strong>Call Logs</strong> and appear on the <strong>Recordings</strong> page.</p>
+        </div>
+      </div>
+      <div class="callout info">
+        <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div>Two separate permissions: <strong>Play Voicemails</strong> lets you hear them; <strong>Redirect Declined Calls to Voicemail</strong> is what actually lets a call fall through to voicemail instead of a busy tone.</div>
+      </div>
+    </section>
+
+    <!-- 7 -->
+    <section id="logs">
+      <div class="sec-head">
+        <div class="sec-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></div>
+        <div><span class="eyebrow">Records</span><h2>Logs, Recordings &amp; Contacts</h2></div>
+      </div>
+      <div class="grid">
+        <div class="card">
+          <div class="card-head"><div class="card-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></div><div class="title">Call Logs</div></div>
+          <p>Full inbound / outbound / missed history with date, agent and search filters, pagination, a <strong>Participants</strong> column, and inline recording playback. Tabs split All / Incoming / Outgoing / Missed.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="9"/></svg></div><div class="title">Recordings</div></div>
+          <p>A dedicated page listing every recording with the themed audio player. Editable disposition straight from the row.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-icon"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div><div class="title">Contacts</div></div>
+          <p>Each contact holds multiple phone numbers and addresses. Create / edit / delete are individually permissioned. Inbound and outbound numbers are matched to a contact's name, company and job title.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 8 -->
+    <section id="leads">
+      <div class="sec-head">
+        <div class="sec-icon"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M19 9l-5 5-4-4-4 4"/></svg></div>
+        <div><span class="eyebrow">Pipeline</span><h2>Leads &amp; Follow-ups</h2></div>
+      </div>
+      <div class="grid">
+        <div class="card">
+          <div class="card-head"><div class="card-icon"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M19 9l-5 5-4-4-4 4"/></svg></div><div class="title">Leads</div></div>
+          <p>Persistent customer records that build up <strong>interaction history</strong> across many calls — not per-call throwaways. Name, phone, address, latest-disposition, tags and attachments.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-icon amber"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div><div class="title">Follow-ups dashboard</div></div>
+          <p>Totals for <strong>All</strong>, <strong>Today</strong> and <strong>Missed</strong> follow-ups, with a sidebar badge for what's due.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 9 -->
+    <section id="autodialer">
+      <div class="sec-head">
+        <div class="sec-icon"><svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg></div>
+        <div><span class="eyebrow">Outbound at scale</span><h2>Auto Dialer</h2></div>
+      </div>
+      <p class="lead">Campaign-based outbound dialing with disposition capture and reporting.</p>
+      <ol class="steps">
+        <li>An admin creates a <strong>campaign</strong> with a ring strategy and its own disposition set.</li>
+        <li>Contacts are uploaded as <strong>XLSX / CSV</strong> and assigned to agents. A contact is <strong>locked</strong> to one agent so two people never get the same record.</li>
+        <li>The agent works the campaign from the auto-dial screen — dial, talk, <strong>skip</strong> if needed, and capture a disposition on each contact.</li>
+        <li>Progress and outcomes roll into <strong>campaign reports</strong>, which export.</li>
+      </ol>
+      <div class="badge-row">
+        <span class="pill purple"><svg viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></svg>Contact locking</span>
+        <span class="pill green"><svg viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></svg>Per-campaign dispositions</span>
+        <span class="pill amber"><svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/></svg>Auto Dial permission</span>
+      </div>
+    </section>
+
+    <!-- 10 -->
+    <section id="tollfree">
+      <div class="sec-head">
+        <div class="sec-icon"><svg viewBox="0 0 24 24"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg></div>
+        <div><span class="eyebrow">Inbound</span><h2>Toll-Free &amp; IVR</h2></div>
+      </div>
+      <p class="lead">Toll-free numbers with inbound queue campaigns and a data-driven IVR. Available when your workspace has the toll-free feature enabled.</p>
+      <div class="grid">
+        <div class="card">
+          <div class="card-head"><div class="card-icon"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 9h20"/></svg></div><div class="title">Campaigns</div></div>
+          <p>Route a toll-free number into a queue that rings a set of agents, with its own greeting and hold behaviour.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-icon"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div><div class="title">Dynamic IVR</div></div>
+          <p>Greetings and digit options are stored in the database — build and change an IVR menu without editing the phone system.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-icon"><svg viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg></div><div class="title">Live dashboard &amp; reports</div></div>
+          <p>A real-time toll-free dashboard (who's waiting, how long) plus toll-free reports. The Toll-Free report is only visible to workspaces with the feature enabled.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 11 -->
+    <section id="chat">
+      <div class="sec-head">
+        <div class="sec-icon"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+        <div><span class="eyebrow">Internal Communication</span><h2>Team Chat</h2></div>
+      </div>
+      <p class="lead">Real-time messaging with your colleagues — separate from anything customer-facing.</p>
+      <div class="grid">
+        <div class="card">
+          <div class="card-head"><div class="card-icon"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div><div class="title">Channels &amp; DMs</div></div>
+          <p>Group channels and one-to-one direct messages, updating live.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg></div><div class="title">Emoji &amp; files</div></div>
+          <p>Emoji picker and file attachments in any conversation.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-icon green"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="title">Desktop notifications</div></div>
+          <p>Push notifications for new messages, including inside the ringNex desktop app.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 12 -->
+    <section id="supervisor">
+      <div class="sec-head">
+        <div class="sec-icon"><svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg></div>
+        <div><span class="eyebrow">Supervisor Tools · Permission Required</span><h2>Supervisor Monitoring</h2></div>
+      </div>
+      <p class="lead">The <strong>Live Supervisor</strong> page shows active calls across your workspace or your supervised teams. Three modes — switch between them live without dropping the call.</p>
+      <div class="grid">
+        <div class="card">
+          <div class="card-head"><div class="card-icon"><svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg></div><div class="title">Listen</div></div>
+          <p>Silently monitor a live call — neither the agent nor the customer knows. For quality monitoring.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-icon green"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div><div class="title">Whisper</div></div>
+          <p>Coach the agent privately — the customer can't hear you. For real-time guidance mid-call.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-icon amber"><svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M8 23h8"/></svg></div><div class="title">Barge</div></div>
+          <p>Join the conversation — both the agent and the customer hear you. For escalations.</p>
+        </div>
+      </div>
+      <table style="margin-top:20px">
+        <thead><tr><th>Mode</th><th>Agent hears you</th><th>Customer hears you</th></tr></thead>
+        <tbody>
+          <tr><td>Listen</td><td>No</td><td>No</td></tr>
+          <tr><td>Whisper</td><td>Yes</td><td>No</td></tr>
+          <tr><td>Barge</td><td>Yes</td><td>Yes</td></tr>
+        </tbody>
+      </table>
+      <div class="callout info">
+        <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><strong>Permissions.</strong> Each mode is its own permission — <em>Listen to Live Calls</em>, <em>Whisper on Calls</em>, <em>Barge into Calls</em> — on top of <em>Monitor Calls</em>. If you supervise specific <strong>teams</strong>, the matching per-team privilege (Monitor / Listen / Whisper / Barge team calls) must also be switched on for that team, and the agent must be a member of it.</div>
+      </div>
+      <div class="callout green">
+        <svg class="ic" viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></svg>
+        <div>A monitoring leg is <strong>never</strong> written to the call logs, and it drops automatically the instant the call it's attached to ends.</div>
+      </div>
+    </section>
+
+    <!-- 13 -->
+    <section id="admin">
+      <div class="sec-head">
+        <div class="sec-icon"><svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div>
+        <div><span class="eyebrow">Administration</span><h2>Workspace Administration</h2></div>
+        <span class="pill amber" style="margin-left:auto;align-self:flex-start"><svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/></svg>Owner / Admin</span>
+      </div>
+      <p class="lead">Everything a workspace owner or admin manages for their own organisation.</p>
+      <table>
+        <thead><tr><th>Module</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td>Users &amp; Agents</td><td>Add agents, assign roles, provision SIP endpoints and extensions, assign a DID.</td></tr>
+          <tr><td>Teams</td><td>Create teams, add members, assign supervisors, and set each supervisor's per-team privileges (including Monitor / Listen / Whisper / Barge).</td></tr>
+          <tr><td>Roles &amp; Privileges</td><td>Build custom roles from the permission catalogue.</td></tr>
+          <tr><td>Phone Numbers / DIDs</td><td>DID inventory, assignment to agents, routing profiles, and (where enabled) buying numbers.</td></tr>
+          <tr><td>Do-Not-Call</td><td>Maintain the DNC list by import or manually — calls to these numbers are blocked.</td></tr>
+          <tr><td>Dispositions</td><td>The shared per-workspace disposition list (name + colour) used everywhere.</td></tr>
+          <tr><td>Toll-Free</td><td>Toll-free numbers, queue campaigns and IVR menus (when the feature is enabled).</td></tr>
+          <tr><td>Auto Dialer</td><td>Create campaigns, upload and assign contacts, view campaign reports.</td></tr>
+          <tr><td>Usage &amp; Billing</td><td>Seat counts and inbound / outbound minute usage for the workspace.</td></tr>
+          <tr><td>Reports</td><td>Call, performance, campaign and toll-free reports with export.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 14 -->
+    <section id="roles">
+      <div class="sec-head">
+        <div class="sec-icon"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+        <div><span class="eyebrow">Administration · Permission Required</span><h2>Roles &amp; Permissions</h2></div>
+      </div>
+      <p class="lead">Roles are per-workspace and built from a catalogue of ~70 permissions. Each user is assigned one role; the frontend hides what the role doesn't allow and the backend enforces it on every request.</p>
+      <table>
+        <thead><tr><th>Permission (examples)</th><th>What it enables</th></tr></thead>
+        <tbody>
+          <tr><td>Hold Call</td><td>Shows the Hold / Resume control on a live call.</td></tr>
+          <tr><td>Blind Transfer / Warm Transfer</td><td>The two transfer methods on a live call.</td></tr>
+          <tr><td>Add Participant</td><td>Pull another party into a conference bridge.</td></tr>
+          <tr><td>Monitor Calls + Listen / Whisper / Barge</td><td>Access to the Live Supervisor page and each monitoring mode.</td></tr>
+          <tr><td>Play Voicemails / Redirect Declined Calls to Voicemail</td><td>Hear voicemails / let calls fall through to voicemail.</td></tr>
+          <tr><td>View Call Logs / View Recordings / View Reports</td><td>Access to history, recordings and the reports hub.</td></tr>
+          <tr><td>Auto Dial / Manage Agents / Manage Teams</td><td>Campaign work and workspace administration.</td></tr>
+        </tbody>
+      </table>
+      <div class="callout info">
+        <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div>Permission categories cover Call &amp; Media, Agent Dashboard, Admin Dashboard, Supervisor, Auto Dialer, Toll-Free, Compliance, Billing and Security. Only one session per user is active at a time.</div>
+      </div>
+    </section>
+
+    <!-- 15 -->
+    <section id="users">
+      <div class="sec-head">
+        <div class="sec-icon"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg></div>
+        <div><span class="eyebrow">Administration</span><h2>Users &amp; Agents</h2></div>
+      </div>
+      <div class="grid">
+        <div class="card">
+          <div class="card-head"><div class="card-icon"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></div><div class="title">Create an agent</div></div>
+          <p>Add the user, pick a role. A SIP endpoint is provisioned automatically with a workspace-unique username and an extension allocated from your workspace's start number.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-icon"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 9h20"/></svg></div><div class="title">Assign a DID</div></div>
+          <p>Optionally give the agent a direct number for outbound caller ID. The DID picker lists <strong>local numbers only</strong> — toll-free numbers route to their campaign queue and can't be assigned to an agent.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-icon green"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg></div><div class="title">Live status</div></div>
+          <p>Ready / On-Call / Paused / Wrap-up / Offline, driven by call events in real time and shown on the supervisor and owner dashboards.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-icon amber"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><div class="title">Two-factor auth</div></div>
+          <p>TOTP 2FA with QR enrolment can be required per account. Stored SIP and TOTP secrets are encrypted with AES-256-GCM.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 16 -->
+    <section id="reports">
+      <div class="sec-head">
+        <div class="sec-icon"><svg viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg></div>
+        <div><span class="eyebrow">Analytics</span><h2>Reports &amp; Analytics</h2></div>
+      </div>
+      <p class="lead">Dashboards for the day-to-day, and a reports hub with PDF / Excel export for everything else.</p>
+      <div class="grid">
+        <div class="card">
+          <div class="card-head"><div class="card-icon"><svg viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg></div><div class="title">Agent &amp; Owner dashboards</div></div>
+          <p>Agent dashboard — your own KPI row and activity charts. Owner dashboard — team-level rollups with an agent filter.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div><div class="title">Call &amp; direction reports</div></div>
+          <p>Inbound and outbound reports with direction, status, duration and date filters. Export to PDF or Excel.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-icon green"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div><div class="title">Agent performance</div></div>
+          <p>Per-agent, ordered by <strong>most dialed calls</strong> first — dialed, connected, not connected, inbound, missed, voicemails and talk-time metrics. Agent filter + From / To date range. PDF + Excel.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-icon amber"><svg viewBox="0 0 24 24"><path d="M3 3v18h18M7 15l4-4 3 3 5-6"/></svg></div><div class="title">Campaign, toll-free &amp; usage</div></div>
+          <p>Campaign reports per auto-dialer campaign; toll-free reports (feature-gated); and Usage — seat counts and inbound / outbound minutes, by month.</p>
+        </div>
+      </div>
+      <table style="margin-top:20px">
+        <thead><tr><th>Filter</th><th>Period covered</th></tr></thead>
+        <tbody>
+          <tr><td>From / To</td><td>Any start and end date you choose (Performance report default: last 30 days)</td></tr>
+          <tr><td>Agent</td><td>All agents, or one specific agent</td></tr>
+          <tr><td>Direction / Status</td><td>Inbound or outbound; connected or not connected</td></tr>
+          <tr><td>Month</td><td>Usage &amp; Billing — pick any of the last 12 months</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 17 -->
+    <section id="desktop">
+      <div class="sec-head">
+        <div class="sec-icon"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></div>
+        <div><span class="eyebrow">Desktop</span><h2>Desktop App</h2></div>
+      </div>
+      <p class="lead">The Windows desktop app wraps the same workspace and talks to your hosted ringNex backend over the network.</p>
+      <ol class="steps">
+        <li>Download <strong>Ringnex-Setup-1.0.0.exe</strong> from the homepage and run it. On first run, Windows SmartScreen may warn — choose <strong>More info → Run anyway</strong> (the build is unsigned).</li>
+        <li>Launch ringNex and sign in with your <strong>workspace</strong>, <strong>email</strong> and <strong>password</strong> — same credentials as the browser.</li>
+        <li>Allow microphone access when prompted.</li>
+        <li>During a call you can <strong>pop out</strong> the call into an always-on-top window — answer, mute, hold, DTMF, transfer and hang up from it while you work in other apps.</li>
+        <li>Team Chat push notifications work inside the desktop app too.</li>
+      </ol>
+    </section>
+
+    <!-- 18 -->
+    <section id="faq">
+      <div class="sec-head">
+        <div class="sec-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.9.4-1.5 1-1.5 2.2"/><path d="M12 17h.01"/></svg></div>
+        <div><span class="eyebrow">Support</span><h2>Troubleshooting</h2></div>
+      </div>
+      <div class="grid">
+        <div class="card">
+          <div class="card-head"><div class="card-icon red"><svg viewBox="0 0 24 24"><path d="M1 1l22 22"/><path d="M16.72 11.06A11 11 0 0 1 19 12.55M5 12.55a11 11 0 0 1 5.17-2.39"/></svg></div><div class="title">Calls won't connect</div></div>
+          <p>Check your internet, confirm microphone permission is granted for the site, and reload. In the desktop app, fully quit and relaunch.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-icon red"><svg viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M1 1l22 22"/></svg></div><div class="title">No audio</div></div>
+          <p>Check the output device in your OS. Make sure the browser tab isn't muted.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-icon amber"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="title">Inbound calls don't ring</div></div>
+          <p>Confirm your status is <strong>Ready</strong> (not Paused/Offline) and the ringNex tab or app is still open. Your SIP endpoint must be registered.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-icon amber"><svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/></svg></div><div class="title">"This team does not allow the requested monitoring action"</div></div>
+          <p>You're a supervisor and the target agent's team hasn't granted your per-team monitoring privilege. Ask an admin to enable <strong>Monitor team calls</strong> plus <strong>Listen / Whisper / Barge team calls</strong> for you on that team, and confirm the agent is a member of it.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="9"/></svg></div><div class="title">Recording won't play</div></div>
+          <p>The recording may still be finalising just after the call ends — try again in a minute. If it never appears, recording may not be enabled for your role.</p>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-icon"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><div class="title">A page or button is missing</div></div>
+          <p>The menu and call-control buttons follow your role's permissions. Ask a workspace admin to grant the permission described in this guide.</p>
+        </div>
+      </div>
+      <div class="callout">
+        <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.9.4-1.5 1-1.5 2.2"/><path d="M12 17h.01"/></svg>
+        <div><strong>Still stuck?</strong> Contact your workspace administrator, or <a href="mailto:tech@unisoftwares.com">tech@unisoftwares.com</a>.</div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<footer>
+  ringNex User Guide · a <span class="fbrand">Unisoftwares Inc.</span> product ·
+  <a href="./index.html">ringnex.co</a> · <a href="mailto:tech@unisoftwares.com">tech@unisoftwares.com</a>
+</footer>
+
+<!-- ─────────────── THREE.JS HERO BACKGROUND ─────────────── -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+  if(!window.THREE) return;
+  const canvas = document.getElementById('hero-canvas');
+  const hero   = canvas.parentElement;
+
+  const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+  const scene  = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
+  camera.position.z = 28;
+
+  const COUNT  = 1600;
+  const geo    = new THREE.BufferGeometry();
+  const pos    = new Float32Array(COUNT * 3);
+  const colors = new Float32Array(COUNT * 3);
+
+  const palette = [
+    new THREE.Color('#0684BC'),
+    new THREE.Color('#38A8D8'),
+    new THREE.Color('#FF7A00'),
+    new THREE.Color('#8FD2EE'),
+    new THREE.Color('#ffffff'),
+  ];
+
+  for (let i = 0; i < COUNT; i++) {
+    pos[i*3]   = (Math.random() - 0.5) * 80;
+    pos[i*3+1] = (Math.random() - 0.5) * 50;
+    pos[i*3+2] = (Math.random() - 0.5) * 40;
+    const c = palette[Math.floor(Math.random() * palette.length)];
+    colors[i*3] = c.r; colors[i*3+1] = c.g; colors[i*3+2] = c.b;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color',    new THREE.BufferAttribute(colors, 3));
+
+  const mat = new THREE.PointsMaterial({
+    size: 0.26, vertexColors: true, transparent: true, opacity: 0.72,
+    sizeAttenuation: true, blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  const points = new THREE.Points(geo, mat);
+  scene.add(points);
+
+  const lineMat = new THREE.LineBasicMaterial({ color: 0x0684BC, transparent: true, opacity: 0.07, blending: THREE.AdditiveBlending });
+  const lineGeo = new THREE.BufferGeometry();
+  const lineVerts = [];
+  for (let i = 0; i < 110; i++) {
+    const a = Math.floor(Math.random() * COUNT);
+    const b = Math.floor(Math.random() * COUNT);
+    lineVerts.push(pos[a*3], pos[a*3+1], pos[a*3+2]);
+    lineVerts.push(pos[b*3], pos[b*3+1], pos[b*3+2]);
+  }
+  lineGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(lineVerts), 3));
+  scene.add(new THREE.LineSegments(lineGeo, lineMat));
+
+  function addRing(r, tube, color, x, y, z) {
+    const g = new THREE.TorusGeometry(r, tube, 8, 80);
+    const m = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.13 });
+    const mesh = new THREE.Mesh(g, m);
+    mesh.position.set(x, y, z);
+    mesh.rotation.x = Math.random() * Math.PI;
+    scene.add(mesh);
+    return mesh;
+  }
+  const rings = [
+    addRing(9, 0.04, 0x0684BC,  4,  2, -8),
+    addRing(6, 0.03, 0xFF7A00, -6, -3, -5),
+    addRing(13,0.05, 0x38A8D8, -2,  5, -12),
+  ];
+
+  function resize() {
+    const w = hero.offsetWidth, h = hero.offsetHeight;
+    renderer.setSize(w, h);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  let mx = 0, my = 0;
+  hero.addEventListener('mousemove', e => {
+    mx = (e.clientX / window.innerWidth  - 0.5) * 2;
+    my = (e.clientY / window.innerHeight - 0.5) * 2;
+  });
+
+  const clock = new THREE.Clock();
+  function animate() {
+    requestAnimationFrame(animate);
+    const t = clock.getElapsedTime();
+    points.rotation.y = t * 0.018 + mx * 0.04;
+    points.rotation.x = t * 0.009 + my * 0.025;
+    rings[0].rotation.y = t * 0.28; rings[0].rotation.z = t * 0.14;
+    rings[1].rotation.x = t * 0.22; rings[1].rotation.z = t * 0.18;
+    rings[2].rotation.y = -t * 0.16; rings[2].rotation.x = t * 0.10;
+    camera.position.x += (mx * 1.2 - camera.position.x) * 0.04;
+    camera.position.y += (-my * 0.8 - camera.position.y) * 0.04;
+    renderer.render(scene, camera);
+  }
+  animate();
+})();
+</script>
+
+</body>
+</html>

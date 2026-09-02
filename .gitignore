@@ -6,3 +6,6 @@ npm-debug.log*
 
 # Large raw DB dump — not source, kept locally only
 before-saas-db.sql
+
+# marketing site — large binary, distributed via the server not git
+website/downloads/*.exe
