@@ -3,20 +3,37 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ringNex — WebRTC Contact Center</title>
-<meta name="description" content="ringNex is a browser + Windows desktop WebRTC contact center: softphone, call recording, auto dialer, toll-free IVR, live supervisor monitoring, teams, reports and team chat — multi-tenant. A Unisoftwares Inc. product." />
+<title>ringNex — Contact Center for Calling Teams</title>
+<meta name="description" content="ringNex is a complete contact center for your team — outbound and inbound calling, recording, campaigns, live call monitoring, follow-ups, reporting and team chat. Browser and Windows desktop. A Unisoftwares Inc. product." />
 <meta name="theme-color" content="#0684BC" />
 <link rel="icon" type="image/png" href="./ringnex.png" />
 <style>
   :root{
+    /* brand — identical in both themes */
     --blue:#0684BC; --blue-600:#0571a3; --blue-300:#38a8d8; --blue-100:#8fd2ee;
     --orange:#FF7A00; --orange-300:#ff9a3d; --orange-100:#ffc999;
-    --bg:#080b10; --bg-2:#0b1017; --surface:#101922; --surface-2:#0d151d;
-    --border:#1c2833; --border-strong:#293a48;
-    --text:#e9eff5; --muted:#90a4b6; --muted-2:#5d7285;
-    --radius:10px; --radius-sm:7px; --maxw:1180px;
+
+    /* LIGHT theme (default) */
+    --bg:#f5f8fa; --bg-2:#eaf0f4; --surface:#ffffff; --surface-2:#f3f7f9; --surface-3:#e9eff3;
+    --border:#e3e9ee; --border-strong:#cfdae2;
+    --text:#0c1a24; --muted:#566572; --muted-2:#8293a0;
+    --tint:rgba(10,30,45,.035);
+    --header-bg:rgba(255,255,255,.82);
+    --gridline:rgba(10,30,45,.05);
+    --orb-opacity:.34; --mesh-opacity:.30;
+
+    --radius:12px; --radius-sm:8px; --maxw:1200px;
     --ease:cubic-bezier(.22,1,.36,1);
     --font:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  :root[data-theme="dark"]{
+    --bg:#070a0f; --bg-2:#0b1017; --surface:#101922; --surface-2:#0d151d; --surface-3:#16212c;
+    --border:#1c2833; --border-strong:#293a48;
+    --text:#e9eff5; --muted:#93a7b8; --muted-2:#647a8c;
+    --tint:rgba(255,255,255,.02);
+    --header-bg:rgba(7,10,15,.88);
+    --gridline:rgba(255,255,255,.026);
+    --orb-opacity:.55; --mesh-opacity:.5;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html{scroll-behavior:smooth}
@@ -27,63 +44,69 @@
 
   /* ---------- animated background ---------- */
   .bgfx{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
-  .bgfx .orb{position:absolute;border-radius:50%;filter:blur(100px);opacity:.5;will-change:transform}
-  .bgfx .o1{width:560px;height:560px;left:-180px;top:-140px;background:radial-gradient(circle at 30% 30%,rgba(6,132,188,.6),transparent 70%)}
-  .bgfx .o2{width:680px;height:680px;right:-240px;top:200px;background:radial-gradient(circle at 60% 40%,rgba(255,122,0,.34),transparent 70%)}
-  .bgfx .o3{width:520px;height:520px;left:18%;bottom:-260px;background:radial-gradient(circle at 50% 50%,rgba(56,168,216,.3),transparent 70%)}
-  .bgfx .mesh{position:absolute;inset:-20% -10%;background:conic-gradient(from 0deg at 50% 50%,rgba(6,132,188,.12),rgba(255,122,0,.08),rgba(56,168,216,.12),rgba(6,132,188,.12));filter:blur(120px);opacity:.55;animation:spin 44s linear infinite}
+  .bgfx .orb{position:absolute;border-radius:50%;filter:blur(110px);opacity:var(--orb-opacity);will-change:transform}
+  .bgfx .o1{width:600px;height:600px;left:-200px;top:-160px;background:radial-gradient(circle at 30% 30%,rgba(6,132,188,.62),transparent 70%)}
+  .bgfx .o2{width:720px;height:720px;right:-260px;top:180px;background:radial-gradient(circle at 60% 40%,rgba(255,122,0,.34),transparent 70%)}
+  .bgfx .o3{width:540px;height:540px;left:16%;bottom:-280px;background:radial-gradient(circle at 50% 50%,rgba(56,168,216,.3),transparent 70%)}
+  .bgfx .mesh{position:absolute;inset:-25% -12%;background:conic-gradient(from 0deg at 50% 50%,rgba(6,132,188,.13),rgba(255,122,0,.09),rgba(56,168,216,.13),rgba(6,132,188,.13));filter:blur(130px);opacity:var(--mesh-opacity);animation:spin 50s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
-  .grid-lines{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.028) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.028) 1px,transparent 1px);background-size:64px 64px;mask-image:radial-gradient(ellipse 85% 55% at 50% 0%,#000 35%,transparent 100%)}
+  .grid-lines{position:absolute;inset:0;background-image:linear-gradient(var(--gridline) 1px,transparent 1px),linear-gradient(90deg,var(--gridline) 1px,transparent 1px);background-size:66px 66px;mask-image:radial-gradient(ellipse 88% 55% at 50% 0%,#000 32%,transparent 100%)}
   .page{position:relative;z-index:1}
 
   /* ---------- top contact bar ---------- */
-  .topbar{background:rgba(255,255,255,.02);border-bottom:1px solid var(--border);font-size:12.5px}
-  .topbar .wrap{display:flex;align-items:center;justify-content:space-between;height:40px;color:var(--muted-2)}
+  .topbar{background:var(--tint);border-bottom:1px solid var(--border);font-size:12.5px}
+  .topbar .wrap{display:flex;align-items:center;justify-content:space-between;height:42px;color:var(--muted-2)}
   .topbar a{color:var(--muted);transition:color .2s}
   .topbar a:hover{color:var(--text)}
-  .topbar .l,.topbar .r{display:flex;align-items:center;gap:20px}
+  .topbar .l{display:flex;align-items:center;gap:22px}
   .topbar svg{width:13px;height:13px;vertical-align:-2px;margin-right:6px;color:var(--blue-300)}
   .topbar .partner b{color:var(--orange-300)}
-  @media(max-width:760px){.topbar .l a:nth-child(2){display:none}.topbar .wrap{font-size:11.5px;gap:10px}}
+  @media(max-width:760px){.topbar .l a:nth-child(2){display:none}.topbar .wrap{font-size:11.5px}}
 
   /* ---------- header ---------- */
   header{position:sticky;top:0;z-index:50;transition:background .3s var(--ease),border-color .3s,backdrop-filter .3s}
-  header.scrolled{background:rgba(8,11,16,.86);backdrop-filter:blur(14px);border-bottom:1px solid var(--border)}
-  header .bar{display:flex;align-items:center;justify-content:space-between;height:70px}
-  .brand{display:flex;align-items:center;gap:11px;font-weight:700}
-  .brand img{height:30px;width:auto}
-  .brand b{font-size:19px}
-  .brand b i{color:var(--blue-300);font-style:normal}
-  nav.links{display:flex;gap:26px;align-items:center}
+  header.scrolled{background:var(--header-bg);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+  header .bar{display:flex;align-items:center;justify-content:space-between;height:74px;gap:20px}
+  .brand{display:flex;align-items:center}
+  .brand img{height:34px;width:auto}
+  .hgroup{display:flex;align-items:center;gap:12px;flex-shrink:0}
+  .theme-toggle{width:40px;height:40px;border-radius:var(--radius-sm);border:1px solid var(--border-strong);background:var(--tint);color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:color .2s,border-color .2s,background .2s}
+  .theme-toggle:hover{color:var(--text);border-color:var(--blue-300)}
+  .theme-toggle svg{width:18px;height:18px}
+  .theme-toggle .t-sun{display:none}
+  :root[data-theme="dark"] .theme-toggle .t-sun{display:block}
+  :root[data-theme="dark"] .theme-toggle .t-moon{display:none}
+  nav.links{display:flex;gap:28px;align-items:center;margin-left:auto;margin-right:8px}
   nav.links a{color:var(--muted);font-size:14px;font-weight:500;transition:color .2s}
   nav.links a:hover{color:var(--text)}
-  .btn{display:inline-flex;align-items:center;gap:9px;font-weight:600;font-size:14px;border-radius:var(--radius-sm);padding:11px 20px;border:1px solid transparent;cursor:pointer;transition:transform .2s var(--ease),box-shadow .3s,background .2s,border-color .2s;white-space:nowrap}
+  .btn{display:inline-flex;align-items:center;gap:9px;font-weight:600;font-size:14px;border-radius:var(--radius-sm);padding:12px 22px;border:1px solid transparent;cursor:pointer;transition:transform .2s var(--ease),box-shadow .3s,background .2s,border-color .2s;white-space:nowrap}
   .btn svg{width:17px;height:17px}
-  .btn-primary{background:linear-gradient(135deg,var(--blue),var(--blue-600));color:#fff;box-shadow:0 8px 26px -10px rgba(6,132,188,.7)}
-  .btn-primary:hover{transform:translateY(-2px);box-shadow:0 14px 34px -10px rgba(6,132,188,.8)}
-  .btn-ghost{border-color:var(--border-strong);color:var(--text);background:rgba(255,255,255,.02)}
+  .btn-primary{background:linear-gradient(135deg,var(--blue),var(--blue-600));color:#fff;box-shadow:0 10px 30px -12px rgba(6,132,188,.75)}
+  .btn-primary:hover{transform:translateY(-2px);box-shadow:0 16px 38px -12px rgba(6,132,188,.85)}
+  .btn-ghost{border-color:var(--border-strong);color:var(--text);background:var(--tint)}
   .btn-ghost:hover{border-color:var(--blue-300);color:#fff}
-  .btn-accent{background:linear-gradient(135deg,var(--orange),#e56d00);color:#fff;box-shadow:0 8px 26px -10px rgba(255,122,0,.6)}
-  .btn-accent:hover{transform:translateY(-2px);box-shadow:0 14px 34px -10px rgba(255,122,0,.7)}
-  @media(max-width:900px){nav.links{display:none}}
+  .btn-accent{background:linear-gradient(135deg,var(--orange),#e56d00);color:#fff;box-shadow:0 10px 30px -12px rgba(255,122,0,.65)}
+  .btn-accent:hover{transform:translateY(-2px);box-shadow:0 16px 38px -12px rgba(255,122,0,.75)}
+  .btn-lg{padding:15px 28px;font-size:15px}
+  @media(max-width:920px){nav.links{display:none}}
 
   /* ---------- hero ---------- */
-  .hero{padding:76px 0 64px;text-align:center}
-  .pill{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:var(--blue-300);background:rgba(6,132,188,.1);border:1px solid rgba(6,132,188,.28);padding:7px 14px;border-radius:999px}
+  .hero{padding:82px 0 60px;text-align:center}
+  .pill{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:var(--blue-300);background:rgba(6,132,188,.1);border:1px solid rgba(6,132,188,.28);padding:8px 15px;border-radius:999px}
   .pill .dot{width:7px;height:7px;border-radius:50%;background:var(--orange);box-shadow:0 0 0 4px rgba(255,122,0,.18)}
-  h1{font-size:clamp(2.4rem,6vw,4rem);line-height:1.08;font-weight:800;letter-spacing:-1.5px;margin:24px auto 0;max-width:17ch}
+  h1{font-size:clamp(2.5rem,6.2vw,4.15rem);line-height:1.06;font-weight:800;letter-spacing:-1.6px;margin:26px auto 0;max-width:18ch}
   h1 .grad{background:linear-gradient(120deg,var(--blue-300),var(--orange-300));-webkit-background-clip:text;background-clip:text;color:transparent}
-  .sub{font-size:clamp(1rem,2.2vw,1.2rem);color:var(--muted);max-width:58ch;margin:22px auto 0}
-  .cta{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:36px}
-  .cta .hint{width:100%;font-size:12.5px;color:var(--muted-2);margin-top:4px}
+  .sub{font-size:clamp(1.02rem,2.2vw,1.24rem);color:var(--muted);max-width:60ch;margin:24px auto 0}
+  .cta{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:38px}
+  .cta .hint{width:100%;font-size:12.5px;color:var(--muted-2);margin-top:6px}
 
-  /* ---------- hero 3D artwork ---------- */
-  .stage{margin:64px auto 0;max-width:980px;perspective:1700px}
+  /* ---------- hero artwork ---------- */
+  .stage{margin:66px auto 0;max-width:1000px;perspective:1700px}
   .deck{position:relative;transform-style:preserve-3d;transition:transform .35s var(--ease)}
-  .artframe{position:relative;border-radius:16px;overflow:hidden;border:1px solid var(--border-strong);background:#0a0f15;box-shadow:0 50px 110px -35px rgba(0,0,0,.75)}
-  .artframe .halo{position:absolute;inset:0;background:radial-gradient(60% 60% at 30% 20%,rgba(6,132,188,.28),transparent 60%),radial-gradient(50% 50% at 85% 90%,rgba(255,122,0,.22),transparent 60%);pointer-events:none}
+  .artframe{position:relative;border-radius:18px;overflow:hidden;border:1px solid var(--border-strong);background:#0a0f15;box-shadow:0 55px 120px -38px rgba(0,0,0,.78)}
+  .artframe .halo{position:absolute;inset:0;background:radial-gradient(60% 60% at 28% 18%,rgba(6,132,188,.3),transparent 60%),radial-gradient(50% 50% at 86% 92%,rgba(255,122,0,.24),transparent 60%);pointer-events:none}
   .artframe svg{display:block;width:100%;height:auto}
-  .screen{position:absolute;left:50%;top:50%;width:78%;transform:translate(-50%,-50%) translateZ(40px);border:1px solid var(--border-strong);border-radius:12px;overflow:hidden;background:var(--surface);box-shadow:0 40px 80px -28px rgba(0,0,0,.7)}
+  .screen{position:absolute;left:50%;top:50%;width:76%;transform:translate(-50%,-50%) translateZ(42px);border:1px solid var(--border-strong);border-radius:12px;overflow:hidden;background:var(--surface);box-shadow:0 44px 88px -30px rgba(0,0,0,.72)}
   .screen .top{display:flex;align-items:center;gap:7px;padding:10px 13px;background:var(--surface-2);border-bottom:1px solid var(--border)}
   .screen .top i{width:9px;height:9px;border-radius:50%;display:block;background:#33414f}
   .screen .top i:nth-child(1){background:#ff5f56}.screen .top i:nth-child(2){background:#ffbd2e}.screen .top i:nth-child(3){background:#27c93f}
@@ -96,57 +119,68 @@
   .kpi small{display:block;font-size:9.5px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted-2)}
   .kpi strong{font-size:20px;display:block;margin-top:5px;letter-spacing:-.5px}
   .kpi span{font-size:10px;color:var(--muted-2)}
-  .chart{margin-top:13px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);padding:14px;height:150px;display:flex;align-items:flex-end;gap:8px}
+  .chart{margin-top:13px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);padding:14px;height:152px;display:flex;align-items:flex-end;gap:8px}
   .chart i{flex:1;border-radius:4px 4px 0 0;background:linear-gradient(180deg,var(--blue-300),var(--blue));display:block;opacity:.92}
   .chart i:nth-child(even){background:linear-gradient(180deg,var(--orange-300),var(--orange))}
-  .float{position:absolute;border:1px solid var(--border-strong);background:rgba(16,25,34,.94);backdrop-filter:blur(8px);border-radius:10px;padding:11px 13px;font-size:12px;box-shadow:0 24px 55px -22px rgba(0,0,0,.75);transform:translateZ(90px)}
+  .float{position:absolute;border:1px solid var(--border-strong);background:rgba(16,25,34,.94);backdrop-filter:blur(8px);border-radius:10px;padding:11px 13px;font-size:12px;box-shadow:0 26px 58px -24px rgba(0,0,0,.78);transform:translateZ(92px)}
   .float .t{font-weight:700;font-size:12px}
   .float .m{color:var(--muted);font-size:10.5px}
-  .float.call{left:-38px;top:96px}
-  .float.rec{right:-42px;bottom:70px}
+  .float.call{left:-38px;top:92px}
+  .float.rec{right:-42px;bottom:66px}
   .float .row{display:flex;align-items:center;gap:8px}
   .float .live{width:8px;height:8px;border-radius:50%;background:#27c93f;box-shadow:0 0 0 4px rgba(39,201,63,.2)}
   @media(max-width:760px){.float{display:none}.stage{perspective:none}.screen{width:92%}}
 
-  /* ---------- logo strip ---------- */
-  .strip{border-top:1px solid var(--border);border-bottom:1px solid var(--border);background:rgba(255,255,255,.015);margin-top:80px}
-  .strip .wrap{display:flex;flex-wrap:wrap;gap:14px 34px;justify-content:center;padding:22px 24px;font-size:13px;color:var(--muted-2);font-weight:600}
-  .strip .wrap b{color:var(--muted)}
+  /* ---------- value strip ---------- */
+  .strip{border-top:1px solid var(--border);border-bottom:1px solid var(--border);background:var(--tint);margin-top:82px}
+  .strip .wrap{display:flex;flex-wrap:wrap;gap:12px 30px;justify-content:center;padding:22px 24px;font-size:13px;color:var(--muted);font-weight:600}
+  .strip .wrap span{display:inline-flex;align-items:center;gap:9px}
+  .strip .wrap span::before{content:"";width:6px;height:6px;border-radius:2px;background:var(--blue);transform:rotate(45deg)}
+  .strip .wrap span:nth-child(even)::before{background:var(--orange)}
 
   /* ---------- section shell ---------- */
-  .sec{padding:96px 0}
-  .sec-head{text-align:center;max-width:60ch;margin:0 auto 56px}
+  .sec{padding:98px 0}
+  .sec-head{text-align:center;max-width:62ch;margin:0 auto 56px}
   .sec-head .eyebrow{font-size:12.5px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--orange-300)}
-  .sec-head h2{font-size:clamp(1.7rem,4vw,2.6rem);letter-spacing:-.8px;margin-top:12px;font-weight:800}
-  .sec-head p{color:var(--muted);margin-top:14px;font-size:1.02rem}
+  .sec-head h2{font-size:clamp(1.8rem,4vw,2.7rem);letter-spacing:-.8px;margin-top:12px;font-weight:800}
+  .sec-head p{color:var(--muted);margin-top:14px;font-size:1.04rem}
+
+  /* ---------- highlight trio ---------- */
+  .trio{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  .hl{border:1px solid var(--border);border-radius:var(--radius);background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:28px;transition:border-color .3s,transform .3s var(--ease)}
+  .hl:hover{border-color:var(--border-strong);transform:translateY(-4px)}
+  .hl .n{font-family:var(--font);font-size:13px;font-weight:800;color:var(--blue-300);letter-spacing:1px}
+  .hl h3{font-size:1.25rem;font-weight:800;letter-spacing:-.3px;margin-top:14px}
+  .hl p{color:var(--muted);font-size:.95rem;margin-top:10px}
+  @media(max-width:820px){.trio{grid-template-columns:1fr}}
 
   /* ---------- feature grid ---------- */
   .fgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:18px}
   .card{border:1px solid var(--border);border-radius:var(--radius);background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:24px;transition:transform .3s var(--ease),border-color .3s;transform-style:preserve-3d}
   .card:hover{border-color:var(--border-strong)}
-  .card .ico{width:42px;height:42px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:rgba(6,132,188,.13);border:1px solid rgba(6,132,188,.25);color:var(--blue-300);margin-bottom:16px}
+  .card .ico{width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:rgba(6,132,188,.13);border:1px solid rgba(6,132,188,.25);color:var(--blue-300);margin-bottom:16px}
   .card:nth-child(3n+2) .ico{background:rgba(255,122,0,.12);border-color:rgba(255,122,0,.26);color:var(--orange-300)}
-  .card .ico svg{width:21px;height:21px}
-  .card h3{font-size:1.06rem;font-weight:700;letter-spacing:-.2px}
-  .card p{color:var(--muted);font-size:.92rem;margin-top:9px}
+  .card .ico svg{width:22px;height:22px}
+  .card h3{font-size:1.08rem;font-weight:700;letter-spacing:-.2px}
+  .card p{color:var(--muted);font-size:.93rem;margin-top:9px}
   .card ul{list-style:none;margin-top:13px;display:flex;flex-direction:column;gap:7px}
-  .card li{font-size:.86rem;color:var(--muted);padding-left:19px;position:relative}
-  .card li::before{content:"";position:absolute;left:0;top:.5em;width:7px;height:7px;border-radius:2px;background:var(--blue);transform:rotate(45deg)}
+  .card li{font-size:.87rem;color:var(--muted);padding-left:19px;position:relative}
+  .card li::before{content:"";position:absolute;left:0;top:.55em;width:7px;height:7px;border-radius:2px;background:var(--blue);transform:rotate(45deg)}
   .card:nth-child(3n+2) li::before{background:var(--orange)}
 
   /* ---------- split rows ---------- */
-  .rows{display:flex;flex-direction:column;gap:74px}
-  .row{display:grid;grid-template-columns:1fr 1fr;gap:52px;align-items:center}
+  .rows{display:flex;flex-direction:column;gap:78px}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:54px;align-items:center}
   .row:nth-child(even) .rc-media{order:-1}
   .rc-text .eyebrow{font-size:12px;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;color:var(--blue-300)}
-  .rc-text h3{font-size:clamp(1.4rem,3vw,1.9rem);letter-spacing:-.6px;margin-top:10px;font-weight:800}
+  .rc-text h3{font-size:clamp(1.45rem,3vw,2rem);letter-spacing:-.6px;margin-top:10px;font-weight:800}
   .rc-text p{color:var(--muted);margin-top:14px}
   .rc-text ul{list-style:none;margin-top:18px;display:flex;flex-direction:column;gap:10px}
-  .rc-text li{position:relative;padding-left:26px;font-size:.95rem}
+  .rc-text li{position:relative;padding-left:26px;font-size:.96rem}
   .rc-text li svg{position:absolute;left:0;top:3px;width:17px;height:17px;color:var(--orange-300)}
   .rc-media{perspective:1200px}
-  .panel{border:1px solid var(--border-strong);border-radius:12px;background:var(--surface);overflow:hidden;transition:transform .3s var(--ease);position:relative}
-  .panel .glow{position:absolute;inset:0;background:radial-gradient(70% 60% at 20% 0%,rgba(6,132,188,.14),transparent 60%);pointer-events:none}
+  .panel{border:1px solid var(--border-strong);border-radius:12px;background:var(--surface);overflow:hidden;position:relative}
+  .panel .glow{position:absolute;inset:0;background:radial-gradient(70% 60% at 20% 0%,rgba(6,132,188,.15),transparent 60%);pointer-events:none}
   .panel .ph{padding:12px 15px;border-bottom:1px solid var(--border);background:var(--surface-2);font-size:12px;color:var(--muted);display:flex;justify-content:space-between;align-items:center;position:relative}
   .panel .ph .tag{font-size:10px;padding:3px 8px;border-radius:5px;background:rgba(6,132,188,.16);color:var(--blue-300);font-weight:700;letter-spacing:.4px}
   .panel .pb{padding:18px;position:relative}
@@ -161,42 +195,54 @@
   .lrow .dur{color:#3ddc6a;font-weight:700;font-size:12px}
   @media(max-width:860px){.row{grid-template-columns:1fr;gap:26px}.row:nth-child(even) .rc-media{order:0}}
 
+  /* ---------- roles band ---------- */
+  .roles{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  .rolecard{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-2);padding:26px}
+  .rolecard .ri{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:rgba(6,132,188,.12);border:1px solid rgba(6,132,188,.24);color:var(--blue-300)}
+  .rolecard:nth-child(2) .ri{background:rgba(255,122,0,.12);border-color:rgba(255,122,0,.24);color:var(--orange-300)}
+  .rolecard h3{margin-top:15px;font-size:1.1rem;font-weight:800}
+  .rolecard p{color:var(--muted);font-size:.92rem;margin-top:9px}
+  .rolecard ul{list-style:none;margin-top:13px;display:flex;flex-direction:column;gap:7px}
+  .rolecard li{font-size:.86rem;color:var(--muted);padding-left:18px;position:relative}
+  .rolecard li::before{content:"✓";position:absolute;left:0;color:var(--blue-300);font-weight:800;font-size:.8rem}
+  @media(max-width:820px){.roles{grid-template-columns:1fr}}
+
   /* ---------- stats ---------- */
-  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-2);padding:34px 24px}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-2);padding:36px 24px}
   .stat{text-align:center}
-  .stat b{font-size:clamp(1.8rem,4vw,2.6rem);font-weight:800;letter-spacing:-1px;background:linear-gradient(120deg,var(--blue-300),var(--orange-300));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .stat b{font-size:clamp(1.8rem,4vw,2.7rem);font-weight:800;letter-spacing:-1px;background:linear-gradient(120deg,var(--blue-300),var(--orange-300));-webkit-background-clip:text;background-clip:text;color:transparent}
   .stat span{display:block;color:var(--muted);font-size:.86rem;margin-top:4px}
   @media(max-width:680px){.stats{grid-template-columns:repeat(2,1fr)}}
 
   /* ---------- download ---------- */
-  .dl{border:1px solid var(--border-strong);border-radius:16px;background:radial-gradient(120% 140% at 0% 0%,rgba(6,132,188,.16),transparent 55%),radial-gradient(120% 140% at 100% 100%,rgba(255,122,0,.14),transparent 55%),var(--surface);padding:52px;display:grid;grid-template-columns:1.2fr 1fr;gap:40px;align-items:center;overflow:hidden;position:relative}
-  .dl h2{font-size:clamp(1.7rem,4vw,2.4rem);letter-spacing:-.8px;font-weight:800}
+  .dl{border:1px solid var(--border-strong);border-radius:18px;background:radial-gradient(120% 140% at 0% 0%,rgba(6,132,188,.17),transparent 55%),radial-gradient(120% 140% at 100% 100%,rgba(255,122,0,.15),transparent 55%),var(--surface);padding:54px;display:grid;grid-template-columns:1.2fr 1fr;gap:42px;align-items:center;overflow:hidden;position:relative}
+  .dl h2{font-size:clamp(1.8rem,4vw,2.5rem);letter-spacing:-.8px;font-weight:800}
   .dl p{color:var(--muted);margin-top:14px}
-  .dl .meta{display:flex;gap:22px;flex-wrap:wrap;margin-top:22px;font-size:12.5px;color:var(--muted-2)}
+  .dl .meta{display:flex;gap:24px;flex-wrap:wrap;margin-top:24px;font-size:12.5px;color:var(--muted-2)}
   .dl .meta b{color:var(--muted);display:block;font-size:15px;font-weight:700}
-  .dl-card{border:1px solid var(--border-strong);border-radius:12px;background:var(--bg-2);padding:26px;text-align:center}
-  .dl-card .winmark{width:54px;height:54px;margin:0 auto 14px;display:flex;align-items:center;justify-content:center;border-radius:12px;background:rgba(6,132,188,.14);color:var(--blue-300)}
+  .dl-card{border:1px solid var(--border-strong);border-radius:14px;background:var(--bg-2);padding:28px;text-align:center}
+  .dl-card .winmark{width:56px;height:56px;margin:0 auto 14px;display:flex;align-items:center;justify-content:center;border-radius:13px;background:rgba(6,132,188,.14);color:var(--blue-300)}
   .dl-card .winmark svg{width:28px;height:28px}
   .dl-card .fname{font-weight:700;font-size:14px}
   .dl-card .fsize{color:var(--muted-2);font-size:12px;margin-top:3px}
   .dl-card .btn{width:100%;justify-content:center;margin-top:16px}
   .dl-card .note{font-size:11px;color:var(--muted-2);margin-top:12px;line-height:1.5}
-  @media(max-width:820px){.dl{grid-template-columns:1fr;padding:34px}}
+  @media(max-width:820px){.dl{grid-template-columns:1fr;padding:36px}}
 
-  /* ---------- CONTACT + FOOTER ---------- */
-  .contact{padding:90px 0 40px}
-  .contact-card{border:1px solid var(--border-strong);border-radius:16px;overflow:hidden;background:var(--surface);display:grid;grid-template-columns:1.1fr 1fr}
-  .contact-card .left{padding:44px}
+  /* ---------- contact + footer ---------- */
+  .contact{padding:96px 0 44px}
+  .contact-card{border:1px solid var(--border-strong);border-radius:18px;overflow:hidden;background:var(--surface);display:grid;grid-template-columns:1.1fr 1fr}
+  .contact-card .left{padding:46px}
   .contact-card .left .eyebrow{font-size:12px;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;color:var(--orange-300)}
   .contact-card .left h2{font-size:clamp(1.6rem,3.6vw,2.2rem);letter-spacing:-.6px;margin-top:10px;font-weight:800}
   .contact-card .left p{color:var(--muted);margin-top:14px;max-width:44ch}
-  .clist{margin-top:24px;display:flex;flex-direction:column;gap:14px}
-  .clist a,.clist div{display:flex;align-items:center;gap:13px;font-size:14px;color:var(--text)}
+  .clist{margin-top:26px;display:flex;flex-direction:column;gap:14px}
+  .clist a{display:flex;align-items:center;gap:13px;font-size:14px;color:var(--text)}
   .clist .ic{width:36px;height:36px;border-radius:9px;background:rgba(6,132,188,.12);border:1px solid rgba(6,132,188,.24);color:var(--blue-300);display:flex;align-items:center;justify-content:center;flex-shrink:0}
   .clist .ic svg{width:17px;height:17px}
   .clist span small{display:block;color:var(--muted-2);font-size:11.5px;font-weight:500}
   .clist a:hover span{color:var(--blue-100)}
-  .contact-card .right{padding:44px;background:radial-gradient(120% 120% at 100% 0%,rgba(255,122,0,.14),transparent 55%),var(--surface-2);border-left:1px solid var(--border);display:flex;flex-direction:column;justify-content:center;gap:16px}
+  .contact-card .right{padding:46px;background:radial-gradient(120% 120% at 100% 0%,rgba(255,122,0,.15),transparent 55%),var(--surface-2);border-left:1px solid var(--border);display:flex;flex-direction:column;justify-content:center;gap:16px}
   .partner-badge{display:inline-flex;align-items:center;gap:10px;align-self:flex-start;border:1px solid var(--border-strong);background:var(--bg-2);border-radius:999px;padding:8px 16px;font-size:12.5px;font-weight:600;color:var(--muted)}
   .partner-badge b{color:var(--orange-300)}
   .contact-card .right h3{font-size:1.3rem;letter-spacing:-.4px;font-weight:800}
@@ -204,27 +250,31 @@
   .contact-card .right .btn{align-self:flex-start}
   @media(max-width:820px){.contact-card{grid-template-columns:1fr}.contact-card .right{border-left:0;border-top:1px solid var(--border)}}
 
-  footer{border-top:1px solid var(--border);padding:52px 0 40px;margin-top:20px}
-  .fcols{display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:36px}
-  .fcols .about .brand{margin-bottom:14px}
-  .fcols .about p{color:var(--muted-2);font-size:13px;max-width:38ch}
+  footer{border-top:1px solid var(--border);padding:54px 0 40px;margin-top:20px}
+  .fcols{display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:38px}
+  .fcols .about img{height:30px;width:auto;margin-bottom:16px}
+  .fcols .about p{color:var(--muted-2);font-size:13px;max-width:40ch}
   .fcols h4{font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:14px}
   .fcols a{display:block;color:var(--muted-2);font-size:13.5px;padding:5px 0;transition:color .2s}
   .fcols a:hover{color:var(--text)}
-  .social{display:flex;gap:10px;margin-top:14px}
+  .social{display:flex;gap:10px;margin-top:16px}
   .social a{width:34px;height:34px;border:1px solid var(--border-strong);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:11px;font-weight:700;transition:all .2s}
   .social a:hover{color:#fff;border-color:var(--blue-300);background:rgba(6,132,188,.12)}
-  .fbottom{border-top:1px solid var(--border);margin-top:40px;padding-top:24px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;color:var(--muted-2);font-size:12.5px}
+  .fbottom{border-top:1px solid var(--border);margin-top:42px;padding-top:24px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;color:var(--muted-2);font-size:12.5px}
   .fbottom .partner b{color:var(--orange-300)}
   @media(max-width:820px){.fcols{grid-template-columns:1fr 1fr;gap:28px}}
   @media(max-width:520px){.fcols{grid-template-columns:1fr}}
 
   /* ---------- reveal ---------- */
-  .reveal{opacity:0;transform:translateY(28px);transition:opacity .7s var(--ease),transform .7s var(--ease)}
+  .reveal{opacity:0;transform:translateY(30px);transition:opacity .7s var(--ease),transform .7s var(--ease)}
   .reveal.in{opacity:1;transform:none}
   .reveal.d1{transition-delay:.08s}.reveal.d2{transition-delay:.16s}.reveal.d3{transition-delay:.24s}
-  @media(prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none;transition:none}.deck,.panel,.bgfx .mesh{transition:none!important;animation:none!important}}
+  @media(prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none;transition:none}.deck,.bgfx .mesh{transition:none!important;animation:none!important}}
 </style>
+<script>
+  /* apply theme before first paint — default light, remember the visitor's choice */
+  (function(){try{var t=localStorage.getItem('rnx-theme');document.documentElement.setAttribute('data-theme',(t==='dark'||t==='light')?t:'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();
+</script>
 </head>
 <body>
 
@@ -245,86 +295,78 @@
       <a href="mailto:tech@unisoftwares.com"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/></svg>tech@unisoftwares.com</a>
       <a href="https://unisoftwares.com/contact/" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.81.36 1.6.7 2.34a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.74-1.74a2 2 0 0 1 2.11-.45c.74.34 1.53.57 2.34.7A2 2 0 0 1 22 16.92z"/></svg>Book a strategy call</a>
     </div>
-    <div class="r">
-      <span class="partner">A <b>Unisoftwares&nbsp;Inc.</b> product</span>
-    </div>
+    <span class="partner">A <b>Unisoftwares&nbsp;Inc.</b> product</span>
   </div>
 </div>
 
 <header id="hdr">
   <div class="wrap bar">
-    <a class="brand" href="#top"><img src="./ringnex.png" alt="ringNex" /><b>ring<i>Nex</i></b></a>
+    <a class="brand" href="#top" aria-label="ringNex"><img src="./ringnex.png" alt="ringNex" /></a>
     <nav class="links">
       <a href="#features">Features</a>
       <a href="#calling">Calling</a>
-      <a href="#supervisor">Supervision</a>
+      <a href="#supervision">Supervision</a>
       <a href="#reports">Reports</a>
       <a href="./guide.html">User Guide</a>
       <a href="#contact">Contact</a>
     </nav>
-    <a class="btn btn-primary" href="#download">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      Download
-    </a>
+    <div class="hgroup">
+      <button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch between light and dark mode">
+        <svg class="t-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="t-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      </button>
+      <a class="btn btn-primary" href="#download">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download
+      </a>
+    </div>
   </div>
 </header>
 
 <a id="top"></a>
 <section class="hero">
   <div class="wrap">
-    <span class="pill reveal"><span class="dot"></span> Browser &amp; Windows desktop · Multi-tenant</span>
-    <h1 class="reveal d1">Your whole contact center, <span class="grad">in one calling app.</span></h1>
-    <p class="sub reveal d2">ringNex is a WebRTC contact center built on Asterisk — softphone, recording, auto dialer, toll-free IVR, live supervisor monitoring, teams, reporting and team chat. Run it in the browser, or install the Windows desktop app.</p>
+    <span class="pill reveal"><span class="dot"></span> Browser &amp; Windows desktop app</span>
+    <h1 class="reveal d1">Run every customer call <span class="grad">from one place.</span></h1>
+    <p class="sub reveal d2">ringNex gives your team everything a call needs — a built-in phone, recording, outbound campaigns, live call monitoring, follow-ups, reporting and internal chat — in a single, easy workspace.</p>
     <div class="cta reveal d3">
-      <a class="btn btn-accent" href="#download">
+      <a class="btn btn-accent btn-lg" href="#download">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Download Windows Setup
       </a>
-      <a class="btn btn-ghost" href="./guide.html">
+      <a class="btn btn-ghost btn-lg" href="./guide.html">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-        Read the user guide
+        See the user guide
       </a>
-      <span class="hint">Windows 10 / 11 · 64-bit · installer &amp; portable build</span>
+      <span class="hint">Works in the browser · Windows 10 / 11 desktop app included</span>
     </div>
 
     <div class="stage reveal d3">
       <div class="deck" id="deck">
         <div class="float call">
           <div class="row"><span class="live"></span><span class="t">Incoming call</span></div>
-          <div class="m">+1 415 555 0182 · Queue: Sales</div>
+          <div class="m">Sales line · ringing agent</div>
         </div>
         <div class="float rec">
           <div class="t">● Recording</div>
-          <div class="m">MixMonitor · 02:41</div>
+          <div class="m">Auto-saved · 02:41</div>
         </div>
         <div class="artframe">
           <div class="halo"></div>
-          <!-- generative-style abstract call-network artwork (pure SVG) -->
-          <svg viewBox="0 0 1000 620" role="img" aria-label="ringNex contact center visualization">
+          <svg viewBox="0 0 1000 620" role="img" aria-label="ringNex workspace visualization">
             <defs>
-              <linearGradient id="gA" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0" stop-color="#0684BC"/><stop offset="1" stop-color="#38a8d8"/>
-              </linearGradient>
-              <linearGradient id="gB" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0" stop-color="#FF7A00"/><stop offset="1" stop-color="#ff9a3d"/>
-              </linearGradient>
-              <radialGradient id="gGlow" cx="50%" cy="45%" r="60%">
-                <stop offset="0" stop-color="#0684BC" stop-opacity=".5"/>
-                <stop offset="1" stop-color="#0684BC" stop-opacity="0"/>
-              </radialGradient>
+              <linearGradient id="gA" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0684BC"/><stop offset="1" stop-color="#38a8d8"/></linearGradient>
+              <linearGradient id="gB" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF7A00"/><stop offset="1" stop-color="#ff9a3d"/></linearGradient>
+              <radialGradient id="gGlow" cx="50%" cy="45%" r="60%"><stop offset="0" stop-color="#0684BC" stop-opacity=".5"/><stop offset="1" stop-color="#0684BC" stop-opacity="0"/></radialGradient>
               <filter id="blur1"><feGaussianBlur stdDeviation="16"/></filter>
             </defs>
             <rect width="1000" height="620" fill="#0a0f15"/>
             <circle cx="500" cy="300" r="300" fill="url(#gGlow)" filter="url(#blur1)"/>
             <g stroke="#26384a" stroke-width="1" opacity=".6">
-              <circle cx="500" cy="300" r="120" fill="none"/>
-              <circle cx="500" cy="300" r="200" fill="none"/>
-              <circle cx="500" cy="300" r="270" fill="none"/>
+              <circle cx="500" cy="300" r="120" fill="none"/><circle cx="500" cy="300" r="200" fill="none"/><circle cx="500" cy="300" r="270" fill="none"/>
             </g>
             <g stroke="url(#gA)" stroke-width="2" fill="none" opacity=".8">
-              <path d="M500 300 L260 150"/><path d="M500 300 L790 170"/>
-              <path d="M500 300 L760 470"/><path d="M500 300 L230 460"/>
-              <path d="M500 300 L500 70"/><path d="M500 300 L500 540"/>
+              <path d="M500 300 L260 150"/><path d="M500 300 L790 170"/><path d="M500 300 L760 470"/><path d="M500 300 L230 460"/><path d="M500 300 L500 70"/><path d="M500 300 L500 540"/>
             </g>
             <g stroke="url(#gB)" stroke-width="2" fill="none" opacity=".7" stroke-dasharray="4 6">
               <path d="M260 150 L500 70"/><path d="M790 170 L760 470"/><path d="M230 460 L500 540"/>
@@ -341,7 +383,7 @@
             </g>
           </svg>
           <div class="screen">
-            <div class="top"><i></i><i></i><i></i><span>ringNex — Agent workspace</span></div>
+            <div class="top"><i></i><i></i><i></i><span>ringNex — Workspace</span></div>
             <div class="main">
               <div class="kpis">
                 <div class="kpi"><small>Calls today</small><strong>128</strong><span>+12% vs yesterday</span></div>
@@ -361,206 +403,227 @@
 
 <div class="strip reveal">
   <div class="wrap">
-    <span>Built on <b>Asterisk + PJSIP</b></span>
-    <span>WebRTC via <b>sip.js</b></span>
-    <span>Real-time <b>Socket.IO</b></span>
-    <span>Recording <b>MixMonitor</b></span>
-    <span>Monitoring <b>ChanSpy</b></span>
-    <span>Chat on <b>Firebase</b></span>
+    <span>Outbound &amp; inbound calling</span>
+    <span>Call recording</span>
+    <span>Outbound campaigns</span>
+    <span>Live call monitoring</span>
+    <span>Follow-ups &amp; leads</span>
+    <span>Reports &amp; exports</span>
+    <span>Team chat</span>
   </div>
 </div>
 
-<!-- ================= FEATURE GRID ================= -->
-<section class="sec" id="features">
+<!-- ================= HIGHLIGHT TRIO ================= -->
+<section class="sec" style="padding-bottom:40px">
   <div class="wrap">
     <div class="sec-head reveal">
-      <div class="eyebrow">Everything included</div>
-      <h2>One platform for calling, campaigns and oversight</h2>
-      <p>Every capability below ships in the same app and is gated by a ~70-permission role system, so each agent only sees what their role allows.</p>
+      <div class="eyebrow">Why ringNex</div>
+      <h2>One workspace for the whole conversation</h2>
+      <p>From the first ring to the follow-up, every step of a customer call lives in the same place — nothing to switch between, nothing lost.</p>
+    </div>
+    <div class="trio">
+      <div class="hl reveal">
+        <div class="n">01</div>
+        <h3>Everything on the call screen</h3>
+        <p>Dial, answer, mute, hold, transfer, add people, take notes and set the next follow-up — without opening another tab.</p>
+      </div>
+      <div class="hl reveal d1">
+        <div class="n">02</div>
+        <h3>Nothing slips through</h3>
+        <p>Every call is recorded and logged, every promise becomes a dated follow-up, and every customer keeps a running history.</p>
+      </div>
+      <div class="hl reveal d2">
+        <div class="n">03</div>
+        <h3>Managers stay in the loop</h3>
+        <p>See who's on a call right now, listen in, coach quietly, or step in — and read clean reports whenever you need them.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= FEATURE GRID ================= -->
+<section class="sec" id="features" style="padding-top:40px">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="eyebrow">Features</div>
+      <h2>Everything your calling team needs</h2>
+      <p>Each capability is built in and switched on per person, so everyone gets exactly the tools their job requires — and nothing they don't.</p>
     </div>
     <div class="fgrid">
 
       <div class="card reveal">
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.81.36 1.6.7 2.34a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.74-1.74a2 2 0 0 1 2.11-.45c.74.34 1.53.57 2.34.7A2 2 0 0 1 22 16.92z"/></svg></div>
-        <h3>WebRTC softphone</h3>
-        <p>A real SIP phone in the browser — one registration per session.</p>
+        <h3>Built-in phone</h3>
+        <p>Make and take calls right in the app — no separate handset or plugin.</p>
         <ul>
-          <li>Outbound &amp; inbound, mute, hold / resume, DTMF keypad</li>
-          <li>Blind and warm / attended transfer (same tenant)</li>
-          <li>Add participant — multi-party conference bridge</li>
-          <li>Contact caller-ID resolution, per-agent outbound DID</li>
+          <li>Dial by keypad, or straight from a contact, lead or call record</li>
+          <li>Mute, hold with music, and a keypad for menu prompts</li>
+          <li>Caller's name shown automatically from your saved contacts</li>
         </ul>
       </div>
 
       <div class="card reveal d1">
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg></div>
         <h3>Call recording</h3>
-        <p>MixMonitor recording on outbound, inbound-to-agent and toll-free queue legs.</p>
+        <p>Conversations are captured automatically so you always have the full picture.</p>
         <ul>
-          <li>Permission-gated per agent</li>
-          <li>Inline playback on every call-log row</li>
-          <li>Dedicated Recordings page with themed audio player</li>
+          <li>Outbound, inbound and campaign calls</li>
+          <li>One-click playback from any call record</li>
+          <li>Turned on per person by an administrator</li>
         </ul>
       </div>
 
       <div class="card reveal d2">
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg></div>
         <h3>Voicemail</h3>
-        <p>Declined / unanswered calls fall through to voicemail (opt-in per role).</p>
+        <p>Missed calls don't have to mean missed customers.</p>
         <ul>
-          <li>Capture via the dialplan, served through the API</li>
-          <li>Themed player, unread badge counts</li>
-          <li>Real duration computed from the WAV</li>
+          <li>Callers can leave a message when no one picks up</li>
+          <li>Play messages in the app, with an unread count</li>
+          <li>Enabled per role, so it fits how your team works</li>
         </ul>
       </div>
 
       <div class="card reveal">
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
-        <h3>Call logs &amp; dispositions</h3>
-        <p>Full history with date / agent / search filters and pagination.</p>
+        <h3>Call history &amp; outcomes</h3>
+        <p>A complete, searchable record of every call — with the result attached.</p>
         <ul>
-          <li>Editable disposition from the logs</li>
-          <li>Shared per-tenant disposition list (name + colour)</li>
-          <li>End-Call popup: client details, follow-up date, remarks, attachments, tags</li>
-          <li>Call participants column across transfers</li>
+          <li>Filter by date, agent, direction or keyword</li>
+          <li>Tag each call with an outcome from your own list</li>
+          <li>See everyone who was on the call, even after a transfer</li>
         </ul>
       </div>
 
       <div class="card reveal d1">
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
         <h3>Leads &amp; follow-ups</h3>
-        <p>Persistent customer records that accumulate interaction history across calls.</p>
+        <p>Keep a running relationship with every customer, not just a call log.</p>
         <ul>
-          <li>Name / phone / address, latest-disposition mirror, tags, attachments</li>
-          <li>Follow-ups dashboard — all / today / missed, with a due badge</li>
+          <li>One record per customer that grows with every call</li>
+          <li>Notes, tags and attached files in one place</li>
+          <li>Dated follow-ups with a reminder for what's due today</li>
         </ul>
       </div>
 
       <div class="card reveal d2">
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
         <h3>Contacts</h3>
-        <p>Contacts with multiple phone numbers and addresses each.</p>
+        <p>Your customer directory, ready to dial.</p>
         <ul>
-          <li>Create / edit / delete, each permission-gated</li>
-          <li>Lookup by number → name, company, job title</li>
+          <li>Multiple phone numbers and addresses per contact</li>
+          <li>Call directly from any contact</li>
+          <li>Incoming numbers matched to a name, company and title</li>
         </ul>
       </div>
 
       <div class="card reveal">
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg></div>
-        <h3>Auto dialer</h3>
-        <p>Outbound campaigns with ring strategy and per-campaign dispositions.</p>
+        <h3>Outbound campaigns</h3>
+        <p>Work through a list of numbers quickly and consistently.</p>
         <ul>
-          <li>Contact upload (XLSX / CSV) &amp; assignment to agents</li>
-          <li>Contact locking — two agents never get the same record</li>
-          <li>Agent auto-dial flow with skip &amp; disposition capture</li>
-          <li>Campaign reports with export</li>
+          <li>Upload a spreadsheet and split it across agents</li>
+          <li>Each contact is locked to one agent — no double calls</li>
+          <li>Skip, disposition and move on; results roll into reports</li>
         </ul>
       </div>
 
       <div class="card reveal d1">
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg></div>
-        <h3>Toll-free &amp; IVR</h3>
-        <p>Toll-free numbers and inbound queue campaigns.</p>
+        <h3>Toll-free lines &amp; menus</h3>
+        <p>Give customers a number to call and guide them to the right place.</p>
         <ul>
-          <li>Dynamic, data-driven IVR — greetings &amp; digit options stored in the DB</li>
-          <li>No static dialplan edits per IVR</li>
-          <li>Toll-free live dashboard and reports</li>
+          <li>Route a toll-free number into a queue of agents</li>
+          <li>Build a press-1, press-2 menu — no technical help needed</li>
+          <li>Live view of who's waiting and for how long</li>
         </ul>
       </div>
 
       <div class="card reveal d2">
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></div>
-        <h3>Live supervisor monitoring</h3>
-        <p>Active-calls board across the workspace and supervised teams.</p>
+        <h3>Live call monitoring</h3>
+        <p>Supervisors can support agents while a call is happening.</p>
         <ul>
-          <li>Listen (monitor), Whisper and Barge via ChanSpy</li>
-          <li>Each a separate permission, scoped to the supervisor's teams</li>
-          <li>Monitoring legs never appear in call logs</li>
+          <li><b>Listen</b> silently for quality checks</li>
+          <li><b>Whisper</b> to coach the agent — the customer can't hear</li>
+          <li><b>Barge in</b> to join and help directly</li>
         </ul>
       </div>
 
       <div class="card reveal">
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></div>
         <h3>Teams</h3>
-        <p>Teams with members and supervisors.</p>
+        <p>Group agents and give supervisors just the right amount of oversight.</p>
         <ul>
-          <li>Team-scoped data access — calls, recordings, voicemails, leads, reports</li>
-          <li>Per-team monitoring privileges (monitor / listen / whisper / barge)</li>
+          <li>Assign supervisors to the teams they manage</li>
+          <li>Limit what each supervisor can see and do, per team</li>
+          <li>Keep reporting and monitoring focused</li>
         </ul>
       </div>
 
       <div class="card reveal d1">
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg></div>
-        <h3>Users &amp; agents</h3>
-        <p>User CRUD with role assignment and automatic SIP provisioning.</p>
+        <h3>Agents &amp; access</h3>
+        <p>Add people in minutes and control exactly what they can do.</p>
         <ul>
-          <li>Tenant-aware SIP usernames, local extension allocation, optional per-agent DID</li>
-          <li>Live agent status (Ready / On-Call / …)</li>
-          <li>TOTP two-factor authentication with QR enrolment</li>
+          <li>Each agent gets their own extension automatically</li>
+          <li>Assign a direct number for outbound caller ID</li>
+          <li>Secure sign-in with optional two-step verification</li>
         </ul>
       </div>
 
       <div class="card reveal d2">
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
         <h3>Roles &amp; permissions</h3>
-        <p>Dynamic roles per workspace with a ~70-permission catalog.</p>
+        <p>Decide what every role can see and do — down to individual buttons.</p>
         <ul>
-          <li>Call &amp; Media, Dashboards, Supervisor, Auto Dialer, Toll-Free, Compliance, Billing, Security</li>
-          <li>Permission-driven menus &amp; buttons, enforced on every backend route</li>
-          <li>Single active session per user</li>
+          <li>Build your own roles from a large set of permissions</li>
+          <li>Menus and call controls adapt to each role automatically</li>
+          <li>One active session per person</li>
         </ul>
       </div>
 
       <div class="card reveal">
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 9h20"/></svg></div>
-        <h3>Phone numbers / DIDs</h3>
-        <p>DID inventory, assignment to agents and routing profiles.</p>
+        <h3>Phone numbers</h3>
+        <p>Manage the numbers your team calls from and customers call in on.</p>
         <ul>
-          <li>Purchase numbers via Commio (feature-flagged per tenant)</li>
-          <li>Pending-order tracking and carrier reconciliation</li>
+          <li>Keep an inventory of your numbers in one place</li>
+          <li>Assign direct numbers to agents</li>
+          <li>Route inbound calls where they should go</li>
         </ul>
       </div>
 
       <div class="card reveal d1">
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg></div>
-        <h3>DNC &amp; compliance</h3>
-        <p>Do-Not-Call list management by import or manually.</p>
+        <h3>Do-not-call list</h3>
+        <p>Stay compliant without slowing agents down.</p>
         <ul>
-          <li>Calls to DNC numbers blocked</li>
-          <li>Explicit override permission for authorised roles</li>
+          <li>Import a list or add numbers by hand</li>
+          <li>Calls to listed numbers are blocked automatically</li>
+          <li>Give specific roles an override when needed</li>
         </ul>
       </div>
 
       <div class="card reveal d2">
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
-        <h3>Dashboards &amp; reports</h3>
-        <p>Agent and owner dashboards, plus a full reports hub.</p>
+        <h3>Reports &amp; analytics</h3>
+        <p>Know how the team is doing, and prove it.</p>
         <ul>
-          <li>Call reports with PDF / Excel export</li>
-          <li>Agent performance report — ordered by most dialed</li>
-          <li>Campaign &amp; toll-free reports; per-tenant usage &amp; minutes</li>
+          <li>Agent and team dashboards for the day-to-day</li>
+          <li>Agent performance ranked by activity</li>
+          <li>Export any report to PDF or Excel</li>
         </ul>
       </div>
 
       <div class="card reveal">
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
         <h3>Team chat</h3>
-        <p>Real-time chat on Firebase — channels and direct messages.</p>
+        <p>Coordinate with colleagues without leaving the app.</p>
         <ul>
-          <li>Emoji picker, file attachments</li>
-          <li>Desktop push notifications (FCM), also inside the desktop app</li>
-        </ul>
-      </div>
-
-      <div class="card reveal d1">
-        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
-        <h3>Multi-tenancy &amp; security</h3>
-        <p>Workspace + email + password login; every record is tenant-scoped.</p>
-        <ul>
-          <li>Tenant-aware Socket.IO rooms &amp; Asterisk routing</li>
-          <li>JWT auth, bcrypt, TOTP 2FA, AES-256-GCM for stored secrets</li>
-          <li>Helmet headers, rate limiting, strict CORS allowlist</li>
+          <li>Group channels and one-to-one messages</li>
+          <li>Emoji and file sharing</li>
+          <li>Desktop alerts for new messages</li>
         </ul>
       </div>
 
@@ -575,46 +638,46 @@
 
       <div class="row reveal">
         <div class="rc-text">
-          <div class="eyebrow">Calling</div>
-          <h3>A softphone that handles the whole call</h3>
-          <p>Answer, transfer, conference and wrap up without leaving the page — and pop the call out into an always-on-top window in the desktop app.</p>
+          <div class="eyebrow">On the call</div>
+          <h3>Handle the whole call from one screen</h3>
+          <p>Everything an agent needs during a live call is right there — and in the desktop app it can float in its own always-on-top window while they work elsewhere.</p>
           <ul>
-            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Mute, hold / resume, DTMF, blind &amp; warm transfer</li>
-            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Add participant into a multi-party bridge</li>
-            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Detachable always-on-top call window (desktop)</li>
-            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>End-Call popup with disposition, follow-up &amp; save-to-contact</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Mute, hold, keypad, transfer and add people</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Bring another agent or an outside number into the call</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>A wrap-up screen opens automatically when the call ends</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Set the outcome, the next follow-up, notes and files in seconds</li>
           </ul>
         </div>
         <div class="rc-media">
           <div class="panel"><div class="glow"></div>
             <div class="ph"><span>Active call</span><span class="tag">CONNECTED</span></div>
             <div class="pb">
-              <div class="lrow"><span class="av">JD</span><span class="nm"><b>+1 312 555 0147</b><span>Outbound · Agent 1001</span></span><span class="dur">04:12</span></div>
-              <div class="lrow"><span class="av">AR</span><span class="nm"><b>Transfer target — Agent 1004</b><span>Warm transfer · joined</span></span><span class="badge">In call</span></div>
-              <div class="lrow"><span class="av" style="background:rgba(255,122,0,.16);color:var(--orange-300)">＋</span><span class="nm"><b>Add participant</b><span>PSTN or another agent</span></span><span class="badge amb">Bridge</span></div>
+              <div class="lrow"><span class="av">JD</span><span class="nm"><b>Jordan Dale</b><span>Outbound · 04:12</span></span><span class="dur">04:12</span></div>
+              <div class="lrow"><span class="av">AR</span><span class="nm"><b>Alex Rivera</b><span>Joined via transfer</span></span><span class="badge">In call</span></div>
+              <div class="lrow"><span class="av" style="background:rgba(255,122,0,.16);color:var(--orange-300)">＋</span><span class="nm"><b>Add participant</b><span>Another agent or a phone number</span></span><span class="badge amb">Conference</span></div>
             </div>
           </div>
         </div>
       </div>
 
-      <div class="row reveal" id="supervisor">
+      <div class="row reveal" id="supervision">
         <div class="rc-text">
-          <div class="eyebrow">Supervision</div>
-          <h3>Listen, whisper or barge — live</h3>
-          <p>Supervisors see every active call across their teams and can step in three ways, each a separate permission. Monitoring legs are invisible in the call logs and drop the instant the call ends.</p>
+          <div class="eyebrow">For supervisors</div>
+          <h3>Support agents while the call is live</h3>
+          <p>See every call in progress across your team and choose how much to step in — quietly, or out loud.</p>
           <ul>
-            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><b>Listen</b> — silent monitor</li>
-            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><b>Whisper</b> — coach the agent, caller can't hear</li>
-            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><b>Barge</b> — join the call, three-way</li>
-            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Scoped per team — a supervisor only monitors their own</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><b>Listen</b> — monitor silently for quality</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><b>Whisper</b> — coach the agent; the customer hears nothing</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><b>Barge in</b> — join the call to help directly</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Monitoring never shows up in the customer's call record</li>
           </ul>
         </div>
         <div class="rc-media">
           <div class="panel"><div class="glow"></div>
             <div class="ph"><span>Live calls</span><span class="tag">2 ACTIVE</span></div>
             <div class="pb">
-              <div class="lrow"><span class="av">1001</span><span class="nm"><b>Agent 1001 ↔ +1 415 555 0182</b><span>03:44 · Sales queue</span></span><span class="badge">Listen</span></div>
-              <div class="lrow"><span class="av">1002</span><span class="nm"><b>Agent 1002 ↔ +44 20 7946 0958</b><span>01:12 · Support</span></span><span class="badge amb">Whisper</span></div>
+              <div class="lrow"><span class="av">SM</span><span class="nm"><b>Sam Morgan</b><span>03:44 · Sales</span></span><span class="badge">Listen</span></div>
+              <div class="lrow"><span class="av">PK</span><span class="nm"><b>Priya Kaur</b><span>01:12 · Support</span></span><span class="badge amb">Whisper</span></div>
             </div>
           </div>
         </div>
@@ -622,23 +685,23 @@
 
       <div class="row reveal" id="reports">
         <div class="rc-text">
-          <div class="eyebrow">Reports</div>
-          <h3>Numbers you can export and act on</h3>
-          <p>Agent and owner dashboards for the day-to-day, plus a reports hub for everything else — with PDF and Excel export.</p>
+          <div class="eyebrow">For managers</div>
+          <h3>Reports you can act on and share</h3>
+          <p>Clear dashboards for the daily view, and detailed reports you can filter, then export.</p>
           <ul>
-            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Call reports — direction, status, duration, date filters</li>
-            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Agent performance — dialed, connected, talk time, voicemails</li>
-            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Campaign &amp; toll-free reports</li>
-            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Usage — seat counts and inbound / outbound minutes</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Inbound and outbound activity by date and agent</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Agent performance — ranked by who's dialing the most</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Campaign results and toll-free activity</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>One click to PDF or Excel</li>
           </ul>
         </div>
         <div class="rc-media">
           <div class="panel"><div class="glow"></div>
             <div class="ph"><span>Agent performance</span><span class="tag">THIS MONTH</span></div>
             <div class="pb">
-              <div class="lrow"><span class="av">AA</span><span class="nm"><b>Agent 1001</b><span>Dialed 412 · Connected 388</span></span><span class="dur">18h 20m</span></div>
-              <div class="lrow"><span class="av">BB</span><span class="nm"><b>Agent 1002</b><span>Dialed 377 · Connected 351</span></span><span class="dur">15h 02m</span></div>
-              <div class="lrow"><span class="av">CC</span><span class="nm"><b>Agent 1003</b><span>Dialed 298 · Connected 270</span></span><span class="dur">11h 47m</span></div>
+              <div class="lrow"><span class="av">1</span><span class="nm"><b>Sam Morgan</b><span>Dialed 412 · Connected 388</span></span><span class="dur">18h 20m</span></div>
+              <div class="lrow"><span class="av">2</span><span class="nm"><b>Priya Kaur</b><span>Dialed 377 · Connected 351</span></span><span class="dur">15h 02m</span></div>
+              <div class="lrow"><span class="av">3</span><span class="nm"><b>Chris Bell</b><span>Dialed 298 · Connected 270</span></span><span class="dur">11h 47m</span></div>
             </div>
           </div>
         </div>
@@ -648,14 +711,44 @@
   </div>
 </section>
 
+<!-- ================= ROLES BAND ================= -->
+<section class="sec" style="padding-top:0">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="eyebrow">Built for every seat</div>
+      <h2>One app, tuned to each role</h2>
+    </div>
+    <div class="roles">
+      <div class="rolecard reveal">
+        <div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+        <h3>Agents</h3>
+        <p>A focused calling screen with everything to run the conversation and wrap it up cleanly.</p>
+        <ul><li>Dial, answer, transfer, conference</li><li>Notes, outcomes and follow-ups</li><li>Their own call history and voicemail</li></ul>
+      </div>
+      <div class="rolecard reveal d1">
+        <div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></div>
+        <h3>Supervisors</h3>
+        <p>Live visibility of their team and the tools to help in the moment.</p>
+        <ul><li>See who's on a call now</li><li>Listen, whisper or barge in</li><li>Team-scoped history and reports</li></ul>
+      </div>
+      <div class="rolecard reveal d2">
+        <div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div>
+        <h3>Administrators</h3>
+        <p>Full control of people, numbers, roles, campaigns and compliance.</p>
+        <ul><li>Add agents and assign roles</li><li>Manage numbers and campaigns</li><li>Set permissions and the do-not-call list</li></ul>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ================= STATS ================= -->
 <section class="sec" style="padding-top:0">
   <div class="wrap">
     <div class="stats reveal">
-      <div class="stat"><b data-count="70">0</b><span>+ granular permissions</span></div>
-      <div class="stat"><b data-count="17">0</b><span>feature modules</span></div>
-      <div class="stat"><b data-count="3">0</b><span>monitor modes: listen / whisper / barge</span></div>
-      <div class="stat"><b>∞</b><span>tenants — fully isolated</span></div>
+      <div class="stat"><b data-count="17">0</b><span>capabilities in one app</span></div>
+      <div class="stat"><b data-count="3">0</b><span>ways to support a live call</span></div>
+      <div class="stat"><b>2</b><span>ways to run it — browser or desktop</span></div>
+      <div class="stat"><b>PDF<span style="font-size:.5em">·</span>XLS</b><span>export on every report</span></div>
     </div>
   </div>
 </section>
@@ -666,12 +759,12 @@
     <div class="dl reveal">
       <div>
         <div style="font-size:12.5px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--orange-300)">Desktop app</div>
-        <h2>Install ringNex for Windows</h2>
-        <p>The desktop app wraps the same workspace and adds a detachable, always-on-top call window. It talks to your hosted ringNex backend over the network — sign in with your workspace, email and password.</p>
+        <h2>Get ringNex for Windows</h2>
+        <p>Install the desktop app for a dedicated window and a call view that stays on top while you work. Sign in with your workspace, email and password — the same as the browser.</p>
         <div class="meta">
           <div><b>Windows 10 / 11</b>64-bit</div>
           <div><b>~79 MB</b>installer</div>
-          <div><b>v1.0.0</b>NSIS + portable</div>
+          <div><b>Free</b>with your workspace</div>
         </div>
       </div>
       <div class="dl-card">
@@ -682,7 +775,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Download Setup
         </a>
-        <p class="note">Unsigned build — on first run Windows SmartScreen may show “Windows protected your PC”. Click <b>More info → Run anyway</b>.</p>
+        <p class="note">On first run Windows may show a “protected your PC” prompt — click <b>More info → Run anyway</b>.</p>
       </div>
     </div>
   </div>
@@ -695,11 +788,11 @@
       <div class="left">
         <div class="eyebrow">Contact</div>
         <h2>Talk to the team behind ringNex</h2>
-        <p>ringNex is designed, built and supported by Unisoftwares Inc. Reach out for a demo, a deployment, or a custom rollout.</p>
+        <p>ringNex is designed, built and supported by Unisoftwares Inc. Reach out for a demo, a rollout, or a tailored setup.</p>
         <div class="clist">
           <a href="mailto:tech@unisoftwares.com">
             <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/></svg></span>
-            <span>tech@unisoftwares.com<small>Product &amp; technical enquiries</small></span>
+            <span>tech@unisoftwares.com<small>Product &amp; support enquiries</small></span>
           </a>
           <a href="https://unisoftwares.com/contact/" target="_blank" rel="noopener">
             <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/></svg></span>
@@ -714,7 +807,7 @@
       <div class="right">
         <span class="partner-badge">Delivered in partnership with <b>Unisoftwares&nbsp;Inc.</b></span>
         <h3>Software. Automation. Growth.</h3>
-        <p class="tag">Unisoftwares Inc. builds and operates ringNex end to end — from the Asterisk telephony core to the browser and desktop apps.</p>
+        <p class="tag">Unisoftwares Inc. builds and supports ringNex end to end, and helps teams get it running the way they work.</p>
         <a class="btn btn-primary" href="https://unisoftwares.com/contact/" target="_blank" rel="noopener">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           Partner with Unisoftwares
@@ -728,8 +821,8 @@
   <div class="wrap">
     <div class="fcols">
       <div class="about">
-        <a class="brand" href="#top"><img src="./ringnex.png" alt="ringNex" style="height:26px" /><b>ring<i style="color:var(--blue-300);font-style:normal">Nex</i></b></a>
-        <p>A WebRTC contact center on Asterisk — calling, campaigns, monitoring, reporting and chat, multi-tenant. A Unisoftwares Inc. product.</p>
+        <a href="#top" aria-label="ringNex"><img src="./ringnex.png" alt="ringNex" /></a>
+        <p>The contact center your calling team runs on — calls, campaigns, monitoring, follow-ups, reporting and chat, in one place. A Unisoftwares Inc. product.</p>
         <div class="social">
           <a href="https://unisoftwares.com" target="_blank" rel="noopener" title="LinkedIn">in</a>
           <a href="https://unisoftwares.com" target="_blank" rel="noopener" title="X">x</a>
@@ -741,8 +834,8 @@
       <div>
         <h4>Product</h4>
         <a href="#features">Features</a>
-        <a href="#calling">Calling</a>
-        <a href="#supervisor">Supervision</a>
+        <a href="#calling">On the call</a>
+        <a href="#supervision">Supervision</a>
         <a href="#reports">Reports</a>
         <a href="#download">Download</a>
       </div>
@@ -750,7 +843,7 @@
         <h4>Resources</h4>
         <a href="./guide.html">User Guide</a>
         <a href="./guide.html#getting-started">Getting started</a>
-        <a href="./guide.html#softphone">Using the softphone</a>
+        <a href="./guide.html#softphone">Using the phone</a>
         <a href="./guide.html#desktop">Desktop app</a>
       </div>
       <div>
@@ -761,7 +854,7 @@
       </div>
     </div>
     <div class="fbottom">
-      <span>© <span id="yr"></span> ringNex · Built &amp; operated by Unisoftwares Inc.</span>
+      <span>© <span id="yr"></span> ringNex · Built &amp; supported by Unisoftwares Inc.</span>
       <span class="partner">In partnership with <b>Unisoftwares&nbsp;Inc.</b> — Software. Automation. Growth.</span>
     </div>
   </div>
@@ -775,6 +868,13 @@
   onScroll(); addEventListener('scroll',onScroll,{passive:true});
   document.getElementById('yr').textContent=new Date().getFullYear();
 
+  var tt=document.getElementById('themeToggle');
+  if(tt){ tt.addEventListener('click',function(){
+    var next=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';
+    document.documentElement.setAttribute('data-theme',next);
+    try{localStorage.setItem('rnx-theme',next);}catch(e){}
+  }); }
+
   var io=new IntersectionObserver(function(entries){
     entries.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } });
   },{threshold:.14,rootMargin:'0px 0px -8% 0px'});
@@ -787,8 +887,8 @@
         if(e.isIntersecting && !counted){
           counted=true;
           document.querySelectorAll('.stat b[data-count]').forEach(function(node){
-            var target=+node.getAttribute('data-count'), cur=0, step=Math.max(1,Math.round(target/38));
-            var t=setInterval(function(){ cur+=step; if(cur>=target){cur=target;clearInterval(t);} node.textContent=cur; },22);
+            var target=+node.getAttribute('data-count'), cur=0, step=Math.max(1,Math.round(target/34));
+            var t=setInterval(function(){ cur+=step; if(cur>=target){cur=target;clearInterval(t);} node.textContent=cur; },24);
           });
         }
       });
@@ -817,7 +917,7 @@
       c.addEventListener('mousemove',function(ev){
         var r=c.getBoundingClientRect();
         var px=(ev.clientX-r.left)/r.width-.5, py=(ev.clientY-r.top)/r.height-.5;
-        c.style.transform='translateY(-4px) rotateX('+(-py*4).toFixed(2)+'deg) rotateY('+(px*5).toFixed(2)+'deg)';
+        c.style.transform='translateY(-4px) rotateX('+(-py*3.5).toFixed(2)+'deg) rotateY('+(px*4.5).toFixed(2)+'deg)';
       });
       c.addEventListener('mouseleave',function(){ c.style.transform=''; });
     });
