@@ -362,7 +362,10 @@ function TenantApp() {
           collapsed={collapsed}
           setCollapsed={setCollapsed}
         />
-        <main className="console-main">
+        <main
+          className="console-main"
+          style={page === "team-chat" ? { padding: 0, maxWidth: "none" } : undefined}
+        >
           {!ownerAccount && session.sip && (
             <div style={{ display: page === "dialer" ? "block" : "none" }}>
               <div className="embedded-softphone">

@@ -33,70 +33,84 @@ export default function TeamChat({ session }) {
   const myId         = user?.id;
   const canMakeGroup = (session?.permissions || []).includes("MANAGE_TEAMS");
 
-  /* ── Design tokens ── */
-  const sidebarBg       = isDark ? "#111118" : "#fff";
-  const sidebarBorder   = isDark ? "#1e1e2a" : "#f0f0f0";
-  const mainBg          = isDark ? "#0c0c12" : "#fafafa";
-  const headerBg        = isDark ? "#111118" : "#fff";
-  const headerBorder    = isDark ? "#1e1e2a" : "#f0f0f0";
-  const footerBg        = isDark ? "#111118" : "#fff";
-  const footerBorder    = isDark ? "#1e1e2a" : "#f0f0f0";
-  const inputRowBg      = isDark ? "#1a1a24" : "#f7f7f8";
-  const inputRowBgFocus = isDark ? "#1f1f2e" : "#fff";
-  const inputRowBorder  = isDark ? "#2a2a3a" : "#d0d0d0";
-  const textInput       = isDark ? "#e8e8f0" : "#222";
-  const textInputPH     = isDark ? "#555568" : "#bbb";
-  const searchBg        = isDark ? "#1a1a24" : "#f7f7f8";
-  const searchBgFocus   = isDark ? "#1f1f2e" : "#fff";
-  const searchBorder    = isDark ? "#2a2a3a" : "#d0d0d0";
-  const searchColor     = isDark ? "#e8e8f0" : "#222";
-  const searchIcon      = isDark ? "#44445a" : "#bbb";
-  const convItemHover   = isDark ? "#16161f" : "#f7f7f8";
-  const convItemActive  = isDark ? "#1a1a2e" : "#f0f4ff";
-  const convName        = isDark ? "#e8e8f0" : "#111";
-  const convLast        = isDark ? "#55556a" : "#aaa";
-  const convLastUnread  = isDark ? "#a0a0b8" : "#555";
-  const convTime        = isDark ? "#3a3a52" : "#ccc";
-  const noList          = isDark ? "#33334a" : "#ccc";
-  const tabColor        = isDark ? "#44445a" : "#aaa";
-  const tabActive       = isDark ? "#818cf8" : "#0684BC";
-  const tabBorder       = isDark ? "#1e1e2a" : "#f0f0f0";
-  const sidebarTitle    = isDark ? "#e8e8f0" : "#111";
-  const newBtnBg        = isDark ? "#1e1e30" : "#f0f4ff";
-  const newBtnColor     = isDark ? "#818cf8" : "#0684BC";
-  const newBtnHover     = isDark ? "#26263c" : "#e0e7ff";
-  const headerName      = isDark ? "#e8e8f0" : "#111";
-  const headerSub       = isDark ? "#55556a" : "#aaa";
-  const iconBtn         = isDark ? "#44445a" : "#999";
-  const iconBtnHover    = isDark ? "#22223a" : "#f5f5f5";
-  const iconBtnHoverC   = isDark ? "#c0c0d8" : "#333";
-  const attachBtn       = isDark ? "#44445a" : "#999";
-  const attachBtnHoverBg= isDark ? "#1e1e30" : "#f0f4ff";
-  const attachBtnHoverC = isDark ? "#818cf8" : "#0684BC";
-  const bubbleThem      = isDark ? "#1e1e2e" : "#fff";
-  const bubbleThemC     = isDark ? "#d8d8f0" : "#222";
-  const bubbleThemShadow= isDark ? "0 1px 3px rgba(0,0,0,0.40)" : "0 1px 3px rgba(0,0,0,.07)";
-  const senderName      = isDark ? "#818cf8" : "#0684BC";
-  const dateSepBg       = isDark ? "#1e1e2e" : "#f0f0f0";
-  const dateSepColor    = isDark ? "#44445a" : "#ccc";
-  const skelBg1         = isDark ? "#1a1a24" : "#f0f0f0";
-  const skelBg2         = isDark ? "#22223a" : "#e8e8e8";
-  const emptyIconBg     = isDark ? "#1a1a2e" : "#f0f4ff";
-  const emptyH3         = isDark ? "#e8e8f0" : "#222";
-  const emptyP          = isDark ? "#44445a" : "#aaa";
-  const canvasBg        = isDark ? "#111118" : "#fff";
-  const canvasTitle     = isDark ? "#e8e8f0" : "#111";
-  const canvasClose     = isDark ? "#22223a" : "#f5f5f5";
-  const canvasCloseC    = isDark ? "#a0a0b8" : "#666";
-  const canvasCloseH    = isDark ? "#2a2a3e" : "#eee";
-  const canvasSearch    = isDark ? "#1a1a24" : "#f7f7f8";
-  const canvasSearchF   = isDark ? "#1f1f2e" : "#fff";
-  const canvasSearchB   = isDark ? "#2a2a3a" : "#d0d0d0";
-  const canvasSearchC   = isDark ? "#e8e8f0" : "#222";
-  const canvasItemH     = isDark ? "#16161f" : "#f7f7f8";
-  const sectionLabel    = isDark ? "#33334a" : "#bbb";
-  const canvasItemH6    = isDark ? "#e8e8f0" : "#111";
-  const canvasItemP     = isDark ? "#44445a" : "#aaa";
+  /* ── Design tokens — mapped onto the app's --rn-* theme so Team Chat
+        matches the rest of the product in both light and dark. ── */
+  const T_SURFACE   = "rgb(var(--rn-surface))";
+  const T_SURFACE2  = "rgb(var(--rn-surface-2))";
+  const T_SURFACE3  = "rgb(var(--rn-surface-3))";
+  const T_BG        = "rgb(var(--rn-bg))";
+  const T_BORDER    = "var(--rn-border)";
+  const T_BORDER_S  = "var(--rn-border-strong)";
+  const T_TEXT      = "rgb(var(--rn-text))";
+  const T_MUTED     = "rgb(var(--rn-muted))";
+  const T_MUTED_SOFT= "rgb(var(--rn-muted) / 0.65)";
+  const T_BLUE      = "rgb(var(--rn-blue))";
+  const T_BLUE_SOFT = "rgb(var(--rn-blue) / 0.10)";
+  const T_BLUE_SOFT2= "rgb(var(--rn-blue) / 0.16)";
+
+  const sidebarBg       = T_SURFACE;
+  const sidebarBorder   = T_BORDER;
+  const mainBg          = T_BG;
+  const headerBg        = T_SURFACE;
+  const headerBorder    = T_BORDER;
+  const footerBg        = T_SURFACE;
+  const footerBorder    = T_BORDER;
+  const inputRowBg      = T_SURFACE2;
+  const inputRowBgFocus = T_SURFACE;
+  const inputRowBorder  = T_BORDER_S;
+  const textInput       = T_TEXT;
+  const textInputPH     = T_MUTED_SOFT;
+  const searchBg        = T_SURFACE2;
+  const searchBgFocus   = T_SURFACE;
+  const searchBorder    = T_BORDER_S;
+  const searchColor     = T_TEXT;
+  const searchIcon      = T_MUTED_SOFT;
+  const convItemHover   = T_SURFACE2;
+  const convItemActive  = T_BLUE_SOFT;
+  const convName        = T_TEXT;
+  const convLast        = T_MUTED_SOFT;
+  const convLastUnread  = T_TEXT;
+  const convTime        = T_MUTED_SOFT;
+  const noList          = T_MUTED_SOFT;
+  const tabColor        = T_MUTED;
+  const tabActive       = T_BLUE;
+  const tabBorder       = T_BORDER;
+  const sidebarTitle    = T_TEXT;
+  const newBtnBg        = T_BLUE_SOFT;
+  const newBtnColor     = T_BLUE;
+  const newBtnHover     = T_BLUE_SOFT2;
+  const headerName      = T_TEXT;
+  const headerSub       = T_MUTED;
+  const iconBtn         = T_MUTED;
+  const iconBtnHover    = T_SURFACE2;
+  const iconBtnHoverC   = T_TEXT;
+  const attachBtn       = T_MUTED;
+  const attachBtnHoverBg= T_BLUE_SOFT;
+  const attachBtnHoverC = T_BLUE;
+  const bubbleThem      = T_SURFACE2;
+  const bubbleThemC     = T_TEXT;
+  const bubbleThemShadow= "none";
+  const senderName      = T_BLUE;
+  const dateSepBg       = T_SURFACE3;
+  const dateSepColor    = T_MUTED;
+  const skelBg1         = T_SURFACE2;
+  const skelBg2         = T_SURFACE3;
+  const emptyIconBg     = T_BLUE_SOFT;
+  const emptyH3         = T_TEXT;
+  const emptyP          = T_MUTED;
+  const canvasBg        = T_SURFACE;
+  const canvasTitle     = T_TEXT;
+  const canvasClose     = T_SURFACE2;
+  const canvasCloseC    = T_MUTED;
+  const canvasCloseH    = T_SURFACE3;
+  const canvasSearch    = T_SURFACE2;
+  const canvasSearchF   = T_SURFACE;
+  const canvasSearchB   = T_BORDER_S;
+  const canvasSearchC   = T_TEXT;
+  const canvasItemH     = T_SURFACE2;
+  const sectionLabel    = T_MUTED;
+  const canvasItemH6    = T_TEXT;
+  const canvasItemP     = T_MUTED;
   const sendBtnBg       = "#0684BC";
   const sendBtnHover    = "#056a99";
 
@@ -695,9 +709,9 @@ export default function TeamChat({ session }) {
         @keyframes tc-slide-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
         @keyframes tc-check{from{stroke-dashoffset:24}to{stroke-dashoffset:0}}
         .tc-sidebar{width:300px;min-width:280px;background:${sidebarBg};border-right:1px solid ${sidebarBorder};display:flex;flex-direction:column;height:100%;flex-shrink:0;transition:background 0.2s,border-color 0.2s}
-        .tc-sidebar-header{padding:20px 18px 14px;border-bottom:1px solid ${sidebarBorder};display:flex;align-items:center;justify-content:space-between}
-        .tc-sidebar-title{font-size:17px;font-weight:600;color:${sidebarTitle};letter-spacing:-.2px}
-        .tc-new-btn{width:34px;height:34px;border-radius:50%;border:none;background:${newBtnBg};color:${newBtnColor};cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s;margin-left:6px}
+        .tc-sidebar-header{padding:12px 14px 10px;display:flex;align-items:center;justify-content:space-between}
+        .tc-sidebar-title{font-size:11px;font-weight:700;color:${sectionLabel};letter-spacing:.06em;text-transform:uppercase}
+        .tc-new-btn{width:30px;height:30px;border-radius:8px;border:none;background:${newBtnBg};color:${newBtnColor};cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s;margin-left:6px}
         .tc-new-btn:hover{background:${newBtnHover}}
         .tc-tabs{display:flex;border-bottom:1px solid ${tabBorder};padding:0 12px;gap:4px}
         .tc-tab{flex:1;padding:11px 0;font-size:13px;font-weight:500;color:${tabColor};background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;transition:color .15s,border-color .15s;display:flex;align-items:center;justify-content:center;gap:6px}
@@ -710,9 +724,9 @@ export default function TeamChat({ session }) {
         .tc-conv-item{display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:9px;cursor:pointer;transition:background .12s}
         .tc-conv-item:hover{background:${convItemHover}}
         .tc-conv-item.active{background:${convItemActive}}
-        .tc-avatar{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#0684BC 0%,#0aa2d6 100%);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;font-size:14px;flex-shrink:0}
+        .tc-avatar{width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,#0684BC 0%,#23a6d4 100%);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;font-size:13px;flex-shrink:0}
         .tc-avatar.group{background:linear-gradient(135deg,#23a6d4 0%,#0684BC 100%)}
-        .tc-avatar.sm{width:40px;height:40px;font-size:13px}
+        .tc-avatar.sm{width:34px;height:34px;font-size:12px;border-radius:9px}
         .tc-conv-info{flex:1;min-width:0}
         .tc-conv-name{font-size:14px;font-weight:500;color:${convName};white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
         .tc-conv-last{font-size:12.5px;color:${convLast};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
@@ -720,7 +734,7 @@ export default function TeamChat({ session }) {
         .tc-badge{background:#0684BC;color:#fff;font-size:10px;font-weight:700;min-width:18px;height:18px;border-radius:9px;padding:0 5px;display:inline-flex;align-items:center;justify-content:center}
         .tc-tab-badge{background:#ef4444;color:#fff;font-size:9px;font-weight:700;min-width:16px;height:16px;border-radius:8px;padding:0 4px;display:inline-flex;align-items:center;justify-content:center}
         .tc-main{flex:1;display:flex;flex-direction:column;background:${mainBg};min-width:0;transition:background 0.2s}
-        .tc-chat-header{background:${headerBg};border-bottom:1px solid ${headerBorder};padding:13px 20px;display:flex;align-items:center;gap:13px;transition:background 0.2s}
+        .tc-chat-header{background:${headerBg};border-bottom:1px solid ${headerBorder};padding:11px 18px;display:flex;align-items:center;gap:11px;transition:background 0.2s}
         .tc-header-info{flex:1}
         .tc-header-name{font-size:15px;font-weight:600;color:${headerName};letter-spacing:-.2px}
         .tc-header-sub{font-size:12px;color:${headerSub};margin-top:1px}
@@ -733,13 +747,13 @@ export default function TeamChat({ session }) {
         .tc-skel{height:38px;border-radius:16px;background:linear-gradient(90deg,${skelBg1} 25%,${skelBg2} 50%,${skelBg1} 75%);background-size:200% 100%;animation:tcShimmer 1.4s infinite}
         .tc-date-sep{text-align:center;margin:14px 0 10px}
         .tc-date-sep span{font-size:11px;color:${dateSepColor};background:${dateSepBg};padding:3px 12px;border-radius:20px;font-weight:500}
-        .tc-system-msg{align-self:center;max-width:78%;margin:10px auto;padding:5px 12px;border-radius:999px;background:${isDark?"rgba(255,255,255,0.06)":"#e6f4fb"};color:${isDark?"#7cc5e0":"#056a99"};font-size:12px;font-weight:600;text-align:center;line-height:1.45}
+        .tc-system-msg{align-self:center;max-width:80%;margin:10px auto;padding:4px 11px;border-radius:999px;background:${T_SURFACE3};color:${T_MUTED};font-size:11.5px;font-weight:500;text-align:center;line-height:1.45}
         .tc-msg-row{display:flex;margin-bottom:2px;align-items:flex-end;gap:6px}
         .tc-msg-row.me{justify-content:flex-end}
         .tc-msg-row.them{justify-content:flex-start}
         .tc-bubble{max-width:66%;padding:8px 13px;border-radius:14px;font-size:14px;line-height:1.5;word-break:break-word;white-space:pre-wrap}
         .tc-bubble.me{background:#0684BC;color:#fff;border-bottom-right-radius:5px}
-        .tc-bubble.them{background:${bubbleThem};color:${bubbleThemC};border-bottom-left-radius:5px;box-shadow:${bubbleThemShadow}}
+        .tc-bubble.them{background:${bubbleThem};color:${bubbleThemC};border:1px solid ${T_BORDER};border-bottom-left-radius:5px}
         .tc-bubble.deleted{background:${isDark?"#1a1a24":"#f3f4f6"} !important;border:1px dashed ${isDark?"#2a2a3a":"#d1d5db"} !important;box-shadow:none !important}
         .tc-sender-name{font-size:11.5px;font-weight:600;margin-bottom:3px;color:${senderName}}
         .tc-msg-time{font-size:10.5px;margin-top:3px;text-align:right;opacity:.55;font-family:'DM Mono',monospace}
@@ -823,11 +837,11 @@ export default function TeamChat({ session }) {
         </AnimatePresence>
       </div>
 
-      <div className="tc-root" style={{ height: "calc(100vh - 64px)", display: "flex", overflow: "hidden" }}>
+      <div className="tc-root" style={{ height: "calc(100dvh - 72px)", display: "flex", overflow: "hidden", background: "rgb(var(--rn-bg))" }}>
 
         <aside className="tc-sidebar">
           <div className="tc-sidebar-header">
-            <div className="tc-sidebar-title">Team Chat</div>
+            <div className="tc-sidebar-title">Conversations</div>
             <div style={{ display: "flex" }}>
               {canMakeGroup && <button className="tc-new-btn" onClick={() => setShowCreateGroup(true)} title="Create Group"><Users size={15} /></button>}
               <button className="tc-new-btn" onClick={() => setShowCanvas(true)} title="New conversation"><MessageCircle size={16} /></button>
