@@ -1,12 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PhoneOff, Plus, Trash2, Upload } from "lucide-react";
 
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
+import DataTable from "../../components/ui/DataTable";
 import Input from "../../components/ui/Input";
+import PageHeader from "../../components/ui/PageHeader";
+import StatusBadge from "../../components/ui/StatusBadge";
 import { api } from "../../lib/api";
 import { confirmModal } from "../../lib/modal";
 import { notifyError, notifySuccess } from "../../lib/toast";
+import DncUploadModal from "./DncUploadModal";
 
 // Do-Not-Call list — MANAGE_DNC gates the whole page (server-side too, on
 // every route in dncRoutes.js). Numbers can be typed in any common form
@@ -17,18 +21,16 @@ import { notifyError, notifySuccess } from "../../lib/toast";
 export default function DncManagement() {
   const [numbers, setNumbers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
   const [newNumber, setNewNumber] = useState("");
   const [newReason, setNewReason] = useState("");
   const [adding, setAdding] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
-  const fileInputRef = useRef(null);
+  const [uploadOpen, setUploadOpen] = useState(false);
 
-  const load = async (searchTerm = search) => {
+  const load = async () => {
     setLoading(true);
     try {
-      const result = await api(`/dnc?search=${encodeURIComponent(searchTerm)}`);
+      const result = await api("/dnc?search=");
       setNumbers(result.numbers || []);
     } catch (error) {
       notifyError(error.message);
@@ -38,15 +40,9 @@ export default function DncManagement() {
   };
 
   useEffect(() => {
-    load("");
+    load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    const timer = setTimeout(() => load(search), 300);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
 
   const addNumber = async (event) => {
     event.preventDefault();
@@ -85,42 +81,75 @@ export default function DncManagement() {
     }
   };
 
-  const handleFileChange = async (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    setUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const result = await api("/dnc/upload", { method: "POST", body: formData });
-      notifySuccess(
-        `${result.inserted} number${result.inserted === 1 ? "" : "s"} added` +
-          (result.duplicates ? `, ${result.duplicates} already on the list` : "") +
-          (result.skipped ? `, ${result.skipped} skipped (no usable number)` : "") +
-          "."
-      );
-      load();
-    } catch (error) {
-      notifyError(error.message);
-    } finally {
-      setUploading(false);
-    }
-  };
+  const columns = useMemo(
+    () => [
+      {
+        key: "raw_number",
+        header: "Number",
+        sortable: true,
+        cellClassName: "text-text",
+        cell: (e) => (
+          <span className="inline-flex items-center gap-1.5 font-medium">
+            <PhoneOff size={13} className="text-danger" />
+            {e.raw_number}
+          </span>
+        )
+      },
+      { key: "reason", header: "Reason", sortable: true, cell: (e) => e.reason || <span className="text-muted/60">—</span> },
+      {
+        key: "source",
+        header: "Source",
+        sortable: true,
+        cell: (e) => (
+          <StatusBadge tone="neutral">{e.source === "UPLOAD" ? "Spreadsheet" : "Manual"}</StatusBadge>
+        )
+      },
+      {
+        key: "created_at",
+        header: "Added",
+        sortable: true,
+        sortValue: (e) => e.created_at,
+        cell: (e) => new Date(e.created_at).toLocaleDateString()
+      },
+      {
+        key: "actions",
+        header: "",
+        align: "right",
+        cell: (e) => (
+          <button
+            type="button"
+            onClick={() => deleteNumber(e)}
+            disabled={deletingId === e.id}
+            className="rounded-lg p-1.5 text-muted transition-colors hover:bg-danger-soft hover:text-danger disabled:opacity-50"
+            aria-label="Remove from list"
+          >
+            <Trash2 size={15} />
+          </button>
+        )
+      }
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [deletingId]
+  );
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <h1 className="text-xl font-semibold text-text">Do-Not-Call list</h1>
-        <p className="mt-1 text-sm text-muted">
-          Numbers here are blocked from outbound dialing tenant-wide, unless an agent's role has the
-          "Call Do-Not-Call Numbers" permission.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="COMPLIANCE"
+        title="Do-Not-Call list"
+        description={
+          "Numbers here are blocked from outbound dialing tenant-wide, unless an agent's role has the “Call Do-Not-Call Numbers” permission."
+        }
+        actions={
+          <Button variant="secondary" icon={Upload} onClick={() => setUploadOpen(true)}>
+            Upload spreadsheet
+          </Button>
+        }
+      />
 
-      <Card title="Add a number">
+      <Card title="Add a number" description="Type a single number, or upload a spreadsheet for bulk imports.">
         <form onSubmit={addNumber} className="flex flex-wrap items-end gap-3">
-          <label className="flex flex-1 min-w-[200px] flex-col gap-1.5 text-xs font-medium text-muted">
+          <label className="flex min-w-[200px] flex-1 flex-col gap-1.5 text-xs font-medium text-muted">
             Phone number
             <Input
               value={newNumber}
@@ -129,89 +158,61 @@ export default function DncManagement() {
               required
             />
           </label>
-          <label className="flex flex-1 min-w-[200px] flex-col gap-1.5 text-xs font-medium text-muted">
-            Reason (optional)
+          <label className="flex min-w-[200px] flex-1 flex-col gap-1.5 text-xs font-medium text-muted">
+            Reason <span className="font-normal normal-case text-muted/70">(optional)</span>
             <Input
               value={newReason}
               onChange={(event) => setNewReason(event.target.value)}
               placeholder="Customer requested no contact"
             />
           </label>
-          <Button type="submit" disabled={adding}>
-            <Plus size={15} />
-            {adding ? "Adding…" : "Add number"}
-          </Button>
-          <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={handleFileChange} />
-          <Button type="button" variant="secondary" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-            <Upload size={15} />
-            {uploading ? "Uploading…" : "Upload spreadsheet"}
+          <Button type="submit" icon={Plus} loading={adding}>
+            Add number
           </Button>
         </form>
-        <p className="mt-2 text-xs text-muted">
-          Spreadsheet needs a "Phone" (or "Number") column — every other column is ignored. Numbers already on
-          the list, or repeated in the sheet, are skipped automatically.
-        </p>
       </Card>
 
-      <Card
-        title={`${numbers.length} number${numbers.length === 1 ? "" : "s"}`}
-        actions={
-          <Input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search…"
-            className="w-52"
-          />
-        }
-      >
-        {loading ? (
-          <p className="py-8 text-center text-sm text-muted">Loading…</p>
-        ) : numbers.length ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
-                  <th className="px-3 py-2 font-medium">Number</th>
-                  <th className="px-3 py-2 font-medium">Reason</th>
-                  <th className="px-3 py-2 font-medium">Source</th>
-                  <th className="px-3 py-2 font-medium">Added</th>
-                  <th className="px-3 py-2"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {numbers.map((entry) => (
-                  <tr key={entry.id} className="border-b border-border/60 last:border-0">
-                    <td className="px-3 py-2.5 font-medium text-text">
-                      <span className="inline-flex items-center gap-1.5">
-                        <PhoneOff size={13} className="text-danger" />
-                        {entry.raw_number}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5 text-muted">{entry.reason || "—"}</td>
-                    <td className="px-3 py-2.5 text-muted">{entry.source === "UPLOAD" ? "Spreadsheet" : "Manual"}</td>
-                    <td className="px-3 py-2.5 text-muted">{new Date(entry.created_at).toLocaleDateString()}</td>
-                    <td className="px-3 py-2.5 text-right">
-                      <button
-                        type="button"
-                        onClick={() => deleteNumber(entry)}
-                        disabled={deletingId === entry.id}
-                        className="rounded-lg p-1.5 text-muted transition-colors hover:bg-danger-soft hover:text-danger disabled:opacity-50"
-                        aria-label="Remove from list"
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {loading || numbers.length ? (
+        <DataTable
+          columns={columns}
+          data={numbers}
+          loading={loading}
+          getRowKey={(e) => e.id}
+          searchKeys={["raw_number", "reason"]}
+          searchPlaceholder="Search number or reason…"
+          filters={[
+            {
+              key: "source",
+              label: "All sources",
+              getValue: (e) => (e.source === "UPLOAD" ? "Spreadsheet" : "Manual"),
+              options: [
+                { value: "Manual", label: "Manual" },
+                { value: "Spreadsheet", label: "Spreadsheet" }
+              ]
+            }
+          ]}
+          initialSort={{ key: "created_at", dir: "desc" }}
+          pageSize={15}
+          emptyState={<p className="text-sm text-muted">No matching numbers.</p>}
+        />
+      ) : (
+        <Card animate={false}>
+          <div className="flex flex-col items-center gap-3 py-8 text-center">
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-2 text-muted">
+              <PhoneOff size={22} />
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-text">The Do-Not-Call list is empty</p>
+              <p className="mt-1 text-xs text-muted">Add a number above, or upload a spreadsheet.</p>
+            </div>
+            <Button size="sm" variant="secondary" icon={Upload} onClick={() => setUploadOpen(true)}>
+              Upload spreadsheet
+            </Button>
           </div>
-        ) : (
-          <p className="py-8 text-center text-sm text-muted">
-            {search ? "No matching numbers." : "The Do-Not-Call list is empty."}
-          </p>
-        )}
-      </Card>
+        </Card>
+      )}
+
+      <DncUploadModal open={uploadOpen} onClose={() => setUploadOpen(false)} onDone={load} />
     </div>
   );
 }
