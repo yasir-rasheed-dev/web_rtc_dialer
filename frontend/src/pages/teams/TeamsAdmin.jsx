@@ -3,20 +3,22 @@ import { Eye, Pencil, Plus, RefreshCw, Trash2, UserPlus, UsersRound, X } from "l
 
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
+import DataTable from "../../components/ui/DataTable";
 import EmptyState from "../../components/ui/EmptyState";
-import Input from "../../components/ui/Input";
 import Modal from "../../components/ui/Modal";
 import PageHeader from "../../components/ui/PageHeader";
 import Select from "../../components/ui/Select";
-import { SkeletonTable } from "../../components/ui/Skeleton";
 import StatusBadge from "../../components/ui/StatusBadge";
 import Toggle from "../../components/ui/Toggle";
 import { api } from "../../lib/api";
 import { confirmModal } from "../../lib/modal";
 import { notifyError, notifySuccess } from "../../lib/toast";
 
+// Same flat-white field look used across the redesigned modals (Roles etc).
+const FIELD_INPUT =
+  "h-10 w-full rounded-lg border border-border-strong bg-surface px-3.5 text-sm text-text placeholder:text-muted transition-colors focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/15 disabled:opacity-60";
 const TEXTAREA_CLASS =
-  "w-full rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-sm text-text outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/20";
+  "w-full rounded-lg border border-border-strong bg-surface px-3.5 py-2.5 text-sm text-text placeholder:text-muted outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/15";
 
 function fieldLabel() {
   return "flex flex-col gap-1.5 text-xs font-medium text-muted";
@@ -35,22 +37,50 @@ function groupedPrivileges(privileges = []) {
     }, {});
 }
 
-function PrivilegeToggleGroups({ groups, values, onToggle, disabled = false }) {
+function PrivilegeToggleGroups({ groups, values, onToggle, onToggleAll, disabled = false }) {
   return (
-    <div className="flex flex-col gap-4">
-      {Object.entries(groups).map(([category, items]) => (
-        <div key={category}>
-          <p className="mb-2 text-[11px] font-extrabold uppercase tracking-wide text-brand">{category}</p>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {items.map((item) => (
-              <div key={item.key} className="flex items-center justify-between gap-3 rounded-xl bg-surface-2 px-4 py-3">
-                <span className="text-sm font-medium text-text">{item.name}</span>
-                <Toggle checked={Boolean(values[item.key])} onChange={() => onToggle(item.key)} disabled={disabled} label={item.name} />
+    <div className="flex max-h-[42vh] flex-col gap-5 overflow-y-auto pr-1">
+      {Object.entries(groups).map(([category, items]) => {
+        const on = items.filter((i) => values[i.key]).length;
+        const all = on === items.length && items.length > 0;
+        return (
+          <div key={category}>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-brand">{category}</span>
+              <div className="flex items-center gap-3">
+                <span className="text-[11px] tabular-nums text-muted">
+                  {on}/{items.length}
+                </span>
+                {!disabled && onToggleAll && (
+                  <button
+                    type="button"
+                    onClick={() => onToggleAll(items, !all)}
+                    className="text-[11px] font-semibold text-brand hover:underline"
+                  >
+                    {all ? "Clear all" : "Select all"}
+                  </button>
+                )}
               </div>
-            ))}
+            </div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {items.map((item) => (
+                <div
+                  key={item.key}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface-2 px-3 py-2.5"
+                >
+                  <span className="text-[13px] font-medium text-text">{item.name}</span>
+                  <Toggle
+                    checked={Boolean(values[item.key])}
+                    onChange={() => onToggle(item.key)}
+                    disabled={disabled}
+                    label={item.name}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
       {!Object.keys(groups).length && <p className="text-xs text-muted">No privileges configured.</p>}
     </div>
   );
@@ -79,16 +109,25 @@ function CreateTeamModal({ open, onClose, payload, onCreated }) {
     () => (payload.supervisors || []).map((supervisor) => ({ value: supervisor.id, label: supervisor.name })),
     [payload.supervisors]
   );
+  const memberOptions = useMemo(
+    () =>
+      (payload.memberCandidates || []).map((c) => ({
+        value: c.id,
+        label: c.roleName ? `${c.name} · ${c.roleName}` : c.name
+      })),
+    [payload.memberCandidates]
+  );
 
   if (!form) return <Modal open={false} />;
 
   const togglePrivilege = (key) =>
     setForm((current) => ({ ...current, supervisorPrivileges: { ...current.supervisorPrivileges, [key]: !current.supervisorPrivileges[key] } }));
-  const toggleMember = (id) =>
-    setForm((current) => ({
-      ...current,
-      memberIds: current.memberIds.includes(id) ? current.memberIds.filter((item) => item !== id) : [...current.memberIds, id]
-    }));
+  const toggleAllPrivileges = (items, value) =>
+    setForm((current) => {
+      const next = { ...current.supervisorPrivileges };
+      items.forEach((i) => (next[i.key] = value));
+      return { ...current, supervisorPrivileges: next };
+    });
 
   const submit = async (event) => {
     event.preventDefault();
@@ -116,13 +155,24 @@ function CreateTeamModal({ open, onClose, payload, onCreated }) {
   return (
     <Modal open={open} onClose={onClose} title="New team" width="max-w-2xl">
       <form onSubmit={submit} className="flex flex-col gap-4">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <label className={fieldLabel()}>
-            Team name<span className="text-danger">*</span>
-            <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus required />
+            <span>
+              Team name <span className="text-danger">*</span>
+            </span>
+            <input
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              autoFocus
+              required
+              placeholder="e.g. West Coast Sales"
+              className={FIELD_INPUT}
+            />
           </label>
           <label className={fieldLabel()}>
-            Supervisor<span className="text-danger">*</span>
+            <span>
+              Supervisor <span className="text-danger">*</span>
+            </span>
             <Select
               options={supervisorOptions}
               value={supervisorOptions.find((option) => option.value === form.supervisorUserId) || null}
@@ -130,49 +180,51 @@ function CreateTeamModal({ open, onClose, payload, onCreated }) {
               placeholder="Select supervisor"
             />
           </label>
-          <label className={`${fieldLabel()} col-span-2`}>
-            Description
+          <label className={`${fieldLabel()} sm:col-span-2`}>
+            <span>Description</span>
             <textarea
               rows={2}
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
+              placeholder="Optional"
               className={TEXTAREA_CLASS}
+            />
+          </label>
+          <label className={`${fieldLabel()} sm:col-span-2`}>
+            <span>Initial members</span>
+            <Select
+              isMulti
+              isSearchable
+              options={memberOptions}
+              value={memberOptions.filter((o) => form.memberIds.includes(o.value))}
+              onChange={(vals) => setForm({ ...form, memberIds: (vals || []).map((o) => o.value) })}
+              placeholder={memberOptions.length ? "Search agents to add…" : "No members available"}
+              isDisabled={!memberOptions.length}
+              closeMenuOnSelect={false}
             />
           </label>
         </div>
 
         <div>
-          <p className="mb-2 text-xs font-semibold text-muted">Initial members</p>
-          <div className="grid max-h-40 grid-cols-1 gap-2 overflow-y-auto rounded-xl border border-border p-3 sm:grid-cols-2">
-            {(payload.memberCandidates || []).map((candidate) => (
-              <label key={candidate.id} className="flex items-center gap-2 text-sm text-text">
-                <input
-                  type="checkbox"
-                  checked={form.memberIds.includes(candidate.id)}
-                  onChange={() => toggleMember(candidate.id)}
-                  className="h-4 w-4 shrink-0 rounded border-border-strong accent-[rgb(var(--rn-blue))]"
-                />
-                <span className="truncate">
-                  {candidate.name}
-                  <span className="block text-xs text-muted">{candidate.roleName}</span>
-                </span>
-              </label>
-            ))}
-            {!payload.memberCandidates?.length && <p className="col-span-2 text-xs text-muted">No members available.</p>}
-          </div>
-        </div>
-
-        <div>
           <p className="mb-2 text-xs font-semibold text-muted">Supervisor privileges for this team</p>
-          <PrivilegeToggleGroups groups={groups} values={form.supervisorPrivileges} onToggle={togglePrivilege} />
+          <PrivilegeToggleGroups
+            groups={groups}
+            values={form.supervisorPrivileges}
+            onToggle={togglePrivilege}
+            onToggleAll={toggleAllPrivileges}
+          />
         </div>
 
-        {error && <div className="rounded-lg bg-danger-soft px-3 py-2 text-xs font-medium text-danger">{error}</div>}
-        <div className="mt-1 flex justify-end gap-2 border-t border-border pt-4">
-          <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+        {error && (
+          <div className="rounded-lg border border-danger/30 bg-danger-soft px-3 py-2 text-xs font-medium text-danger">
+            {error}
+          </div>
+        )}
+        <div className="flex justify-end gap-2 border-t border-border pt-4">
+          <Button type="button" variant="ghost" size="sm" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button type="submit" size="sm" icon={Plus} loading={busy}>
+          <Button type="submit" size="sm" loading={busy}>
             Create team
           </Button>
         </div>
@@ -222,6 +274,12 @@ function EditTeamModal({ open, onClose, team, payload, refresh }) {
 
   const togglePrivilege = (key) =>
     setForm((current) => ({ ...current, supervisorPrivileges: { ...current.supervisorPrivileges, [key]: !current.supervisorPrivileges[key] } }));
+  const toggleAllPrivileges = (items, value) =>
+    setForm((current) => {
+      const next = { ...current.supervisorPrivileges };
+      items.forEach((i) => (next[i.key] = value));
+      return { ...current, supervisorPrivileges: next };
+    });
 
   const save = async (event) => {
     event.preventDefault();
@@ -274,27 +332,30 @@ function EditTeamModal({ open, onClose, team, payload, refresh }) {
   return (
     <Modal open={open} onClose={onClose} title={`Edit ${team.name}`} width="max-w-2xl">
       <form onSubmit={save} className="flex flex-col gap-4">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <label className={fieldLabel()}>
-            Team name
-            <Input
+            <span>Team name</span>
+            <input
               value={form.name}
               disabled={!team.access.canEditSettings}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
+              className={FIELD_INPUT}
             />
           </label>
           <label className={fieldLabel()}>
-            Description
-            <Input
+            <span>Description</span>
+            <input
               value={form.description}
               disabled={!team.access.canEditSettings}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
+              placeholder="Optional"
+              className={FIELD_INPUT}
             />
           </label>
           {payload.canManageAll && (
             <>
               <label className={fieldLabel()}>
-                Supervisor
+                <span>Supervisor</span>
                 <Select
                   options={supervisorOptions}
                   value={supervisorOptions.find((option) => option.value === form.supervisorUserId) || null}
@@ -302,7 +363,7 @@ function EditTeamModal({ open, onClose, team, payload, refresh }) {
                   placeholder="Select supervisor"
                 />
               </label>
-              <div className="flex items-center justify-between gap-3 self-end rounded-xl bg-surface-2 px-4 py-3">
+              <div className="flex items-center justify-between gap-3 self-end rounded-lg border border-border bg-surface-2 px-3.5 py-2.5">
                 <span className="text-sm font-medium text-text">Team active</span>
                 <Toggle checked={Boolean(form.active)} onChange={(value) => setForm({ ...form, active: value })} />
               </div>
@@ -313,11 +374,20 @@ function EditTeamModal({ open, onClose, team, payload, refresh }) {
         {payload.canManageAll && (
           <div>
             <p className="mb-2 text-xs font-semibold text-muted">Supervisor privileges in {team.name}</p>
-            <PrivilegeToggleGroups groups={groups} values={form.supervisorPrivileges} onToggle={togglePrivilege} />
+            <PrivilegeToggleGroups
+              groups={groups}
+              values={form.supervisorPrivileges}
+              onToggle={togglePrivilege}
+              onToggleAll={toggleAllPrivileges}
+            />
           </div>
         )}
 
-        {error && <div className="rounded-lg bg-danger-soft px-3 py-2 text-xs font-medium text-danger">{error}</div>}
+        {error && (
+          <div className="rounded-lg border border-danger/30 bg-danger-soft px-3 py-2 text-xs font-medium text-danger">
+            {error}
+          </div>
+        )}
         {team.access.canEditSettings && (
           <div className="flex justify-end border-b border-border pb-4">
             <Button type="submit" size="sm" loading={busy}>
@@ -355,7 +425,7 @@ function EditTeamModal({ open, onClose, team, payload, refresh }) {
             )}
             <div className="flex flex-col gap-1.5">
               {(team.members || []).map((member) => (
-                <div key={member.id} className="flex items-center gap-3 rounded-xl border border-border px-3 py-2.5">
+                <div key={member.id} className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5">
                   <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand/10 text-[11px] font-bold text-brand">
                     {member.name.slice(0, 2).toUpperCase()}
                   </span>
@@ -412,7 +482,7 @@ function ViewTeamModal({ open, onClose, team, payload }) {
             <p className="mb-2 text-xs font-semibold text-muted">Members</p>
             <div className="flex flex-col gap-1.5">
               {(team.members || []).map((member) => (
-                <div key={member.id} className="flex items-center gap-3 rounded-xl border border-border px-3 py-2.5">
+                <div key={member.id} className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5">
                   <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand/10 text-[11px] font-bold text-brand">
                     {member.name.slice(0, 2).toUpperCase()}
                   </span>
@@ -497,8 +567,82 @@ export default function TeamsAdmin() {
     }
   };
 
+  const columns = useMemo(
+    () => [
+      {
+        key: "name",
+        header: "Team",
+        sortable: true,
+        cellClassName: "text-text",
+        cell: (t) => (
+          <div className="min-w-0">
+            <p className="font-medium">{t.name}</p>
+            {t.description && <p className="max-w-xs truncate text-xs text-muted">{t.description}</p>}
+          </div>
+        )
+      },
+      {
+        key: "supervisor",
+        header: "Supervisor",
+        sortable: true,
+        sortValue: (t) => t.supervisor?.name || "",
+        cell: (t) => t.supervisor?.name || <span className="text-muted/60">Not assigned</span>
+      },
+      {
+        key: "memberCount",
+        header: "Members",
+        align: "right",
+        sortable: true,
+        cell: (t) => <span className="tabular-nums">{t.memberCount}</span>
+      },
+      {
+        key: "active",
+        header: "Status",
+        sortable: true,
+        cell: (t) => <StatusBadge tone={t.active ? "success" : "neutral"}>{t.active ? "Active" : "Inactive"}</StatusBadge>
+      },
+      {
+        key: "actions",
+        header: "",
+        align: "right",
+        cell: (t) => (
+          <div className="flex items-center justify-end gap-1">
+            <button
+              onClick={() => setViewId(t.id)}
+              className="rounded-lg p-1.5 text-muted hover:bg-surface-2 hover:text-text"
+              aria-label={`View ${t.name}`}
+            >
+              <Eye size={14} />
+            </button>
+            {t.access?.canEditSettings && (
+              <button
+                onClick={() => setEditId(t.id)}
+                className="rounded-lg p-1.5 text-muted hover:bg-surface-2 hover:text-text"
+                aria-label={`Edit ${t.name}`}
+              >
+                <Pencil size={14} />
+              </button>
+            )}
+            {payload.canManageAll && (
+              <button
+                onClick={() => deleteTeam(t)}
+                disabled={deletingId === t.id}
+                className="rounded-lg p-1.5 text-muted hover:bg-danger-soft hover:text-danger disabled:opacity-40"
+                aria-label={`Delete ${t.name}`}
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
+          </div>
+        )
+      }
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [payload.canManageAll, deletingId]
+  );
+
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <PageHeader
         eyebrow="TEAM OPERATIONS"
         title="Team Management"
@@ -517,75 +661,39 @@ export default function TeamsAdmin() {
         }
       />
 
-      {error && <div className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>}
+      {error && (
+        <div className="rounded-lg border border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>
+      )}
 
-      <Card title="Teams" description={`${payload.teams.length} visible teams`} icon={UsersRound}>
-        {loading ? (
-          <SkeletonTable rows={5} cols={5} />
-        ) : payload.teams.length ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-border text-[11px] font-semibold uppercase tracking-wide text-muted">
-                  <th className="pb-2 pr-4">Team</th>
-                  <th className="pb-2 pr-4">Supervisor</th>
-                  <th className="pb-2 pr-4">Members</th>
-                  <th className="pb-2 pr-4">Status</th>
-                  <th className="pb-2">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {payload.teams.map((team) => (
-                  <tr key={team.id} className="border-b border-border/60 last:border-0">
-                    <td className="py-3 pr-4">
-                      <p className="font-medium text-text">{team.name}</p>
-                      {team.description && <p className="max-w-xs truncate text-xs text-muted">{team.description}</p>}
-                    </td>
-                    <td className="py-3 pr-4 text-muted">{team.supervisor?.name || "Not assigned"}</td>
-                    <td className="py-3 pr-4 text-muted">{team.memberCount}</td>
-                    <td className="py-3 pr-4">
-                      <StatusBadge tone={team.active ? "success" : "neutral"}>{team.active ? "Active" : "Inactive"}</StatusBadge>
-                    </td>
-                    <td className="py-3">
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() => setViewId(team.id)}
-                          className="rounded-lg p-1.5 text-muted hover:bg-surface-2 hover:text-text"
-                          aria-label={`View ${team.name}`}
-                        >
-                          <Eye size={14} />
-                        </button>
-                        {team.access.canEditSettings && (
-                          <button
-                            onClick={() => setEditId(team.id)}
-                            className="rounded-lg p-1.5 text-muted hover:bg-surface-2 hover:text-text"
-                            aria-label={`Edit ${team.name}`}
-                          >
-                            <Pencil size={14} />
-                          </button>
-                        )}
-                        {payload.canManageAll && (
-                          <button
-                            onClick={() => deleteTeam(team)}
-                            disabled={deletingId === team.id}
-                            className="rounded-lg p-1.5 text-muted hover:bg-danger-soft hover:text-danger disabled:opacity-40"
-                            aria-label={`Delete ${team.name}`}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
+      {loading || payload.teams.length ? (
+        <DataTable
+          columns={columns}
+          data={payload.teams}
+          loading={loading}
+          getRowKey={(t) => t.id}
+          searchKeys={["name", "description"]}
+          searchPlaceholder="Filter teams…"
+          filters={[
+            {
+              key: "status",
+              label: "All statuses",
+              getValue: (t) => (t.active ? "Active" : "Inactive"),
+              options: [
+                { value: "Active", label: "Active" },
+                { value: "Inactive", label: "Inactive" }
+              ]
+            }
+          ]}
+          initialSort={{ key: "name", dir: "asc" }}
+          pageSize={15}
+          emptyState={<EmptyState icon={UsersRound} title="No teams match" />}
+        />
+      ) : (
+        <Card animate={false}>
           <EmptyState
             icon={UsersRound}
             title="No teams yet"
-            description={payload.canManageAll ? "Create a team to start assigning a Supervisor and members." : undefined}
+            description={payload.canManageAll ? "Create a team to assign a Supervisor and members." : undefined}
             action={
               payload.canManageAll ? (
                 <Button size="sm" icon={Plus} onClick={() => setCreateOpen(true)}>
@@ -594,8 +702,8 @@ export default function TeamsAdmin() {
               ) : undefined
             }
           />
-        )}
-      </Card>
+        </Card>
+      )}
 
       <CreateTeamModal
         open={createOpen}
