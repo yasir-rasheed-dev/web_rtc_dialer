@@ -45,7 +45,12 @@ export const config = Object.freeze({
     password: required("DB_PASSWORD")
   },
   jwtSecret: required("JWT_SECRET"),
+  // Short access-token life is now safe because a refresh token silently
+  // re-issues it (see refresh_tokens migration + /api/auth/refresh). Set
+  // JWT_EXPIRES_IN=30m in .env; the 8h fallback only keeps older
+  // deployments working until they do.
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || "8h",
+  refreshTtlDays: integer("REFRESH_TOKEN_TTL_DAYS", 30),
   credentialKey,
   publicWssUrl: process.env.PUBLIC_WSS_URL || "wss://asterisk.ringnex.co/ws",
   publicSipDomain: process.env.PUBLIC_SIP_DOMAIN || "asterisk.ringnex.co",

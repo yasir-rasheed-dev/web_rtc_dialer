@@ -1,35 +1,146 @@
 import { API_BASE } from "./apiConfig";
 
+// Access + refresh tokens live in localStorage (not sessionStorage) so a
+// closed tab / restarted desktop app doesn't log the user out. The access
+// token is short-lived; when it expires, request() silently swaps the
+// refresh token for a new pair via POST /api/auth/refresh and retries.
 const TOKEN_KEY = "ringnex.console.token";
+const REFRESH_KEY = "ringnex.console.refresh";
 const SUPER_TOKEN_KEY = "ringnex.superadmin.token";
 
+function lsGet(key) {
+  try { return localStorage.getItem(key) || ""; } catch { return ""; }
+}
+function lsSet(key, value) {
+  try {
+    if (value) localStorage.setItem(key, value);
+    else localStorage.removeItem(key);
+  } catch { /* private mode / quota — auth just won't persist */ }
+}
+
 export function getToken() {
-  return sessionStorage.getItem(TOKEN_KEY) || "";
+  return lsGet(TOKEN_KEY);
 }
 
 export function setToken(token) {
-  if (token) sessionStorage.setItem(TOKEN_KEY, token);
-  else sessionStorage.removeItem(TOKEN_KEY);
+  lsSet(TOKEN_KEY, token);
+}
+
+export function getRefreshToken() {
+  return lsGet(REFRESH_KEY);
+}
+
+export function setRefreshToken(token) {
+  lsSet(REFRESH_KEY, token);
+}
+
+// Store both tokens from a login / 2FA / refresh response in one call.
+export function setAuthTokens(payload = {}) {
+  if (payload.token !== undefined) setToken(payload.token);
+  if (payload.refreshToken !== undefined) setRefreshToken(payload.refreshToken);
+}
+
+// Clear everything and let the app fall back to the login screen.
+export function clearAuth() {
+  setToken("");
+  setRefreshToken("");
 }
 
 export function getSuperAdminToken() {
-  return sessionStorage.getItem(SUPER_TOKEN_KEY) || "";
+  // Super Admin stays on sessionStorage on purpose — the highest-privilege
+  // token should not survive a closed tab.
+  try { return sessionStorage.getItem(SUPER_TOKEN_KEY) || ""; } catch { return ""; }
 }
 
 export function setSuperAdminToken(token) {
-  if (token) sessionStorage.setItem(SUPER_TOKEN_KEY, token);
-  else sessionStorage.removeItem(SUPER_TOKEN_KEY);
+  try {
+    if (token) sessionStorage.setItem(SUPER_TOKEN_KEY, token);
+    else sessionStorage.removeItem(SUPER_TOKEN_KEY);
+  } catch { /* ignore */ }
 }
 
-async function request(path, options = {}, token = "") {
+// Single-flight refresh: many requests can 401 at once when the access
+// token lapses; they all await the same refresh call.
+let refreshInFlight = null;
+
+// Public: called once on app start when there's a refresh token but the
+// access token is missing/stale, so the session comes back without a
+// visible re-login. Resolves to the new access token or null.
+export function refreshSession() {
+  return refreshAccessToken();
+}
+
+function refreshAccessToken() {
+  if (refreshInFlight) return refreshInFlight;
+  const rt = getRefreshToken();
+  if (!rt) return Promise.resolve(null);
+  refreshInFlight = fetch(`${API_BASE}/api/auth/refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ refreshToken: rt })
+  })
+    .then(async (response) => {
+      if (!response.ok) {
+        clearAuth();
+        return null;
+      }
+      const data = await response.json().catch(() => null);
+      if (!data?.token) {
+        clearAuth();
+        return null;
+      }
+      setAuthTokens(data);
+      return data.token;
+    })
+    .catch(() => null)
+    .finally(() => {
+      refreshInFlight = null;
+    });
+  return refreshInFlight;
+}
+
+function emitAuthExpired() {
+  try {
+    window.dispatchEvent(new Event("ringnex:auth-expired"));
+  } catch { /* non-browser */ }
+}
+
+async function rawFetch(path, options, token) {
   const headers = { Accept: "application/json", ...(options.headers || {}) };
   if (token) headers.Authorization = `Bearer ${token}`;
   if (options.body && !(options.body instanceof FormData)) headers["Content-Type"] = "application/json";
-  const response = await fetch(`${API_BASE}/api${path}`, {
+  return fetch(`${API_BASE}/api${path}`, {
     ...options,
     headers,
     body: options.body && !(options.body instanceof FormData) ? JSON.stringify(options.body) : options.body
   });
+}
+
+async function request(path, options = {}, token = "", _retried = false) {
+  let response = await rawFetch(path, options, token);
+
+  // Access token expired → refresh once and replay the request.
+  if (
+    response.status === 401 &&
+    !_retried &&
+    path !== "/auth/refresh" &&
+    path !== "/auth/login"
+  ) {
+    const body = await response.clone().json().catch(() => null);
+    if (body?.error === "TOKEN_EXPIRED" && getRefreshToken()) {
+      const fresh = await refreshAccessToken();
+      if (fresh) {
+        return request(path, options, fresh, true);
+      }
+      emitAuthExpired();
+    } else if (body?.error === "SESSION_REVOKED" || body?.error === "REFRESH_REUSED") {
+      // A newer login elsewhere (or a stolen-token burn) ended this
+      // session for good — no point retrying, drop to login.
+      clearAuth();
+      emitAuthExpired();
+    }
+  }
+
   if (response.status === 204) return null;
   const payload = response.headers.get("content-type")?.includes("application/json")
     ? await response.json()

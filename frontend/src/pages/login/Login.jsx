@@ -12,7 +12,7 @@ import Button from "../../components/ui/Button";
 import Input from "../../components/ui/Input";
 import ThemeToggle from "../../components/ui/ThemeToggle";
 import { confirmModal } from "../../lib/modal";
-import { api, setToken } from "../../lib/api";
+import { api, setAuthTokens } from "../../lib/api";
 
 export default function Login({ onAuthenticated }) {
   const [workspace, setWorkspace] = useState(localStorage.getItem("ringnex.workspace") || "legacy");
@@ -27,7 +27,7 @@ export default function Login({ onAuthenticated }) {
   const [code, setCode] = useState("");
 
   const finish = (payload) => {
-    setToken(payload.token);
+    setAuthTokens(payload);
     localStorage.setItem("ringnex.workspace", workspace);
     onAuthenticated(payload);
   };

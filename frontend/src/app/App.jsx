@@ -24,7 +24,7 @@ import Sidebar, { SIDEBAR_WIDTH, SIDEBAR_WIDTH_COLLAPSED } from "../components/l
 import Header from "../components/layout/Header";
 import { SkeletonCards } from "../components/ui/Skeleton";
 import { notifyError } from "../lib/toast";
-import { api, getToken, setToken } from "../lib/api";
+import { api, getToken, getRefreshToken, refreshSession, clearAuth } from "../lib/api";
 import { API_BASE } from "../lib/apiConfig";
 import { hasAny } from "../lib/permissions";
 import { confirmModal } from "../lib/modal";
@@ -122,7 +122,7 @@ function PageLoadingFallback() {
 
 function TenantApp() {
   const [session, setSession] = useState(null);
-  const [loading, setLoading] = useState(Boolean(getToken()));
+  const [loading, setLoading] = useState(Boolean(getToken() || getRefreshToken()));
   const [page, setPage] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem("ringnex.sidebarCollapsed") === "1");
@@ -146,11 +146,36 @@ function TenantApp() {
   }, [collapsed]);
 
   useEffect(() => {
-    if (!getToken()) {
+    if (!getToken() && !getRefreshToken()) {
       setLoading(false);
       return;
     }
-    api("/auth/session").then(setSession).catch(() => setToken("")).finally(() => setLoading(false));
+    (async () => {
+      try {
+        // Reopened tab / restarted app: access token may be gone or stale
+        // but the refresh token in localStorage brings the session back
+        // with no visible login.
+        if (!getToken()) await refreshSession();
+        const restored = await api("/auth/session");
+        setSession(restored);
+      } catch {
+        clearAuth();
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  // request() fires this when the access token expired AND a silent
+  // refresh failed (refresh token gone / revoked / reused) — drop to the
+  // login screen instead of leaving a half-dead session on screen.
+  useEffect(() => {
+    const onExpired = () => {
+      clearAuth();
+      setSession(null);
+    };
+    window.addEventListener("ringnex:auth-expired", onExpired);
+    return () => window.removeEventListener("ringnex:auth-expired", onExpired);
   }, []);
 
   // Seeds the header dropdown from the real backend value (sanitizeUser()
@@ -173,9 +198,13 @@ function TenantApp() {
         // the current page's origin — unchanged from before. The Electron
         // build sets API_BASE to the hosted backend's absolute origin, since
         // the app itself is served from a different ("app://…") origin.
+        // auth as a callback (not a static object) so every (re)connect
+        // picks up the CURRENT access token — it may have been rotated by
+        // a silent refresh since this socket first connected.
+        const authCb = (cb) => cb({ token: getToken() });
         socket = API_BASE
-          ? window.io(API_BASE, { path: "/socket.io", auth: { token: getToken() } })
-          : window.io({ path: "/socket.io", auth: { token: getToken() } });
+          ? window.io(API_BASE, { path: "/socket.io", auth: authCb })
+          : window.io({ path: "/socket.io", auth: authCb });
         socket.on("system:state", (state) => {
           setAmiConnected(Boolean(state.ami));
           setLiveCalls(state.calls || []);
@@ -208,7 +237,7 @@ function TenantApp() {
         // waiting for the next API call to hit the revoked-session 401.
         socket.on("auth:force-logout", (item) => {
           notifyError(item?.message || "You were signed out because this account logged in on another device.");
-          setToken("");
+          clearAuth();
           setSession(null);
         });
       })
@@ -271,7 +300,7 @@ function TenantApp() {
     });
     if (!confirmed) return;
     await api("/auth/logout", { method: "POST" }).catch(() => undefined);
-    setToken("");
+    clearAuth();
     setSession(null);
   };
 

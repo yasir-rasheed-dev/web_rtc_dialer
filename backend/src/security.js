@@ -53,6 +53,16 @@ export function verifyToken(token) {
   return jwt.verify(token, config.jwtSecret, { issuer: "ringnex-dialer" });
 }
 
+// Opaque refresh token — high-entropy random string, never a JWT. Only its
+// SHA-256 hash is ever persisted (refresh_tokens.token_hash).
+export function createRefreshTokenValue() {
+  return crypto.randomBytes(48).toString("base64url");
+}
+
+export function hashRefreshToken(value) {
+  return crypto.createHash("sha256").update(String(value)).digest("hex");
+}
+
 export function encryptSipSecret(value) {
   if (!value) return null;
   const iv = crypto.randomBytes(12);

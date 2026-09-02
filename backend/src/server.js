@@ -9,11 +9,13 @@ import { Server as SocketServer } from "socket.io";
 import { config } from "./config.js";
 import { db, healthcheck, audit } from "./db.js";
 import {
+  createRefreshTokenValue,
   decryptSecret,
   decryptSipSecret,
   encryptSecret,
   encryptSipSecret,
   hashPassword,
+  hashRefreshToken,
   sanitizeUser,
   signPendingToken,
   signToken,
@@ -486,8 +488,14 @@ export const authenticate = asyncRoute(async (req, res, next) => {
   let claims;
   try {
     claims = verifyToken(token);
-  } catch {
-    return res.status(401).json({ error: "Session expired or invalid" });
+  } catch (error) {
+    // Distinct code so the frontend knows to try a silent refresh for an
+    // EXPIRED token (normal, every few minutes) but not for a malformed
+    // or tampered one.
+    if (error?.name === "TokenExpiredError") {
+      return res.status(401).json({ error: "TOKEN_EXPIRED", message: "Access token expired" });
+    }
+    return res.status(401).json({ error: "TOKEN_INVALID", message: "Session expired or invalid" });
   }
   if (claims.scope !== "tenant") return res.status(401).json({ error: "Invalid tenant session" });
   const user = await loadTenantUser(claims.sub);
@@ -1048,6 +1056,29 @@ app.post("/api/super-admin/tenants/:id/owner-password", authenticateSuperAdmin, 
 // session lock so any older token for this user stops working, and kicks
 // whatever socket was connected under the old session so that device finds
 // out immediately instead of waiting for its next API call to 401.
+// Issues one refresh token row and returns its plaintext value (stored
+// only as a hash). `familyId` groups every rotation of one login session
+// so a detected re-use can nuke the whole chain at once.
+async function issueRefreshToken(user, sessionId, familyId, req, replaces = null) {
+  const value = createRefreshTokenValue();
+  const id = crypto.randomUUID();
+  const expiresAt = new Date(Date.now() + config.refreshTtlDays * 24 * 60 * 60 * 1000);
+  await db.execute(
+    `INSERT INTO refresh_tokens
+       (id, user_id, tenant_id, session_id, family_id, token_hash, expires_at, user_agent, ip)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id, user.id, user.tenant_id, sessionId, familyId, hashRefreshToken(value), expiresAt,
+      String(req.headers?.["user-agent"] || "").slice(0, 255) || null,
+      req.ip || null
+    ]
+  );
+  if (replaces) {
+    await db.execute("UPDATE refresh_tokens SET replaced_by=? WHERE id=?", [id, replaces]);
+  }
+  return value;
+}
+
 async function finalizeLogin(user, req) {
   const sessionId = crypto.randomUUID();
   await db.execute("UPDATE users SET current_session_id=?, last_login_at=UTC_TIMESTAMP() WHERE id=?", [sessionId, user.id]);
@@ -1055,7 +1086,15 @@ async function finalizeLogin(user, req) {
     message: "You were signed out because this account logged in on another device."
   });
   io.in(`user:${user.id}`).disconnectSockets(true);
+  // A fresh login supersedes every prior session for this user — kill any
+  // still-live refresh tokens so an old device can't silently refresh
+  // back in.
+  await db.execute(
+    "UPDATE refresh_tokens SET revoked_at=UTC_TIMESTAMP() WHERE user_id=? AND revoked_at IS NULL",
+    [user.id]
+  );
   const tokenUser = { ...user, current_session_id: sessionId };
+  const refreshToken = await issueRefreshToken(tokenUser, sessionId, crypto.randomUUID(), req);
   await audit(user.id, "AUTH_LOGIN", "user", user.id, { ip: req.ip }, user.tenant_id);
   // A telephony agent logging in is available to take calls by default —
   // same "not the Tenant Owner, has a SIP endpoint" guard as the manual
@@ -1066,7 +1105,7 @@ async function finalizeLogin(user, req) {
       console.error("[auth] auto-READY on login failed:", error.message)
     );
   }
-  return { token: signToken(tokenUser), ...authPayload(tokenUser) };
+  return { token: signToken(tokenUser), refreshToken, ...authPayload(tokenUser) };
 }
 
 const totpAttempts = new Map();
@@ -1192,11 +1231,72 @@ app.post("/api/auth/2fa/verify", asyncRoute((req, res) => completeTotpChallenge(
 
 app.get("/api/auth/session", authenticate, (req, res) => res.json(authPayload(req.user)));
 
+// Silent re-auth: swap a valid refresh token for a fresh access token
+// (and a rotated refresh token). No `authenticate` — the access token is
+// expected to be expired by the time this is called.
+app.post("/api/auth/refresh", asyncRoute(async (req, res) => {
+  const presented = String(req.body?.refreshToken || "");
+  if (!presented) return res.status(401).json({ error: "REFRESH_MISSING" });
+  const tokenHash = hashRefreshToken(presented);
+
+  const [rows] = await db.execute(
+    `SELECT id, user_id, session_id, family_id, expires_at, revoked_at
+       FROM refresh_tokens WHERE token_hash=? LIMIT 1`,
+    [tokenHash]
+  );
+  const row = rows[0];
+  if (!row) return res.status(401).json({ error: "REFRESH_INVALID" });
+
+  if (row.revoked_at) {
+    // A revoked token being presented again = it was captured. Burn the
+    // whole family so the legitimate device is forced to log in again too.
+    await db.execute(
+      "UPDATE refresh_tokens SET revoked_at=UTC_TIMESTAMP() WHERE family_id=? AND revoked_at IS NULL",
+      [row.family_id]
+    );
+    await audit(row.user_id, "AUTH_REFRESH_REUSE", "user", row.user_id, { ip: req.ip }, null);
+    return res.status(401).json({ error: "REFRESH_REUSED", message: "Please sign in again" });
+  }
+
+  if (new Date(row.expires_at).getTime() < Date.now()) {
+    return res.status(401).json({ error: "REFRESH_EXPIRED" });
+  }
+
+  const user = await loadTenantUser(row.user_id);
+  if (!user) return res.status(401).json({ error: "REFRESH_INVALID" });
+
+  // A newer login rotated current_session_id — this family belongs to the
+  // old session and must not refresh back in.
+  if (user.current_session_id && row.session_id !== user.current_session_id) {
+    await db.execute("UPDATE refresh_tokens SET revoked_at=UTC_TIMESTAMP() WHERE id=?", [row.id]);
+    return res.status(401).json({ error: "SESSION_REVOKED", message: "You were signed out because this account logged in on another device." });
+  }
+
+  // Rotate: revoke the presented token, issue a new one in the same family.
+  await db.execute(
+    "UPDATE refresh_tokens SET revoked_at=UTC_TIMESTAMP(), last_used_at=UTC_TIMESTAMP() WHERE id=?",
+    [row.id]
+  );
+  const tokenUser = { ...user, current_session_id: row.session_id };
+  const refreshToken = await issueRefreshToken(tokenUser, row.session_id, row.family_id, req, row.id);
+  res.json({ token: signToken(tokenUser), refreshToken });
+}));
+
 app.post("/api/auth/logout", authenticate, asyncRoute(async (req, res) => {
   await db.execute("UPDATE users SET current_session_id=NULL WHERE id=?", [req.user.id]);
+  await db.execute(
+    "UPDATE refresh_tokens SET revoked_at=UTC_TIMESTAMP() WHERE user_id=? AND revoked_at IS NULL",
+    [req.user.id]
+  );
   await audit(req.user.id, "AUTH_LOGOUT", "user", req.user.id, { ip: req.ip }, req.user.tenant_id);
   res.status(204).end();
 }));
+
+// Housekeeping: drop long-dead refresh rows so the table stays small.
+setInterval(() => {
+  db.execute("DELETE FROM refresh_tokens WHERE expires_at < (UTC_TIMESTAMP() - INTERVAL 2 DAY)")
+    .catch((error) => console.error("[auth] refresh_tokens sweep failed:", error.message));
+}, 6 * 60 * 60 * 1000).unref();
 
 // ---------------------------
 // Dynamic RBAC
