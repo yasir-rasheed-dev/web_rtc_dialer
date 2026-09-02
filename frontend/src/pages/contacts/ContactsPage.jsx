@@ -5,7 +5,6 @@ import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import DatePicker from "../../components/ui/DatePicker";
 import EmptyState from "../../components/ui/EmptyState";
-import Input from "../../components/ui/Input";
 import Modal from "../../components/ui/Modal";
 import PageHeader from "../../components/ui/PageHeader";
 import Select from "../../components/ui/Select";
@@ -16,6 +15,16 @@ import { api } from "../../lib/api";
 
 function fieldLabel() {
   return "flex flex-col gap-1.5 text-xs font-medium text-muted";
+}
+
+// Flat-white field, same look as the Create Role modal.
+const FIELD_INPUT =
+  "h-10 w-full rounded-lg border border-border-strong bg-surface px-3.5 text-sm text-text placeholder:text-muted transition-colors focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/15 disabled:opacity-60";
+const TEXTAREA_INPUT =
+  "w-full rounded-lg border border-border-strong bg-surface px-3.5 py-2.5 text-sm text-text placeholder:text-muted outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/15";
+
+function TextInput({ className = "", ...props }) {
+  return <input {...props} className={`${FIELD_INPUT} ${className}`} />;
 }
 
 const CONTACTS_TABLE_PAGE_SIZE = 20;
@@ -66,7 +75,7 @@ function contactInitials(first, last) {
 
 function sectionHeading(icon, text) {
   return (
-    <div className="col-span-2 mt-1 flex items-center gap-2 border-b border-border pb-2 text-[11px] font-extrabold uppercase tracking-wide text-brand first:mt-0">
+    <div className="mt-1 flex items-center gap-2 border-b border-border pb-2 text-[11px] font-bold uppercase tracking-wide text-muted first:mt-0 sm:col-span-2">
       {icon}
       {text}
     </div>
@@ -168,64 +177,70 @@ function ContactFormModal({ open, onClose, contact, onSaved }) {
   return (
     <Modal open={open} onClose={onClose} title={contact ? "Edit contact" : "New contact"} width="max-w-2xl">
       {detailLoading ? (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           {Array.from({ length: 8 }).map((_, index) => (
-            <Skeleton key={index} className="h-[52px]" />
+            <Skeleton key={index} className="h-10" />
           ))}
         </div>
       ) : (
-        <form onSubmit={submit} className="grid grid-cols-2 gap-3">
+        <form onSubmit={submit} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {sectionHeading(<ContactRound size={13} />, "Personal information")}
 
           <label className={fieldLabel()}>
-            First name<span className="text-danger">*</span>
-            <Input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} autoFocus required />
+            <span>
+              First name <span className="text-danger">*</span>
+            </span>
+            <TextInput
+              value={form.firstName}
+              onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+              autoFocus
+              required
+              placeholder="Jane"
+            />
           </label>
           <label className={fieldLabel()}>
-            Last name
-            <Input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} />
+            <span>Last name</span>
+            <TextInput value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} placeholder="Cooper" />
           </label>
           <label className={fieldLabel()}>
-            Nickname
-            <Input value={form.nickname} onChange={(e) => setForm({ ...form, nickname: e.target.value })} />
+            <span>Nickname</span>
+            <TextInput value={form.nickname} onChange={(e) => setForm({ ...form, nickname: e.target.value })} />
           </label>
           <label className={fieldLabel()}>
-            Email
-            <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            <span>Email</span>
+            <TextInput type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="jane@company.com" />
           </label>
-          <label className={`${fieldLabel()} col-span-2`}>
-            Company
-            <Input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
+          <label className={`${fieldLabel()} sm:col-span-2`}>
+            <span>Company</span>
+            <TextInput value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
           </label>
           <label className={fieldLabel()}>
             <span className="flex items-center gap-1.5">
-              <Briefcase size={12} />
-              Job title
+              <Briefcase size={12} /> Job title
             </span>
-            <Input value={form.jobTitle} onChange={(e) => setForm({ ...form, jobTitle: e.target.value })} />
+            <TextInput value={form.jobTitle} onChange={(e) => setForm({ ...form, jobTitle: e.target.value })} />
           </label>
           <label className={fieldLabel()}>
-            Birthdate
+            <span>Birthdate</span>
             <DatePicker value={form.birthdate} onChange={(value) => setForm({ ...form, birthdate: value })} placeholder="Select date" />
           </label>
-          <label className={`${fieldLabel()} col-span-2`}>
+          <label className={`${fieldLabel()} sm:col-span-2`}>
             <span className="flex items-center gap-1.5">
-              <Globe size={12} />
-              Website
+              <Globe size={12} /> Website
             </span>
-            <Input value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} placeholder="https://example.com" />
+            <TextInput value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} placeholder="https://example.com" />
           </label>
 
           {sectionHeading(
             <Phone size={13} />,
-            <>
-              Phone numbers<span className="text-danger">*</span>
-            </>
+            <span>
+              Phone numbers <span className="text-danger">*</span>
+            </span>
           )}
-          <div className="col-span-2 flex flex-col gap-2">
+          <div className="flex flex-col gap-2 sm:col-span-2">
             {form.phones.map((phone, index) => (
               <div key={index} className="flex items-center gap-2">
-                <Input
+                <TextInput
                   value={phone.number}
                   onChange={(e) => updatePhone(index, { number: e.target.value })}
                   placeholder="+1 (555) 000-0000"
@@ -255,9 +270,9 @@ function ContactFormModal({ open, onClose, contact, onSaved }) {
           </div>
 
           {sectionHeading(<MapPin size={13} />, "Addresses")}
-          <div className="col-span-2 flex flex-col gap-3">
+          <div className="flex flex-col gap-3 sm:col-span-2">
             {form.addresses.map((address, index) => (
-              <div key={index} className="flex flex-col gap-2 rounded-xl border border-border p-3">
+              <div key={index} className="flex flex-col gap-2 rounded-lg border border-border bg-surface-2 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <Select
                     className="w-32"
@@ -275,25 +290,25 @@ function ContactFormModal({ open, onClose, contact, onSaved }) {
                     <Trash2 size={14} />
                   </button>
                 </div>
-                <Input
+                <TextInput
                   value={address.line1}
                   onChange={(e) => updateAddress(index, { line1: e.target.value })}
                   placeholder="Address line 1"
                 />
-                <Input
+                <TextInput
                   value={address.line2}
                   onChange={(e) => updateAddress(index, { line2: e.target.value })}
                   placeholder="Address line 2 (optional)"
                 />
                 <div className="grid grid-cols-2 gap-2">
-                  <Input value={address.city} onChange={(e) => updateAddress(index, { city: e.target.value })} placeholder="City" />
-                  <Input value={address.state} onChange={(e) => updateAddress(index, { state: e.target.value })} placeholder="State" />
-                  <Input
+                  <TextInput value={address.city} onChange={(e) => updateAddress(index, { city: e.target.value })} placeholder="City" />
+                  <TextInput value={address.state} onChange={(e) => updateAddress(index, { state: e.target.value })} placeholder="State" />
+                  <TextInput
                     value={address.postalCode}
                     onChange={(e) => updateAddress(index, { postalCode: e.target.value })}
                     placeholder="Postal code"
                   />
-                  <Input
+                  <TextInput
                     value={address.country}
                     onChange={(e) => updateAddress(index, { country: e.target.value })}
                     placeholder="Country"
@@ -306,8 +321,9 @@ function ContactFormModal({ open, onClose, contact, onSaved }) {
             </Button>
           </div>
 
-          {sectionHeading(null, "Source")}
-          <label className="col-span-2">
+          {sectionHeading(null, "Source & notes")}
+          <label className={fieldLabel()}>
+            <span>Source</span>
             <Select
               isSearchable={false}
               options={SOURCE_OPTIONS}
@@ -315,25 +331,29 @@ function ContactFormModal({ open, onClose, contact, onSaved }) {
               onChange={(option) => setForm({ ...form, source: option.value })}
             />
           </label>
-
-          {sectionHeading(null, "Notes")}
-          <label className="col-span-2">
+          <div className="hidden sm:block" />
+          <label className={`${fieldLabel()} sm:col-span-2`}>
+            <span>Notes</span>
             <textarea
               rows={3}
               value={form.notes}
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
               placeholder="Any additional notes…"
-              className="w-full rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-sm text-text outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/20"
+              className={TEXTAREA_INPUT}
             />
           </label>
 
-          {error && <div className="col-span-2 rounded-lg bg-danger-soft px-3 py-2 text-xs font-medium text-danger">{error}</div>}
+          {error && (
+            <div className="rounded-lg border border-danger/30 bg-danger-soft px-3 py-2 text-xs font-medium text-danger sm:col-span-2">
+              {error}
+            </div>
+          )}
 
-          <div className="col-span-2 mt-1 flex justify-end gap-2 border-t border-border pt-4">
-            <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+          <div className="mt-1 flex justify-end gap-2 border-t border-border pt-4 sm:col-span-2">
+            <Button type="button" variant="ghost" size="sm" onClick={onClose} disabled={busy}>
               Cancel
             </Button>
-            <Button type="submit" size="sm" icon={Plus} loading={busy}>
+            <Button type="submit" size="sm" loading={busy}>
               {contact ? "Save changes" : "Save contact"}
             </Button>
           </div>
