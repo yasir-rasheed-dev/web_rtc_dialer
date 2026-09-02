@@ -236,8 +236,13 @@ function BackToReports({ onClick }) {
 // Single "Reports" nav destination: a 3-card hub (Inbound/Outbound/
 // Performance) that swaps in the chosen report inline via local state,
 // rather than each report getting its own top-level sidebar entry.
-export default function ReportsHub() {
+export default function ReportsHub({ session } = {}) {
   const [view, setView] = useState("hub");
+  // Toll-Free reporting is a Super Admin-controlled tenant feature — the
+  // backend's toll-free routes already 403 when can_use_toll_free is off
+  // (tollFreeRoutes.js's requireTenantFeature), so match that here: hide
+  // the card and never render the report when the workspace lacks it.
+  const canUseTollFree = session?.tenant?.canUseTollFree !== false;
 
   if (view === "inbound") {
     return (
@@ -266,7 +271,7 @@ export default function ReportsHub() {
     );
   }
 
-  if (view === "tollfree") {
+  if (view === "tollfree" && canUseTollFree) {
     return (
       <div className="flex flex-col gap-4">
         <BackToReports onClick={() => setView("hub")} />
@@ -295,12 +300,14 @@ export default function ReportsHub() {
           description="Calls placed, filterable by agent, duration and connection status — exportable to PDF or Excel."
           onClick={() => setView("outbound")}
         />
-        <ReportCard
-          icon={Headset}
-          title="Toll-Free Report"
-          description="Per-number call volume, live queue status and the full call list for each toll-free number."
-          onClick={() => setView("tollfree")}
-        />
+        {canUseTollFree && (
+          <ReportCard
+            icon={Headset}
+            title="Toll-Free Report"
+            description="Per-number call volume, live queue status and the full call list for each toll-free number."
+            onClick={() => setView("tollfree")}
+          />
+        )}
         <ReportCard
           icon={Timer}
           title="Performance Report"

@@ -309,7 +309,7 @@ function TenantApp() {
         />
       );
     }
-    if (page === "reports") return <LazyReportsHub />;
+    if (page === "reports") return <LazyReportsHub session={session} />;
     if (page === "users") return <LazyUsersAdmin permissions={session.permissions || []} />;
     if (page === "teams") return <LazyTeamsAdmin />;
     if (page === "roles") return <LazyRolesAdmin permissions={session.permissions || []} tenant={session.tenant || {}} />;
