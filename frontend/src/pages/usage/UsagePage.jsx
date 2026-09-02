@@ -1,33 +1,21 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { DollarSign, PhoneCall, Users, Wallet } from "lucide-react";
 
-import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
+import KpiCard from "../../components/ui/KpiCard";
 import PageHeader from "../../components/ui/PageHeader";
+import { CHART_COLORS, HBarList } from "../../components/ui/Charts";
 import { SkeletonCards } from "../../components/ui/Skeleton";
 import { api } from "../../lib/api";
 
-function shiftMonth(monthStr, delta) {
-  const [year, month] = monthStr.split("-").map(Number);
-  const date = new Date(Date.UTC(year, month - 1 + delta, 1));
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
-}
-
 function formatMonthLabel(monthStr) {
   const [year, month] = monthStr.split("-").map(Number);
-  return new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(new Date(Date.UTC(year, month - 1, 1)));
-}
-
-// Just the total consumed — the plan's assigned/limit figure isn't shown
-// here per feedback, so this is a plain used-minutes readout, not a
-// progress-toward-limit bar.
-function UsageBar({ label, used }) {
-  return (
-    <div className="flex items-center justify-between text-sm">
-      <span className="text-muted">{label}</span>
-      <span className="font-semibold text-text">{used.toLocaleString()} min</span>
-    </div>
+  return new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(
+    new Date(Date.UTC(year, month - 1, 1))
   );
 }
+
+const money = (n) => `$${Number(n || 0).toFixed(2)}`;
 
 export default function UsagePage() {
   const currentMonth = new Date().toISOString().slice(0, 7);
@@ -49,78 +37,122 @@ export default function UsagePage() {
     load(month);
   }, [month, load]);
 
+  const monthOptions = useMemo(() => {
+    const out = [];
+    const now = new Date();
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+      const value = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+      out.push({ value, label: formatMonthLabel(value) });
+    }
+    return out;
+  }, []);
+
   const usage = payload?.usage || {};
   const limits = payload?.limits || {};
+  const seats = payload?.activeUsers || 0;
+  const pricePerUser = Number(payload?.pricePerUser || 0);
   const seatBill = Number(payload?.estimatedSeatRevenue || 0);
-  const isCurrentMonth = month === currentMonth;
+
+  const utilBars = [
+    { label: "Seats used", value: seats, max: limits.maxUsers || undefined, color: CHART_COLORS.accent },
+    {
+      label: "Outbound minutes",
+      value: Number(usage.outboundMinutes || 0),
+      max: limits.outboundMinutes || undefined,
+      color: CHART_COLORS.blue
+    },
+    {
+      label: "Inbound minutes",
+      value: Number(usage.inboundMinutes || 0),
+      max: limits.inboundMinutes || undefined,
+      color: CHART_COLORS.blue
+    }
+  ];
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <PageHeader
         eyebrow="SUBSCRIPTION USAGE"
         title="Usage & Billing"
-        description={payload?.planName ? `Plan: ${payload.planName}` : "Minutes, seats and monthly billing for this workspace."}
+        description={
+          payload?.planName ? `Plan: ${payload.planName}` : "Minutes, seats and monthly billing for this workspace."
+        }
         actions={
-          <div className="flex items-center gap-2 rounded-xl border border-border bg-surface-2 px-2 py-1.5">
-            <Button size="sm" variant="ghost" onClick={() => setMonth((m) => shiftMonth(m, -1))}>
-              ←
-            </Button>
-            <span className="min-w-[130px] text-center text-sm font-semibold text-text">{formatMonthLabel(month)}</span>
-            <Button size="sm" variant="ghost" disabled={isCurrentMonth} onClick={() => setMonth((m) => shiftMonth(m, 1))}>
-              →
-            </Button>
-          </div>
+          <select
+            value={month}
+            onChange={(e) => setMonth(e.target.value)}
+            className="h-9 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-text focus:border-border-strong focus:outline-none focus:ring-2 focus:ring-ring/40"
+          >
+            {monthOptions.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+                {o.value === currentMonth ? " (current)" : ""}
+              </option>
+            ))}
+          </select>
         }
       />
 
-      {error && <div className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>}
+      {error && (
+        <div className="rounded-lg border border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>
+      )}
 
       {loading ? (
         <SkeletonCards count={4} />
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Card>
-              <p className="text-xs font-medium uppercase tracking-wide text-muted">Active seats</p>
-              <p className="mt-1 text-2xl font-bold text-text">{payload?.activeUsers || 0}</p>
-              <p className="mt-1 text-xs text-muted">Limit {limits.maxUsers ?? "Unlimited"} · owner excluded</p>
-            </Card>
-            <Card>
-              <p className="text-xs font-medium uppercase tracking-wide text-muted">Price per user</p>
-              <p className="mt-1 text-2xl font-bold text-text">${Number(payload?.pricePerUser || 0).toFixed(2)}</p>
-              <p className="mt-1 text-xs text-muted">per month</p>
-            </Card>
-            <Card>
-              <p className="text-xs font-medium uppercase tracking-wide text-muted">Calls this month</p>
-              <p className="mt-1 text-2xl font-bold text-text">{usage.calls || 0}</p>
-              <p className="mt-1 text-xs text-muted">{formatMonthLabel(month)}</p>
-            </Card>
-            <Card>
-              <p className="text-xs font-medium uppercase tracking-wide text-brand">Total bill</p>
-              <p className="mt-1 text-2xl font-bold text-brand">${seatBill.toFixed(2)}</p>
-              <p className="mt-1 text-xs text-muted">{payload?.activeUsers || 0} seats × ${Number(payload?.pricePerUser || 0).toFixed(2)}</p>
-            </Card>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <KpiCard
+              label="Active seats"
+              value={seats}
+              detail={`Limit ${limits.maxUsers ?? "∞"} · owner excluded`}
+              icon={Users}
+              tone="blue"
+            />
+            <KpiCard label="Price per user" value={money(pricePerUser)} detail="per month" icon={DollarSign} tone="neutral" />
+            <KpiCard
+              label="Calls this month"
+              value={(usage.calls || 0).toLocaleString()}
+              detail={formatMonthLabel(month)}
+              icon={PhoneCall}
+              tone="purple"
+            />
+            <KpiCard
+              label="Total bill"
+              value={money(seatBill)}
+              detail={`${seats} seat${seats === 1 ? "" : "s"} × ${money(pricePerUser)}`}
+              icon={Wallet}
+              tone="green"
+            />
           </div>
 
-          <Card title="Minutes usage" description="Included in your plan for this billing month">
-            <div className="flex flex-col gap-4">
-              <UsageBar label="Outbound minutes" used={usage.outboundMinutes || 0} />
-              <UsageBar label="Inbound minutes" used={usage.inboundMinutes || 0} />
-            </div>
-          </Card>
+          <div className="grid gap-4 lg:grid-cols-[1.5fr_1fr]">
+            <Card title="Plan utilization" description={`Consumed vs your plan allowance — ${formatMonthLabel(month)}`}>
+              <HBarList items={utilBars} emptyLabel="No plan limits configured" />
+              <p className="mt-4 border-t border-border pt-3 text-[11px] text-muted">
+                Bars turn orange when usage goes over the plan allowance.
+              </p>
+            </Card>
 
-          <Card title="Monthly bill breakdown" description={formatMonthLabel(month)}>
-            <div className="flex flex-col divide-y divide-border text-sm">
-              <div className="flex items-center justify-between py-2.5">
-                <span className="text-muted">Seats ({payload?.activeUsers || 0} × ${Number(payload?.pricePerUser || 0).toFixed(2)})</span>
-                <span className="font-semibold text-text">${seatBill.toFixed(2)}</span>
+            <Card title="Monthly bill" description={formatMonthLabel(month)}>
+              <div className="flex flex-col divide-y divide-border text-sm">
+                <div className="flex items-center justify-between py-2.5">
+                  <span className="text-muted">
+                    Seats ({seats} × {money(pricePerUser)})
+                  </span>
+                  <span className="font-semibold tabular-nums text-text">{money(seatBill)}</span>
+                </div>
+                <div className="flex items-center justify-between py-3 text-base font-bold">
+                  <span className="text-text">Total</span>
+                  <span className="tabular-nums text-brand">{money(seatBill)}</span>
+                </div>
               </div>
-              <div className="flex items-center justify-between py-2.5 text-base font-bold">
-                <span className="text-text">Total</span>
-                <span className="text-brand">${seatBill.toFixed(2)}</span>
-              </div>
-            </div>
-          </Card>
+              <p className="mt-3 text-[11px] leading-relaxed text-muted">
+                Seat-based billing only — call minutes included in the plan are not metered here.
+              </p>
+            </Card>
+          </div>
         </>
       )}
     </div>
