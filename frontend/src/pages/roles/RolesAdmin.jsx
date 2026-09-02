@@ -5,7 +5,6 @@ import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import DataTable from "../../components/ui/DataTable";
 import EmptyState from "../../components/ui/EmptyState";
-import Input from "../../components/ui/Input";
 import Modal from "../../components/ui/Modal";
 import PageHeader from "../../components/ui/PageHeader";
 import StatusBadge from "../../components/ui/StatusBadge";
@@ -52,6 +51,11 @@ function groupPermissions(permissions, tenant = {}) {
       return groups;
     }, {});
 }
+
+// Same field look as the Team Chat "Create group" modal — flat white input,
+// 1px border, medium radius, soft focus ring.
+const FIELD_INPUT =
+  "h-9 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text placeholder:text-muted focus:border-border-strong focus:outline-none focus:ring-2 focus:ring-ring/40";
 
 function CategoryBlock({ category, items, selected, onToggle, onToggleAll }) {
   const on = items.filter((i) => selected.has(i.key)).length;
@@ -163,11 +167,23 @@ function RoleFormModal({ open, onClose, role, grouped, onSaved }) {
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
             Role name<span className="text-danger">*</span>
-            <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus required />
+            <input
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              autoFocus
+              required
+              placeholder="e.g. Senior Agent"
+              className={FIELD_INPUT}
+            />
           </label>
           <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
             Description
-            <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+            <input
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              placeholder="Optional"
+              className={FIELD_INPUT}
+            />
           </label>
         </div>
 
@@ -178,7 +194,7 @@ function RoleFormModal({ open, onClose, role, grouped, onSaved }) {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Filter privileges…"
-              className="h-9 w-full rounded-lg border border-border bg-surface pl-8 pr-3 text-sm text-text placeholder:text-muted focus:border-border-strong focus:outline-none focus:ring-2 focus:ring-ring/40"
+              className={`${FIELD_INPUT} pl-8`}
             />
           </div>
           <span className="shrink-0 text-xs font-medium text-muted">
