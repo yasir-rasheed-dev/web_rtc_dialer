@@ -1,6 +1,17 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { FileAudio, PlayCircle, RefreshCw, Voicemail, X } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronsUpDown,
+  ChevronUp,
+  FileAudio,
+  PhoneIncoming,
+  PhoneOutgoing,
+  PlayCircle,
+  RefreshCw,
+  Voicemail,
+  X
+} from "lucide-react";
 
 import AudioPlayer from "../../components/ui/AudioPlayer";
 import Card from "../../components/ui/Card";
@@ -75,6 +86,36 @@ export default function CallLogsPage({ permissions = [], onVoicemailHeard }) {
   const [error, setError] = useState("");
   const [audio, setAudio] = useState(null);
   const [playingId, setPlayingId] = useState(null);
+  const [callSort, setCallSort] = useState(null); // { key, dir }
+
+  // Client-side sort of just the current page — the server owns paging and
+  // filtering; this only reorders the ~25 rows already on screen.
+  const otherParty = (call) => (call.direction === "OUTBOUND" ? call.to_number : call.from_number) || "";
+  const SORT_VALUE = {
+    number: otherParty,
+    agent: (c) => c.agent_name || c.agent_sip_username || "",
+    direction: (c) => c.direction || "",
+    status: (c) => (c.answered_at ? 1 : 0),
+    duration: (c) => Number(c.billable_sec) || 0,
+    started: (c) => c.started_at || ""
+  };
+  const sortedRows = useMemo(() => {
+    if (!callSort) return result.rows;
+    const get = SORT_VALUE[callSort.key] || (() => "");
+    return [...result.rows].sort((a, b) => {
+      const av = get(a);
+      const bv = get(b);
+      const cmp = typeof av === "number" ? av - bv : String(av).localeCompare(String(bv));
+      return callSort.dir === "desc" ? -cmp : cmp;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result.rows, callSort]);
+  const toggleCallSort = (key) =>
+    setCallSort((cur) => {
+      if (!cur || cur.key !== key) return { key, dir: "asc" };
+      if (cur.dir === "asc") return { key, dir: "desc" };
+      return null;
+    });
 
   const [vmResult, setVmResult] = useState({ rows: [], total: 0, page: 1, pageSize: 25 });
   const [vmLoading, setVmLoading] = useState(false);
@@ -300,62 +341,116 @@ export default function CallLogsPage({ permissions = [], onVoicemailHeard }) {
         </Card>
       ) : (
         <Card compact title="Call records" description={`${result.total} matching records`}>
-          <div className="overflow-x-auto">
-            {loading ? (
-              <SkeletonTable rows={6} cols={8} />
-            ) : (
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-border text-[11px] font-semibold uppercase tracking-wide text-muted">
-                    <th className="pb-2 pr-4">Started</th>
-                    <th className="pb-2 pr-4">Agent</th>
-                    <th className="pb-2 pr-4">Direction</th>
-                    <th className="pb-2 pr-4">From</th>
-                    <th className="pb-2 pr-4">To</th>
-                    <th className="pb-2 pr-4">Status</th>
-                    <th className="pb-2 pr-4">Talk time</th>
-                    <th className="pb-2">Recording</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.rows.map((call) => (
-                    <tr key={call.id} className="border-b border-border/60 last:border-0">
-                      <td className="py-2 pr-4 text-muted">{formatDate(call.started_at)}</td>
-                      <td className="py-2 pr-4">
-                        <p className="font-medium text-text">{call.agent_name || call.agent_sip_username || "—"}</p>
-                        {call.agent_sip_username && <p className="text-xs text-muted">{call.agent_sip_username}</p>}
-                      </td>
-                      <td className="py-2 pr-4">
-                        <StatusBadge tone="brand">{call.direction}</StatusBadge>
-                      </td>
-                      <td className="py-2 pr-4 text-muted">{call.from_number || "—"}</td>
-                      <td className="py-2 pr-4 text-muted">{call.to_number || "—"}</td>
-                      <td className="py-2 pr-4">
-                        <StatusBadge tone={call.answered_at ? "success" : "neutral"}>{call.status}</StatusBadge>
-                      </td>
-                      <td className="py-2 pr-4 text-muted">{formatSeconds(call.billable_sec)}</td>
-                      <td className="py-2">
-                        {call.recording_name && canPlayRecordings ? (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            icon={PlayCircle}
-                            loading={playingId === call.id}
-                            onClick={() => play(call)}
-                          >
-                            Play
-                          </Button>
-                        ) : (
-                          <span className="text-xs text-muted">—</span>
-                        )}
-                      </td>
+          {loading ? (
+            <SkeletonTable rows={6} cols={7} />
+          ) : sortedRows.length ? (
+            <div className="overflow-hidden rounded-lg border border-border">
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="bg-surface-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
+                      {[
+                        ["number", "Number"],
+                        ["agent", "Agent"],
+                        ["direction", "Direction"],
+                        ["status", "Status"],
+                        ["duration", "Duration"],
+                        ["started", "Date & time"],
+                        [null, "Recording"]
+                      ].map(([key, label]) => {
+                        const active = callSort?.key === key;
+                        return (
+                          <th key={label} className="h-10 whitespace-nowrap px-4 text-left font-semibold">
+                            {key ? (
+                              <button
+                                type="button"
+                                onClick={() => toggleCallSort(key)}
+                                className={"inline-flex items-center gap-1 transition-colors hover:text-text " + (active ? "text-text" : "")}
+                              >
+                                {label}
+                                {active ? (
+                                  callSort.dir === "asc" ? <ChevronUp size={13} /> : <ChevronDown size={13} />
+                                ) : (
+                                  <ChevronsUpDown size={13} className="opacity-50" />
+                                )}
+                              </button>
+                            ) : (
+                              label
+                            )}
+                          </th>
+                        );
+                      })}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-            {!loading && !result.rows.length && <EmptyState title="No matching calls" />}
-          </div>
+                  </thead>
+                  <tbody>
+                    {sortedRows.map((call) => {
+                      const connected = Boolean(call.answered_at);
+                      const outbound = call.direction === "OUTBOUND";
+                      const agentName = call.agent_name || call.agent_sip_username || "—";
+                      return (
+                        <tr key={call.id} className="border-t border-border transition-colors hover:bg-surface-2">
+                          <td className="whitespace-nowrap px-4 py-3 font-semibold tabular-nums text-text">
+                            {otherParty(call) || "—"}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="flex items-center gap-2.5">
+                              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand/10 text-[11px] font-bold text-brand">
+                                {agentName.slice(0, 1).toUpperCase()}
+                              </span>
+                              <span className="min-w-0">
+                                <span className="block truncate text-text">{agentName}</span>
+                                {call.agent_sip_username && (
+                                  <span className="block truncate text-[11px] text-muted">{call.agent_sip_username}</span>
+                                )}
+                              </span>
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={"inline-flex items-center gap-1.5 font-medium " + (outbound ? "text-brand" : "text-accent")}>
+                              {outbound ? <PhoneOutgoing size={14} /> : <PhoneIncoming size={14} />}
+                              {outbound ? "Outbound" : "Inbound"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            {connected ? (
+                              <span className="inline-flex items-center gap-1.5 rounded-full bg-success-soft px-2 py-0.5 text-[11px] font-semibold text-success">
+                                <span className="h-1.5 w-1.5 rounded-full bg-success" /> Connected
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-3 px-2 py-0.5 text-[11px] font-semibold text-muted">
+                                <span className="h-1.5 w-1.5 rounded-full bg-muted" /> {call.status || "No answer"}
+                              </span>
+                            )}
+                          </td>
+                          <td className={"whitespace-nowrap px-4 py-3 tabular-nums " + (connected ? "font-semibold text-success" : "text-muted")}>
+                            {connected ? formatSeconds(call.billable_sec) : "—"}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-3 text-muted">{formatDate(call.started_at)}</td>
+                          <td className="px-4 py-3">
+                            {call.recording_name && canPlayRecordings ? (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                icon={PlayCircle}
+                                loading={playingId === call.id}
+                                onClick={() => play(call)}
+                              >
+                                Play
+                              </Button>
+                            ) : (
+                              <span className="text-muted/60">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <EmptyState title="No matching calls" />
+          )}
           <Pagination result={result} load={(page) => load(page, tab, filters)} />
         </Card>
       )}
