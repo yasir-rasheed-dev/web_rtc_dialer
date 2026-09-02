@@ -522,32 +522,69 @@ export function CreateSetupModal({ open, onClose, plans, tenants = [], onCreated
   );
 }
 
-const initialPlan = {
+const emptyPlanForm = {
   name: "",
   code: "",
+  description: "",
   pricePerUser: "45",
   maxUsers: "10",
   outboundMinutes: "10000",
   inboundMinutes: "10000",
   unlimitedUsers: false,
   unlimitedOutbound: false,
-  unlimitedInbound: false
+  unlimitedInbound: false,
+  active: true
 };
 
-export function CreatePlanModal({ open, onClose, onCreated }) {
-  const [form, setForm] = useState(initialPlan);
+function planToForm(plan) {
+  return {
+    name: plan.name || "",
+    code: plan.code || "",
+    description: plan.description || "",
+    pricePerUser: String(plan.price_per_user ?? 0),
+    maxUsers: plan.max_users == null ? "" : String(plan.max_users),
+    outboundMinutes: plan.outbound_minutes == null ? "" : String(plan.outbound_minutes),
+    inboundMinutes: plan.inbound_minutes == null ? "" : String(plan.inbound_minutes),
+    unlimitedUsers: plan.max_users == null,
+    unlimitedOutbound: plan.outbound_minutes == null,
+    unlimitedInbound: plan.inbound_minutes == null,
+    active: Boolean(plan.active)
+  };
+}
+
+/**
+ * Create OR edit a pricing plan. Pass `plan` to edit (POST /super-admin/plans
+ * vs PATCH /super-admin/plans/:id). `code` is immutable once created.
+ */
+export function PlanModal({ open, onClose, onSaved, plan = null }) {
+  const editing = Boolean(plan);
+  const [form, setForm] = useState(emptyPlanForm);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  useEffect(() => {
+    if (!open) return;
+    setForm(plan ? planToForm(plan) : emptyPlanForm);
+    setError("");
+  }, [open, plan]);
+
   const submit = async (event) => {
     event.preventDefault();
+    if (!form.name.trim()) {
+      setError("Plan name is required.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
-      await superApi("/super-admin/plans", { method: "POST", body: form });
-      notifySuccess(`Plan "${form.name}" created`);
-      setForm(initialPlan);
-      onCreated();
+      if (editing) {
+        await superApi(`/super-admin/plans/${plan.id}`, { method: "PATCH", body: form });
+        notifySuccess(`Plan "${form.name}" updated`);
+      } else {
+        await superApi("/super-admin/plans", { method: "POST", body: form });
+        notifySuccess(`Plan "${form.name}" created`);
+      }
+      onSaved();
       onClose();
     } catch (e) {
       setError(e.message);
@@ -557,57 +594,94 @@ export function CreatePlanModal({ open, onClose, onCreated }) {
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Add pricing plan" width="max-w-lg">
+    <Modal open={open} onClose={onClose} title={editing ? "Edit pricing plan" : "Add pricing plan"} width="max-w-lg">
       <form onSubmit={submit} className="flex flex-col gap-4">
-        {error && <div className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>}
+        {error && (
+          <div className="rounded-lg border border-danger/30 bg-danger-soft px-4 py-2.5 text-sm text-danger">{error}</div>
+        )}
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className={fieldLabelClass()}>
+            Plan name
+            <Input autoFocus value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          </label>
+          <label className={fieldLabelClass()}>
+            Code
+            {editing ? (
+              <span className={`${FIELD_CLASS} flex items-center font-mono text-muted`}>{form.code || "—"}</span>
+            ) : (
+              <Input
+                value={form.code}
+                onChange={(e) => setForm({ ...form, code: slugify(e.target.value) })}
+                placeholder="starter"
+              />
+            )}
+          </label>
+        </div>
+
         <label className={fieldLabelClass()}>
-          Plan name
-          <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+          Description
+          <Input
+            value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+            placeholder="Who this plan is for"
+          />
         </label>
-        <label className={fieldLabelClass()}>
-          Code
-          <Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="starter" />
-        </label>
-        <label className={fieldLabelClass()}>
+
+        <label className={`${fieldLabelClass()} sm:w-1/2`}>
           Price per user / month
-          <Input type="number" min="0" step="0.01" value={form.pricePerUser} onChange={(e) => setForm({ ...form, pricePerUser: e.target.value })} />
+          <Input
+            type="number"
+            min="0"
+            step="0.01"
+            value={form.pricePerUser}
+            onChange={(e) => setForm({ ...form, pricePerUser: e.target.value })}
+          />
         </label>
-        <div className="flex items-end gap-3">
-          <label className={`${fieldLabelClass()} flex-1`}>
-            Max users
-            <Input type="number" min="0" disabled={form.unlimitedUsers} value={form.maxUsers} onChange={(e) => setForm({ ...form, maxUsers: e.target.value })} />
-          </label>
-          <label className="flex items-center gap-2 pb-2.5 text-xs font-medium text-muted">
-            <Toggle checked={form.unlimitedUsers} onChange={(v) => setForm({ ...form, unlimitedUsers: v })} label="Unlimited users" />
-            Unlimited
-          </label>
+
+        <div className="rounded-lg border border-border p-4">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">Included per month</p>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <LimitField
+              label="Max users"
+              value={form.maxUsers}
+              unlimited={form.unlimitedUsers}
+              onValue={(v) => setForm({ ...form, maxUsers: v })}
+              onUnlimited={(v) => setForm({ ...form, unlimitedUsers: v })}
+              min="1"
+            />
+            <LimitField
+              label="Outbound minutes"
+              value={form.outboundMinutes}
+              unlimited={form.unlimitedOutbound}
+              onValue={(v) => setForm({ ...form, outboundMinutes: v })}
+              onUnlimited={(v) => setForm({ ...form, unlimitedOutbound: v })}
+            />
+            <LimitField
+              label="Inbound minutes"
+              value={form.inboundMinutes}
+              unlimited={form.unlimitedInbound}
+              onValue={(v) => setForm({ ...form, inboundMinutes: v })}
+              onUnlimited={(v) => setForm({ ...form, unlimitedInbound: v })}
+            />
+          </div>
         </div>
-        <div className="flex items-end gap-3">
-          <label className={`${fieldLabelClass()} flex-1`}>
-            Outbound minutes
-            <Input type="number" min="0" disabled={form.unlimitedOutbound} value={form.outboundMinutes} onChange={(e) => setForm({ ...form, outboundMinutes: e.target.value })} />
-          </label>
-          <label className="flex items-center gap-2 pb-2.5 text-xs font-medium text-muted">
-            <Toggle checked={form.unlimitedOutbound} onChange={(v) => setForm({ ...form, unlimitedOutbound: v })} label="Unlimited outbound" />
-            Unlimited
-          </label>
-        </div>
-        <div className="flex items-end gap-3">
-          <label className={`${fieldLabelClass()} flex-1`}>
-            Inbound minutes
-            <Input type="number" min="0" disabled={form.unlimitedInbound} value={form.inboundMinutes} onChange={(e) => setForm({ ...form, inboundMinutes: e.target.value })} />
-          </label>
-          <label className="flex items-center gap-2 pb-2.5 text-xs font-medium text-muted">
-            <Toggle checked={form.unlimitedInbound} onChange={(v) => setForm({ ...form, unlimitedInbound: v })} label="Unlimited inbound" />
-            Unlimited
-          </label>
-        </div>
-        <div className="flex justify-end gap-2 pt-1">
-          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
+
+        {editing && (
+          <ToggleRow
+            title="Active"
+            description="Inactive plans stay attached to their setups but are hidden when creating new ones."
+          >
+            <Toggle checked={form.active} onChange={(v) => setForm({ ...form, active: v })} label="Plan active" />
+          </ToggleRow>
+        )}
+
+        <div className="flex justify-end gap-2 border-t border-border pt-4">
+          <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
           <Button type="submit" loading={busy}>
-            Add plan
+            {editing ? "Save changes" : "Add plan"}
           </Button>
         </div>
       </form>
