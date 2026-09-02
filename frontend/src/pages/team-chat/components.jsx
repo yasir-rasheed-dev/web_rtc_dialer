@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 import { Hash, X, Trash2, Download, Pencil } from "lucide-react";
 import { motion } from "framer-motion";
+import Modal from "../../components/ui/Modal";
+import Button from "../../components/ui/Button";
 import { fmtSize, isImage, forceDownload, attachTypeIcon } from "./helpers";
 
 /* ─── In-App Notification ────────────────────────────── */
@@ -29,52 +31,28 @@ export function InAppNotifToast({ notif, onDismiss, onOpen }) {
 }
 
 /* ─── Delete Confirm Modal ───────────────────────────── */
-export function DeleteConfirmModal({ isMe, isDark, onDeleteForMe, onDeleteForEveryone, onCancel }) {
-  const overlayBg = isDark ? "rgba(0,0,0,0.70)" : "rgba(0,0,0,0.45)";
-  const modalBg   = isDark ? "rgba(17,17,24,0.98)" : "#fff";
-  const modalBord = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)";
-  const titleClr  = isDark ? "#f0f0f5" : "#111";
-  const subClr    = isDark ? "#6b6b7b" : "#6b7280";
-  const divClr    = isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.07)";
-  const cancelBg  = isDark ? "rgba(255,255,255,0.06)" : "#f6f7f9";
-  const cancelBord= isDark ? "rgba(255,255,255,0.09)" : "rgba(0,0,0,0.10)";
-  const cancelClr = isDark ? "#a0a0b0" : "#6b6b7b";
-  const meBg      = isDark ? "rgba(255,255,255,0.05)" : "#f6f7f9";
-  const meBord    = isDark ? "rgba(255,255,255,0.09)" : "rgba(0,0,0,0.09)";
-  const meClr     = isDark ? "#a0a0b0" : "#374151";
+export function DeleteConfirmModal({ open = true, isMe, onDeleteForMe, onDeleteForEveryone, onCancel }) {
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      style={{ position: "fixed", inset: 0, zIndex: 99999, display: "flex", alignItems: "center", justifyContent: "center", background: overlayBg, backdropFilter: "blur(6px)" }}
-      onClick={(e) => e.target === e.currentTarget && onCancel()}>
-      <motion.div initial={{ scale: 0.90, opacity: 0, y: 16 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.90, opacity: 0, y: 16 }} transition={{ type: "spring", stiffness: 300, damping: 28 }}
-        style={{ width: 316, background: modalBg, borderRadius: 14, border: `1px solid ${modalBord}`, boxShadow: isDark ? "0 24px 64px rgba(0,0,0,0.70)" : "0 24px 64px rgba(0,0,0,0.18)", overflow: "hidden" }}>
-        <div style={{ padding: "20px 20px 14px", borderBottom: `1px solid ${divClr}` }}>
-          <div style={{ width: 38, height: 38, borderRadius: 10, background: "rgba(239,68,68,0.10)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
-            <Trash2 size={20} color="#ef4444" />
-          </div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: titleClr, marginBottom: 5, letterSpacing: "-0.2px" }}>Delete Message</div>
-          <div style={{ fontSize: 13, color: subClr, lineHeight: 1.5 }}>
-            {isMe ? "How would you like to delete this message?" : "This will remove the message for you only."}
-          </div>
-        </div>
-        <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
-          {isMe && (
-            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={onDeleteForEveryone}
-              style={{ width: "100%", padding: "10px 14px", borderRadius: 9, border: "1px solid rgba(239,68,68,0.30)", background: "rgba(239,68,68,0.08)", color: "#ef4444", fontWeight: 700, fontSize: 13.5, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 10 }}>
-              <Trash2 size={15} color="#ef4444" /> Delete for Everyone
-            </motion.button>
-          )}
-          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={onDeleteForMe}
-            style={{ width: "100%", padding: "10px 14px", borderRadius: 9, border: `1px solid ${meBord}`, background: meBg, color: meClr, fontWeight: 600, fontSize: 13.5, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 10 }}>
-            <X size={15} color={meClr} /> Delete for Me
-          </motion.button>
-          <button onClick={onCancel}
-            style={{ width: "100%", padding: "9px 14px", borderRadius: 9, border: `1px solid ${cancelBord}`, background: cancelBg, color: cancelClr, fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
-            Cancel
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
+    <Modal open={open} onClose={onCancel} title="Delete message">
+      <p className="text-sm leading-relaxed text-muted">
+        {isMe
+          ? "Remove this message from your own view, or delete it for everyone in the chat?"
+          : "This removes the message from your view only."}
+      </p>
+      <div className="mt-5 flex flex-wrap justify-end gap-2">
+        <Button variant="secondary" size="sm" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button variant={isMe ? "secondary" : "danger"} size="sm" onClick={onDeleteForMe}>
+          Delete for me
+        </Button>
+        {isMe && (
+          <Button variant="danger" size="sm" icon={Trash2} onClick={onDeleteForEveryone}>
+            Delete for everyone
+          </Button>
+        )}
+      </div>
+    </Modal>
   );
 }
 

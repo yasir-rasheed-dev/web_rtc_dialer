@@ -819,13 +819,13 @@ export default function TeamChat({ session }) {
         .tc-drop-sub{font-size:13px;color:${isDark?"#6666a0":"#7c7cb8"};font-weight:500}
       `}</style>
 
-      <AnimatePresence>
-        {deleteTarget && (
-          <DeleteConfirmModal isMe={deleteTarget.isMe} isDark={isDark}
-            onDeleteForMe={deleteForMe} onDeleteForEveryone={deleteForEveryone}
-            onCancel={() => setDeleteTarget(null)} />
-        )}
-      </AnimatePresence>
+      <DeleteConfirmModal
+        open={!!deleteTarget}
+        isMe={deleteTarget?.isMe}
+        onDeleteForMe={deleteForMe}
+        onDeleteForEveryone={deleteForEveryone}
+        onCancel={() => setDeleteTarget(null)}
+      />
 
       <div style={{ position: "fixed", bottom: 20, right: 20, zIndex: 9999, display: "flex", flexDirection: "column", gap: 10, alignItems: "flex-end", pointerEvents: "none" }}>
         <AnimatePresence mode="popLayout">
