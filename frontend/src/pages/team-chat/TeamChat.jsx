@@ -59,11 +59,11 @@ export default function TeamChat({ session }) {
   const convTime        = isDark ? "#3a3a52" : "#ccc";
   const noList          = isDark ? "#33334a" : "#ccc";
   const tabColor        = isDark ? "#44445a" : "#aaa";
-  const tabActive       = isDark ? "#818cf8" : "#4f46e5";
+  const tabActive       = isDark ? "#818cf8" : "#0684BC";
   const tabBorder       = isDark ? "#1e1e2a" : "#f0f0f0";
   const sidebarTitle    = isDark ? "#e8e8f0" : "#111";
   const newBtnBg        = isDark ? "#1e1e30" : "#f0f4ff";
-  const newBtnColor     = isDark ? "#818cf8" : "#4f46e5";
+  const newBtnColor     = isDark ? "#818cf8" : "#0684BC";
   const newBtnHover     = isDark ? "#26263c" : "#e0e7ff";
   const headerName      = isDark ? "#e8e8f0" : "#111";
   const headerSub       = isDark ? "#55556a" : "#aaa";
@@ -72,11 +72,11 @@ export default function TeamChat({ session }) {
   const iconBtnHoverC   = isDark ? "#c0c0d8" : "#333";
   const attachBtn       = isDark ? "#44445a" : "#999";
   const attachBtnHoverBg= isDark ? "#1e1e30" : "#f0f4ff";
-  const attachBtnHoverC = isDark ? "#818cf8" : "#4f46e5";
+  const attachBtnHoverC = isDark ? "#818cf8" : "#0684BC";
   const bubbleThem      = isDark ? "#1e1e2e" : "#fff";
   const bubbleThemC     = isDark ? "#d8d8f0" : "#222";
   const bubbleThemShadow= isDark ? "0 1px 3px rgba(0,0,0,0.40)" : "0 1px 3px rgba(0,0,0,.07)";
-  const senderName      = isDark ? "#818cf8" : "#4f46e5";
+  const senderName      = isDark ? "#818cf8" : "#0684BC";
   const dateSepBg       = isDark ? "#1e1e2e" : "#f0f0f0";
   const dateSepColor    = isDark ? "#44445a" : "#ccc";
   const skelBg1         = isDark ? "#1a1a24" : "#f0f0f0";
@@ -97,8 +97,8 @@ export default function TeamChat({ session }) {
   const sectionLabel    = isDark ? "#33334a" : "#bbb";
   const canvasItemH6    = isDark ? "#e8e8f0" : "#111";
   const canvasItemP     = isDark ? "#44445a" : "#aaa";
-  const sendBtnBg       = "#4f46e5";
-  const sendBtnHover    = "#4338ca";
+  const sendBtnBg       = "#0684BC";
+  const sendBtnHover    = "#056a99";
 
   /* ── State ── */
   const [firebaseReady, setFirebaseReady]         = useState(false);
@@ -677,7 +677,7 @@ export default function TeamChat({ session }) {
   if (!firebaseReady) {
     return (
       <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
-        <Loader size={20} color="#4f46e5" style={{ animation: "spin 0.8s linear infinite" }} />
+        <Loader size={20} color="#0684BC" style={{ animation: "spin 0.8s linear infinite" }} />
         <span style={{ fontSize: 13, color: isDark ? "#a0a0b8" : "#6b7280" }}>Connecting to Team Chat…</span>
       </div>
     );
@@ -696,28 +696,28 @@ export default function TeamChat({ session }) {
         @keyframes tc-check{from{stroke-dashoffset:24}to{stroke-dashoffset:0}}
         .tc-sidebar{width:300px;min-width:280px;background:${sidebarBg};border-right:1px solid ${sidebarBorder};display:flex;flex-direction:column;height:100%;flex-shrink:0;transition:background 0.2s,border-color 0.2s}
         .tc-sidebar-header{padding:20px 18px 14px;border-bottom:1px solid ${sidebarBorder};display:flex;align-items:center;justify-content:space-between}
-        .tc-sidebar-title{font-size:20px;font-weight:600;color:${sidebarTitle};letter-spacing:-.4px}
+        .tc-sidebar-title{font-size:17px;font-weight:600;color:${sidebarTitle};letter-spacing:-.2px}
         .tc-new-btn{width:34px;height:34px;border-radius:50%;border:none;background:${newBtnBg};color:${newBtnColor};cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s;margin-left:6px}
         .tc-new-btn:hover{background:${newBtnHover}}
         .tc-tabs{display:flex;border-bottom:1px solid ${tabBorder};padding:0 12px;gap:4px}
-        .tc-tab{flex:1;padding:11px 0;font-size:13.5px;font-weight:500;color:${tabColor};background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;transition:color .15s,border-color .15s;display:flex;align-items:center;justify-content:center;gap:6px}
+        .tc-tab{flex:1;padding:11px 0;font-size:13px;font-weight:500;color:${tabColor};background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;transition:color .15s,border-color .15s;display:flex;align-items:center;justify-content:center;gap:6px}
         .tc-tab.active{color:${tabActive};border-bottom-color:${tabActive}}
         .tc-search-wrap{padding:10px 14px;position:relative}
-        .tc-search{width:100%;background:${searchBg};border:1.5px solid transparent;border-radius:10px;padding:8px 12px 8px 36px;font-size:13px;color:${searchColor};outline:none;transition:border-color .15s,background .15s;font-family:'DM Sans',sans-serif}
+        .tc-search{width:100%;background:${searchBg};border:1.5px solid transparent;border-radius:8px;padding:8px 12px 8px 36px;font-size:13px;color:${searchColor};outline:none;transition:border-color .15s,background .15s;font-family:'DM Sans',sans-serif}
         .tc-search:focus{background:${searchBgFocus};border-color:${searchBorder}}
         .tc-search-icon{position:absolute;left:24px;top:50%;transform:translateY(-50%);color:${searchIcon};pointer-events:none}
         .tc-conv-list{flex:1;overflow-y:auto;padding:6px 8px 12px;scrollbar-width:thin;scrollbar-color:${isDark?"#1e1e2a":"#eee"} transparent}
-        .tc-conv-item{display:flex;align-items:center;gap:11px;padding:10px 11px;border-radius:12px;cursor:pointer;transition:background .12s}
+        .tc-conv-item{display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:9px;cursor:pointer;transition:background .12s}
         .tc-conv-item:hover{background:${convItemHover}}
         .tc-conv-item.active{background:${convItemActive}}
-        .tc-avatar{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;font-size:14px;flex-shrink:0}
-        .tc-avatar.group{background:linear-gradient(135deg,#0ea5e9 0%,#6366f1 100%)}
+        .tc-avatar{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#0684BC 0%,#0aa2d6 100%);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;font-size:14px;flex-shrink:0}
+        .tc-avatar.group{background:linear-gradient(135deg,#23a6d4 0%,#0684BC 100%)}
         .tc-avatar.sm{width:40px;height:40px;font-size:13px}
         .tc-conv-info{flex:1;min-width:0}
-        .tc-conv-name{font-size:13.5px;font-weight:500;color:${convName};white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-        .tc-conv-last{font-size:12px;color:${convLast};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
-        .tc-conv-time{font-size:10.5px;color:${convTime};font-family:'DM Mono',monospace;flex-shrink:0}
-        .tc-badge{background:#4f46e5;color:#fff;font-size:10px;font-weight:700;min-width:18px;height:18px;border-radius:9px;padding:0 5px;display:inline-flex;align-items:center;justify-content:center}
+        .tc-conv-name{font-size:14px;font-weight:500;color:${convName};white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .tc-conv-last{font-size:12.5px;color:${convLast};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+        .tc-conv-time{font-size:11px;color:${convTime};font-family:'DM Mono',monospace;flex-shrink:0}
+        .tc-badge{background:#0684BC;color:#fff;font-size:10px;font-weight:700;min-width:18px;height:18px;border-radius:9px;padding:0 5px;display:inline-flex;align-items:center;justify-content:center}
         .tc-tab-badge{background:#ef4444;color:#fff;font-size:9px;font-weight:700;min-width:16px;height:16px;border-radius:8px;padding:0 4px;display:inline-flex;align-items:center;justify-content:center}
         .tc-main{flex:1;display:flex;flex-direction:column;background:${mainBg};min-width:0;transition:background 0.2s}
         .tc-chat-header{background:${headerBg};border-bottom:1px solid ${headerBorder};padding:13px 20px;display:flex;align-items:center;gap:13px;transition:background 0.2s}
@@ -727,32 +727,32 @@ export default function TeamChat({ session }) {
         .tc-header-sub.online{color:#22c55e;font-weight:500}
         .tc-icon-btn{width:36px;height:36px;border-radius:50%;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:${iconBtn};transition:background .12s,color .12s}
         .tc-icon-btn:hover{background:${iconBtnHover};color:${iconBtnHoverC}}
-        .tc-messages-area{flex:1;overflow-y:auto;padding:20px 24px;display:flex;flex-direction:column;gap:3px;scrollbar-width:thin;scrollbar-color:${isDark?"#1e1e2a":"#e0e0e0"} transparent;opacity:0;transition:opacity .25s ease}
+        .tc-messages-area{flex:1;overflow-y:auto;padding:16px 28px;display:flex;flex-direction:column;gap:2px;scrollbar-width:thin;scrollbar-color:${isDark?"#1e1e2a":"#e0e0e0"} transparent;opacity:0;transition:opacity .25s ease}
         .tc-messages-area.visible{opacity:1}
         .tc-loading-wrap{flex:1;display:flex;flex-direction:column;gap:14px;padding:24px;justify-content:flex-end}
         .tc-skel{height:38px;border-radius:16px;background:linear-gradient(90deg,${skelBg1} 25%,${skelBg2} 50%,${skelBg1} 75%);background-size:200% 100%;animation:tcShimmer 1.4s infinite}
         .tc-date-sep{text-align:center;margin:14px 0 10px}
         .tc-date-sep span{font-size:11px;color:${dateSepColor};background:${dateSepBg};padding:3px 12px;border-radius:20px;font-weight:500}
-        .tc-system-msg{align-self:center;max-width:78%;margin:8px auto;padding:6px 12px;border-radius:999px;background:${isDark?"rgba(255,255,255,0.06)":"#eef2ff"};color:${isDark?"#a5b4fc":"#4338ca"};font-size:11.5px;font-weight:700;text-align:center;line-height:1.45}
-        .tc-msg-row{display:flex;margin-bottom:1px;align-items:flex-end;gap:6px}
+        .tc-system-msg{align-self:center;max-width:78%;margin:10px auto;padding:5px 12px;border-radius:999px;background:${isDark?"rgba(255,255,255,0.06)":"#e6f4fb"};color:${isDark?"#7cc5e0":"#056a99"};font-size:12px;font-weight:600;text-align:center;line-height:1.45}
+        .tc-msg-row{display:flex;margin-bottom:2px;align-items:flex-end;gap:6px}
         .tc-msg-row.me{justify-content:flex-end}
         .tc-msg-row.them{justify-content:flex-start}
-        .tc-bubble{max-width:62%;padding:10px 14px;border-radius:18px;font-size:13.5px;line-height:1.55;word-break:break-word;white-space:pre-wrap}
-        .tc-bubble.me{background:#4f46e5;color:#fff;border-bottom-right-radius:4px}
-        .tc-bubble.them{background:${bubbleThem};color:${bubbleThemC};border-bottom-left-radius:4px;box-shadow:${bubbleThemShadow}}
+        .tc-bubble{max-width:66%;padding:8px 13px;border-radius:14px;font-size:14px;line-height:1.5;word-break:break-word;white-space:pre-wrap}
+        .tc-bubble.me{background:#0684BC;color:#fff;border-bottom-right-radius:5px}
+        .tc-bubble.them{background:${bubbleThem};color:${bubbleThemC};border-bottom-left-radius:5px;box-shadow:${bubbleThemShadow}}
         .tc-bubble.deleted{background:${isDark?"#1a1a24":"#f3f4f6"} !important;border:1px dashed ${isDark?"#2a2a3a":"#d1d5db"} !important;box-shadow:none !important}
-        .tc-sender-name{font-size:11px;font-weight:700;margin-bottom:4px;color:${senderName}}
-        .tc-msg-time{font-size:10px;margin-top:4px;text-align:right;opacity:.5;font-family:'DM Mono',monospace}
+        .tc-sender-name{font-size:11.5px;font-weight:600;margin-bottom:3px;color:${senderName}}
+        .tc-msg-time{font-size:10.5px;margin-top:3px;text-align:right;opacity:.55;font-family:'DM Mono',monospace}
         .tc-footer{background:${footerBg};border-top:1px solid ${footerBorder};padding:10px 16px 12px;position:relative;transition:background 0.2s}
         .tc-attach-list{display:flex;flex-direction:column;gap:5px;padding:8px 0 10px;max-height:210px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:${isDark?"#1e1e2a":"#eee"} transparent}
         .tc-attach-list::-webkit-scrollbar{width:3px}
         .tc-attach-list::-webkit-scrollbar-thumb{background:${isDark?"#1e1e2a":"#eee"};border-radius:4px}
         .tc-upload-header{display:flex;align-items:center;justify-content:space-between;padding:0 2px 6px;font-size:11px;font-weight:600;color:${isDark?"#55556a":"#9ca3af"};letter-spacing:.04em}
-        .tc-input-row{display:flex;align-items:center;gap:8px;background:${inputRowBg};border:1.5px solid transparent;border-radius:14px;padding:5px 7px 5px 12px;transition:border-color .15s,background .15s}
+        .tc-input-row{display:flex;align-items:center;gap:8px;background:${inputRowBg};border:1.5px solid transparent;border-radius:10px;padding:5px 7px 5px 12px;transition:border-color .15s,background .15s}
         .tc-input-row:focus-within{background:${inputRowBgFocus};border-color:${inputRowBorder}}
         .tc-input-row.edit-mode{border-color:${isDark?"rgba(250,204,21,0.35)":"rgba(234,179,8,0.4)"};background:${isDark?"rgba(250,204,21,0.05)":"rgba(254,252,232,0.8)"}}
         .tc-input-row.edit-mode:focus-within{border-color:${isDark?"rgba(250,204,21,0.55)":"rgba(234,179,8,0.6)"}}
-        .tc-text-input{flex:1;background:transparent;border:none;outline:none;font-size:13.5px;color:${textInput};padding:7px 0;font-family:'DM Sans',sans-serif;resize:none;overflow-y:auto;max-height:120px;min-height:36px;line-height:1.55}
+        .tc-text-input{flex:1;background:transparent;border:none;outline:none;font-size:14px;color:${textInput};padding:7px 0;font-family:'DM Sans',sans-serif;resize:none;overflow-y:auto;max-height:120px;min-height:36px;line-height:1.5}
         .tc-text-input::placeholder{color:${textInputPH}}
         .tc-attach-btn{width:32px;height:32px;border-radius:9px;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:${attachBtn};transition:background .12s,color .12s}
         .tc-attach-btn:hover{background:${attachBtnHoverBg};color:${attachBtnHoverC}}
@@ -767,8 +767,8 @@ export default function TeamChat({ session }) {
         .tc-empty-icon{width:72px;height:72px;border-radius:50%;background:${emptyIconBg};display:flex;align-items:center;justify-content:center;margin-bottom:18px}
         .tc-empty h3{font-size:17px;font-weight:600;color:${emptyH3};margin:0 0 8px}
         .tc-empty p{font-size:13px;color:${emptyP};max-width:240px;line-height:1.6;margin:0 0 20px}
-        .tc-start-btn{display:flex;align-items:center;gap:7px;padding:9px 18px;background:#4f46e5;color:#fff;border:none;border-radius:10px;font-size:13.5px;font-weight:500;cursor:pointer;transition:background .15s;font-family:'DM Sans',sans-serif}
-        .tc-start-btn:hover{background:#4338ca}
+        .tc-start-btn{display:flex;align-items:center;gap:7px;padding:9px 18px;background:#0684BC;color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:500;cursor:pointer;transition:background .15s;font-family:'DM Sans',sans-serif}
+        .tc-start-btn:hover{background:#056a99}
         .tc-canvas-overlay{position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:100;display:flex;justify-content:flex-end}
         .tc-canvas{width:340px;height:100%;background:${canvasBg};display:flex;flex-direction:column;box-shadow:-8px 0 32px rgba(0,0,0,${isDark?".40":".12"})}
         .tc-canvas-header{padding:20px 18px 16px;border-bottom:1px solid ${sidebarBorder};display:flex;align-items:center;justify-content:space-between}
@@ -791,16 +791,16 @@ export default function TeamChat({ session }) {
         .tc-edit-bar{display:flex;align-items:center;gap:8px;padding:6px 4px 8px;font-size:12px;color:${isDark?"#ca8a04":"#92400e"}}
         .tc-details-overlay{position:fixed;inset:0;background:rgba(0,0,0,.30);z-index:120;display:flex;justify-content:flex-end}
         .tc-details-panel{width:380px;max-width:92vw;height:100%;background:${canvasBg};box-shadow:-12px 0 36px rgba(0,0,0,${isDark?".42":".14"});display:flex;flex-direction:column;border-left:1px solid ${sidebarBorder}}
-        .tc-detail-row{display:flex;align-items:center;gap:11px;padding:12px 14px;border-radius:14px;background:${isDark?"#16161f":"#f8fafc"};border:1px solid ${isDark?"#242436":"#edf2f7"}}
+        .tc-detail-row{display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:10px;background:${isDark?"#16161f":"#f8fafc"};border:1px solid ${isDark?"#242436":"#edf2f7"}}
         .tc-detail-label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:${sectionLabel};margin-bottom:3px}
         .tc-detail-value{font-size:13.5px;font-weight:650;color:${headerName};word-break:break-word}
-        .tc-member-row{display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:14px;transition:background .12s}
+        .tc-member-row{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;transition:background .12s}
         .tc-member-row:hover{background:${canvasItemH}}
         .tc-action-chip{border:none;border-radius:999px;padding:6px 9px;font-size:11.5px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:5px}
-        .tc-setting-card{padding:14px;border-radius:16px;background:${isDark?"#16161f":"#f8fafc"};border:1px solid ${isDark?"#242436":"#edf2f7"}}
-        .tc-drop-overlay{position:absolute;inset:0;z-index:60;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:${isDark?"rgba(12,12,18,0.88)":"rgba(240,244,255,0.92)"};backdrop-filter:blur(4px);border:2.5px dashed #4f46e5;border-radius:0;pointer-events:none;animation:tc-drop-in .15s ease}
+        .tc-setting-card{padding:13px;border-radius:10px;background:${isDark?"#16161f":"#f8fafc"};border:1px solid ${isDark?"#242436":"#edf2f7"}}
+        .tc-drop-overlay{position:absolute;inset:0;z-index:60;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:${isDark?"rgba(12,12,18,0.88)":"rgba(240,244,255,0.92)"};backdrop-filter:blur(4px);border:2.5px dashed #0684BC;border-radius:0;pointer-events:none;animation:tc-drop-in .15s ease}
         @keyframes tc-drop-in{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}
-        .tc-drop-icon{width:72px;height:72px;border-radius:20px;background:rgba(79,70,229,0.14);display:flex;align-items:center;justify-content:center}
+        .tc-drop-icon{width:72px;height:72px;border-radius:20px;background:rgba(6,132,188,0.14);display:flex;align-items:center;justify-content:center}
         .tc-drop-title{font-size:17px;font-weight:700;color:${isDark?"#e0e0f8":"#2d2b6e"};letter-spacing:-.2px}
         .tc-drop-sub{font-size:13px;color:${isDark?"#6666a0":"#7c7cb8"};font-weight:500}
       `}</style>
@@ -887,7 +887,7 @@ export default function TeamChat({ session }) {
           {isDragOver && selectedChat && !editState && (
             <div className="tc-drop-overlay">
               <div className="tc-drop-icon">
-                <Paperclip size={30} color="#4f46e5" />
+                <Paperclip size={30} color="#0684BC" />
               </div>
               <div className="tc-drop-title">Drop files to send</div>
               <div className="tc-drop-sub">Single or multiple files supported</div>
@@ -1028,7 +1028,7 @@ export default function TeamChat({ session }) {
             </>
           ) : (
             <div className="tc-empty">
-              <div className="tc-empty-icon"><MessageCircle size={30} color="#4f46e5" strokeWidth={1.5} /></div>
+              <div className="tc-empty-icon"><MessageCircle size={30} color="#0684BC" strokeWidth={1.5} /></div>
               <h3>Team Chat</h3>
               <p>Select a conversation or start a new one with your team</p>
               <button className="tc-start-btn" onClick={() => setShowCanvas(true)}><Users size={16} /> New Conversation</button>
@@ -1112,28 +1112,28 @@ export default function TeamChat({ session }) {
 
                       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                         <div className="tc-detail-row">
-                          <Info size={17} color="#4f46e5" />
+                          <Info size={17} color="#0684BC" />
                           <div>
                             <div className="tc-detail-label">Name</div>
                             <div className="tc-detail-value">{(profileAgent || selectedChat)?.name || "—"}</div>
                           </div>
                         </div>
                         <div className="tc-detail-row">
-                          <Mail size={17} color="#4f46e5" />
+                          <Mail size={17} color="#0684BC" />
                           <div>
                             <div className="tc-detail-label">Email</div>
                             <div className="tc-detail-value">{(profileAgent || selectedChat)?.email || "—"}</div>
                           </div>
                         </div>
                         <div className="tc-detail-row">
-                          <Phone size={17} color="#4f46e5" />
+                          <Phone size={17} color="#0684BC" />
                           <div>
                             <div className="tc-detail-label">SIP</div>
                             <div className="tc-detail-value">{getAgentSip(profileAgent || selectedChat)}</div>
                           </div>
                         </div>
                         <div className="tc-detail-row">
-                          <Hash size={17} color="#4f46e5" />
+                          <Hash size={17} color="#0684BC" />
                           <div>
                             <div className="tc-detail-label">Assigned DID Number</div>
                             <div className="tc-detail-value">{getAgentDid(profileAgent || selectedChat)}</div>
@@ -1156,7 +1156,7 @@ export default function TeamChat({ session }) {
                       {selectedChat.type === "custom-group" && (
                         <div className="tc-setting-card" style={{ marginBottom: 16 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                            <Settings size={17} color="#4f46e5" />
+                            <Settings size={17} color="#0684BC" />
                             <div style={{ flex: 1 }}>
                               <div style={{ fontSize: 13.5, fontWeight: 800, color: headerName }}>Only admins can send messages</div>
                               <div style={{ fontSize: 12, color: headerSub, marginTop: 2 }}>
@@ -1169,7 +1169,7 @@ export default function TeamChat({ session }) {
                                 checked={!!selectedChat.settings?.onlyAdminsCanSend}
                                 disabled={!iAmSelectedGroupAdmin || adminActionLoading === "only-admin-send"}
                                 onChange={(e) => toggleOnlyAdminsCanSend(e.target.checked)}
-                                style={{ width: 18, height: 18, accentColor: "#4f46e5", cursor: "inherit" }}
+                                style={{ width: 18, height: 18, accentColor: "#0684BC", cursor: "inherit" }}
                               />
                             </label>
                           </div>
@@ -1228,7 +1228,7 @@ export default function TeamChat({ session }) {
                       {selectedChat.type === "custom-group" && iAmSelectedGroupAdmin && (
                         <div className="tc-setting-card" style={{ marginBottom: 16 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                            <UserPlus size={17} color="#4f46e5" />
+                            <UserPlus size={17} color="#0684BC" />
                             <div>
                               <div style={{ fontSize: 13.5, fontWeight: 800, color: headerName }}>Add participants</div>
                               <div style={{ fontSize: 12, color: headerSub, marginTop: 2 }}>Adding a member posts a system message in the chat.</div>
@@ -1259,7 +1259,7 @@ export default function TeamChat({ session }) {
                                     className="tc-action-chip"
                                     onClick={() => addGroupMember(agent)}
                                     disabled={!!adminActionLoading}
-                                    style={{ background: isDark ? "rgba(79,70,229,.16)" : "#eef2ff", color: "#4f46e5" }}
+                                    style={{ background: isDark ? "rgba(6,132,188,.16)" : "#e6f4fb", color: "#0684BC" }}
                                   >
                                     <UserPlus size={12} /> Add
                                   </button>
@@ -1330,7 +1330,7 @@ export default function TeamChat({ session }) {
                                       className="tc-action-chip"
                                       onClick={() => makeGroupAdmin(member)}
                                       disabled={!!adminActionLoading}
-                                      style={{ background: isDark ? "rgba(79,70,229,.16)" : "#eef2ff", color: "#4f46e5" }}
+                                      style={{ background: isDark ? "rgba(6,132,188,.16)" : "#e6f4fb", color: "#0684BC" }}
                                     >
                                       <Crown size={12} /> Make admin
                                     </button>
@@ -1361,59 +1361,59 @@ export default function TeamChat({ session }) {
           {showCreateGroup && (
             <motion.div className="tc-canvas-overlay" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
               onClick={(e) => e.target===e.currentTarget && setShowCreateGroup(false)}
-              style={{ backdropFilter:"blur(8px)", background:isDark?"rgba(5,5,10,0.65)":"rgba(15,23,42,0.45)", zIndex:9999, justifyContent:"center", alignItems:"center" }}>
-              <motion.div initial={{scale:.94,opacity:0,y:20}} animate={{scale:1,opacity:1,y:0}} exit={{scale:.94,opacity:0,y:20}} transition={{type:"spring",stiffness:260,damping:24}}
-                style={{ width:"100%", maxWidth:520, height:"85vh", background: isDark?"rgba(17,17,24,0.98)":"rgba(255,255,255,0.96)", borderRadius:28, overflow:"hidden", display:"flex", flexDirection:"column", boxShadow: isDark?"0 24px 80px rgba(0,0,0,0.60)":"0 24px 80px rgba(0,0,0,0.22)", border: isDark?"1px solid rgba(255,255,255,0.06)":"1px solid rgba(255,255,255,0.5)" }}>
-                <div style={{ padding:"22px 24px 18px", borderBottom:`1px solid ${sidebarBorder}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+              style={{ backdropFilter:"blur(4px)", background:isDark?"rgba(5,5,10,0.6)":"rgba(15,23,42,0.4)", zIndex:9999, justifyContent:"center", alignItems:"center", padding:16 }}>
+              <motion.div initial={{scale:.96,opacity:0,y:14}} animate={{scale:1,opacity:1,y:0}} exit={{scale:.96,opacity:0,y:14}} transition={{type:"spring",stiffness:280,damping:26}}
+                style={{ width:"100%", maxWidth:440, height:"min(84vh,600px)", background: isDark?"#111118":"#fff", borderRadius:16, overflow:"hidden", display:"flex", flexDirection:"column", boxShadow: isDark?"0 20px 60px rgba(0,0,0,0.55)":"0 20px 60px rgba(0,0,0,0.18)", border: `1px solid ${sidebarBorder}` }}>
+                <div style={{ padding:"16px 18px 14px", borderBottom:`1px solid ${sidebarBorder}`, display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:12 }}>
                   <div>
-                    <div style={{ fontSize:21, fontWeight:700, color:headerName, letterSpacing:"-.4px" }}>Create Group</div>
-                    <div style={{ fontSize:13, color:headerSub, marginTop:4 }}>Add teammates and start collaborating</div>
+                    <div style={{ fontSize:16, fontWeight:600, color:headerName, letterSpacing:"-.2px" }}>Create group</div>
+                    <div style={{ fontSize:12.5, color:headerSub, marginTop:3 }}>Name it and pick who's in.</div>
                   </div>
-                  <button onClick={() => setShowCreateGroup(false)} style={{ width:38, height:38, borderRadius:14, border:"none", background: isDark?"#1e1e2a":"#f8fafc", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
-                    <X size={17} color={iconBtn} />
+                  <button onClick={() => setShowCreateGroup(false)} style={{ width:30, height:30, borderRadius:8, border:"none", background: isDark?"#1e1e2a":"#f1f5f9", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                    <X size={16} color={iconBtn} />
                   </button>
                 </div>
-                <div style={{ padding:"18px 24px 0" }}>
-                  <input placeholder="Group name" value={groupName} onChange={(e) => setGroupName(e.target.value)} style={{ width:"100%", height:50, borderRadius:16, border:`1px solid ${isDark?"#2a2a3a":"#e2e8f0"}`, padding:"0 16px", fontSize:14, outline:"none", marginBottom:14, background:isDark?"#1a1a24":"#fff", fontFamily:"DM Sans, sans-serif", color:textInput }} />
+                <div style={{ padding:"14px 18px 0" }}>
+                  <input placeholder="Group name" value={groupName} onChange={(e) => setGroupName(e.target.value)} style={{ width:"100%", height:38, borderRadius:9, border:`1px solid ${isDark?"#2a2a3a":"#e2e8f0"}`, padding:"0 12px", fontSize:13.5, outline:"none", marginBottom:10, background:isDark?"#1a1a24":"#fff", fontFamily:"DM Sans, sans-serif", color:textInput }} />
                   <div style={{ position:"relative" }}>
-                    <Search size={16} style={{ position:"absolute", left:14, top:"50%", transform:"translateY(-50%)", color:searchIcon }} />
-                    <input placeholder="Search participants..." value={participantSearch} onChange={(e) => setParticipantSearch(e.target.value)} style={{ width:"100%", height:50, borderRadius:16, border:`1px solid ${isDark?"#2a2a3a":"#e2e8f0"}`, padding:"0 16px 0 42px", fontSize:14, outline:"none", background:isDark?"#1a1a24":"#fff", fontFamily:"DM Sans, sans-serif", color:textInput }} />
+                    <Search size={14} style={{ position:"absolute", left:11, top:"50%", transform:"translateY(-50%)", color:searchIcon }} />
+                    <input placeholder="Search teammates..." value={participantSearch} onChange={(e) => setParticipantSearch(e.target.value)} style={{ width:"100%", height:38, borderRadius:9, border:`1px solid ${isDark?"#2a2a3a":"#e2e8f0"}`, padding:"0 12px 0 34px", fontSize:13.5, outline:"none", background:isDark?"#1a1a24":"#fff", fontFamily:"DM Sans, sans-serif", color:textInput }} />
                   </div>
                 </div>
                 {selectedParticipants.length > 0 && (
-                  <div style={{ padding:"16px 24px 0" }}>
-                    <div style={{ fontSize:12, fontWeight:700, color:headerSub, textTransform:"uppercase", marginBottom:10, letterSpacing:.5 }}>Selected Members</div>
-                    <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                  <div style={{ padding:"12px 18px 0" }}>
+                    <div style={{ fontSize:10.5, fontWeight:700, color:headerSub, textTransform:"uppercase", marginBottom:7, letterSpacing:.5 }}>{selectedParticipants.length} selected</div>
+                    <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
                       {selectedParticipants.map((p) => (
-                        <div key={p.id} style={{ display:"flex", alignItems:"center", gap:8, background:isDark?"#1e1e30":"#eef2ff", borderRadius:999, padding:"7px 12px 7px 8px" }}>
-                          <div className="tc-avatar sm" style={{ width:28, height:28, fontSize:11 }}>{p.name.substring(0,2).toUpperCase()}</div>
-                          <span style={{ fontSize:12.5, fontWeight:500, color:isDark?"#a5b4fc":"#3730a3" }}>{p.name}</span>
-                          <button onClick={() => setSelectedParticipants((prev) => prev.filter((x) => x.id!==p.id))} style={{ border:"none", background:"transparent", cursor:"pointer", display:"flex", padding:0 }}><X size={14} color="#6366f1" /></button>
+                        <div key={p.id} style={{ display:"flex", alignItems:"center", gap:6, background:isDark?"#12242e":"#e6f4fb", borderRadius:999, padding:"4px 8px 4px 5px" }}>
+                          <div className="tc-avatar sm" style={{ width:20, height:20, fontSize:9 }}>{p.name.substring(0,2).toUpperCase()}</div>
+                          <span style={{ fontSize:12, fontWeight:500, color:isDark?"#7cc5e0":"#065f8c" }}>{p.name}</span>
+                          <button onClick={() => setSelectedParticipants((prev) => prev.filter((x) => x.id!==p.id))} style={{ border:"none", background:"transparent", cursor:"pointer", display:"flex", padding:0 }}><X size={13} color="#0684BC" /></button>
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
-                <div style={{ flex:1, overflowY:"auto", padding:"18px 18px 0" }}>
+                <div style={{ flex:1, overflowY:"auto", padding:"12px 12px 4px", marginTop:4 }}>
                   {agents.filter((a) => a.name.toLowerCase().includes(participantSearch.toLowerCase())).map((agent) => {
                     const sel = selectedParticipants.find((p) => p.id===agent.id);
                     return (
-                      <motion.div key={agent.id} whileTap={{scale:.98}}
+                      <motion.div key={agent.id} whileTap={{scale:.985}}
                         onClick={() => sel ? setSelectedParticipants((p) => p.filter((x) => x.id!==agent.id)) : setSelectedParticipants((p) => [...p,agent])}
-                        style={{ display:"flex", alignItems:"center", gap:14, padding:14, borderRadius:18, cursor:"pointer", marginBottom:8, transition:"all .15s ease", border: sel ? `1px solid ${isDark?"#4f46e5":"#c7d2fe"}` : `1px solid ${isDark?"#1e1e2a":"transparent"}`, background: sel ? (isDark?"#1e1e30":"#eef2ff") : (isDark?"#16161f":"#fff") }}>
-                        <div className="tc-avatar" style={{ width:46, height:46, fontSize:14 }}>{agent.name.substring(0,2).toUpperCase()}</div>
-                        <div style={{ flex:1 }}>
-                          <div style={{ fontSize:14, fontWeight:600, color:canvasItemH6 }}>{agent.name}</div>
-                          <div style={{ fontSize:12, color:headerSub, marginTop:2 }}>Team Member</div>
+                        style={{ display:"flex", alignItems:"center", gap:11, padding:"8px 10px", borderRadius:9, cursor:"pointer", marginBottom:3, transition:"background .12s,border-color .12s", border: `1px solid ${sel ? (isDark?"#0684BC":"#b8e0ef") : "transparent"}`, background: sel ? (isDark?"#12242e":"#e6f4fb") : "transparent" }}>
+                        <div className="tc-avatar" style={{ width:36, height:36, fontSize:12 }}>{agent.name.substring(0,2).toUpperCase()}</div>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:13.5, fontWeight:500, color:canvasItemH6 }}>{agent.name}</div>
+                          <div style={{ fontSize:11.5, color:headerSub, marginTop:1 }}>Team member</div>
                         </div>
-                        <div style={{ width:22, height:22, borderRadius:999, border: sel?`6px solid #4f46e5`:`2px solid ${isDark?"#2a2a3a":"#d1d5db"}`, transition:"all .15s ease" }} />
+                        <div style={{ width:17, height:17, borderRadius:999, transition:"border .12s", border: sel?`5px solid #0684BC`:`1.5px solid ${isDark?"#2a2a3a":"#d1d5db"}` }} />
                       </motion.div>
                     );
                   })}
                 </div>
-                <div style={{ padding:20, borderTop:`1px solid ${sidebarBorder}`, background: isDark?"rgba(17,17,24,0.95)":"linear-gradient(to top,#fff,rgba(255,255,255,.92))", display:"flex", gap:12 }}>
-                  <button onClick={() => setShowCreateGroup(false)} style={{ flex:1, height:50, borderRadius:16, border:`1px solid ${isDark?"#2a2a3a":"#e2e8f0"}`, background:isDark?"#1a1a24":"#fff", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:"DM Sans, sans-serif", color:textInput }}>Cancel</button>
-                  <button onClick={createCustomGroup} disabled={!groupName.trim()||!selectedParticipants.length} style={{ flex:1.2, height:50, borderRadius:16, border:"none", background:!groupName.trim()||!selectedParticipants.length?(isDark?"#2a2a3e":"#cbd5e1"):"#4f46e5", color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer", transition:"all .15s ease", fontFamily:"DM Sans, sans-serif" }}>Create Group</button>
+                <div style={{ padding:"12px 18px", borderTop:`1px solid ${sidebarBorder}`, background: isDark?"#111118":"#fff", display:"flex", gap:10 }}>
+                  <button onClick={() => setShowCreateGroup(false)} style={{ flex:1, height:38, borderRadius:9, border:`1px solid ${isDark?"#2a2a3a":"#e2e8f0"}`, background:"transparent", fontSize:13.5, fontWeight:600, cursor:"pointer", fontFamily:"DM Sans, sans-serif", color:textInput }}>Cancel</button>
+                  <button onClick={createCustomGroup} disabled={!groupName.trim()||!selectedParticipants.length} style={{ flex:1, height:38, borderRadius:9, border:"none", background:!groupName.trim()||!selectedParticipants.length?(isDark?"#2a2a3e":"#cbd5e1"):"#0684BC", color:"#fff", fontSize:13.5, fontWeight:600, cursor:!groupName.trim()||!selectedParticipants.length?"not-allowed":"pointer", transition:"background .15s", fontFamily:"DM Sans, sans-serif" }}>Create group</button>
                 </div>
               </motion.div>
             </motion.div>

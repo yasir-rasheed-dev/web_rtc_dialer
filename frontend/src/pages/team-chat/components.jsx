@@ -12,8 +12,8 @@ export function InAppNotifToast({ notif, onDismiss, onOpen }) {
       exit={{ opacity: 0, x: 60, scale: 0.88 }} transition={{ type: "spring", stiffness: 320, damping: 28 }}
       onClick={() => onOpen(notif)}
       style={{ width: 300, background: "#fff", borderRadius: 16, boxShadow: "0 8px 32px rgba(0,0,0,0.14), 0 0 0 1px rgba(0,0,0,0.06)", padding: "14px 14px 14px 16px", cursor: "pointer", display: "flex", alignItems: "flex-start", gap: 11, position: "relative", overflow: "hidden" }}>
-      <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 4, background: "linear-gradient(180deg,#4f46e5,#7c3aed)", borderRadius: "4px 0 0 4px" }} />
-      <div style={{ width: 38, height: 38, borderRadius: "50%", flexShrink: 0, background: notif.chat?.type !== "individual" ? "linear-gradient(135deg,#0ea5e9,#6366f1)" : "linear-gradient(135deg,#4f46e5,#7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 13, fontWeight: 700 }}>
+      <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 4, background: "linear-gradient(180deg,#0684BC,#0aa2d6)", borderRadius: "4px 0 0 4px" }} />
+      <div style={{ width: 38, height: 38, borderRadius: "50%", flexShrink: 0, background: notif.chat?.type !== "individual" ? "linear-gradient(135deg,#23a6d4,#0684BC)" : "linear-gradient(135deg,#0684BC,#0aa2d6)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 13, fontWeight: 700 }}>
         {notif.chat?.type !== "individual" ? <Hash size={15} /> : (notif.chat?.avatar || "?")}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -23,7 +23,7 @@ export function InAppNotifToast({ notif, onDismiss, onOpen }) {
       <button onClick={(e) => { e.stopPropagation(); onDismiss(notif.id); }} style={{ width: 20, height: 20, border: "none", background: "#f5f5f5", borderRadius: "50%", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
         <X size={10} color="#999" />
       </button>
-      <motion.div initial={{ scaleX: 1 }} animate={{ scaleX: 0 }} transition={{ duration: 5, ease: "linear" }} style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 3, background: "#4f46e5", transformOrigin: "left", borderRadius: "0 0 16px 16px", opacity: 0.35 }} />
+      <motion.div initial={{ scaleX: 1 }} animate={{ scaleX: 0 }} transition={{ duration: 5, ease: "linear" }} style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 3, background: "#0684BC", transformOrigin: "left", borderRadius: "0 0 16px 16px", opacity: 0.35 }} />
     </motion.div>
   );
 }
@@ -47,12 +47,12 @@ export function DeleteConfirmModal({ isMe, isDark, onDeleteForMe, onDeleteForEve
       style={{ position: "fixed", inset: 0, zIndex: 99999, display: "flex", alignItems: "center", justifyContent: "center", background: overlayBg, backdropFilter: "blur(6px)" }}
       onClick={(e) => e.target === e.currentTarget && onCancel()}>
       <motion.div initial={{ scale: 0.90, opacity: 0, y: 16 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.90, opacity: 0, y: 16 }} transition={{ type: "spring", stiffness: 300, damping: 28 }}
-        style={{ width: 320, background: modalBg, borderRadius: 20, border: `1px solid ${modalBord}`, boxShadow: isDark ? "0 24px 64px rgba(0,0,0,0.70)" : "0 24px 64px rgba(0,0,0,0.18)", overflow: "hidden" }}>
+        style={{ width: 316, background: modalBg, borderRadius: 14, border: `1px solid ${modalBord}`, boxShadow: isDark ? "0 24px 64px rgba(0,0,0,0.70)" : "0 24px 64px rgba(0,0,0,0.18)", overflow: "hidden" }}>
         <div style={{ padding: "20px 20px 14px", borderBottom: `1px solid ${divClr}` }}>
-          <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(239,68,68,0.10)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
+          <div style={{ width: 38, height: 38, borderRadius: 10, background: "rgba(239,68,68,0.10)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
             <Trash2 size={20} color="#ef4444" />
           </div>
-          <div style={{ fontSize: 16, fontWeight: 800, color: titleClr, marginBottom: 5, letterSpacing: "-0.2px" }}>Delete Message</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: titleClr, marginBottom: 5, letterSpacing: "-0.2px" }}>Delete Message</div>
           <div style={{ fontSize: 13, color: subClr, lineHeight: 1.5 }}>
             {isMe ? "How would you like to delete this message?" : "This will remove the message for you only."}
           </div>
@@ -60,16 +60,16 @@ export function DeleteConfirmModal({ isMe, isDark, onDeleteForMe, onDeleteForEve
         <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
           {isMe && (
             <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={onDeleteForEveryone}
-              style={{ width: "100%", padding: "11px 16px", borderRadius: 12, border: "1px solid rgba(239,68,68,0.30)", background: "rgba(239,68,68,0.08)", color: "#ef4444", fontWeight: 700, fontSize: 13.5, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 10 }}>
+              style={{ width: "100%", padding: "10px 14px", borderRadius: 9, border: "1px solid rgba(239,68,68,0.30)", background: "rgba(239,68,68,0.08)", color: "#ef4444", fontWeight: 700, fontSize: 13.5, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 10 }}>
               <Trash2 size={15} color="#ef4444" /> Delete for Everyone
             </motion.button>
           )}
           <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={onDeleteForMe}
-            style={{ width: "100%", padding: "11px 16px", borderRadius: 12, border: `1px solid ${meBord}`, background: meBg, color: meClr, fontWeight: 600, fontSize: 13.5, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 10 }}>
+            style={{ width: "100%", padding: "10px 14px", borderRadius: 9, border: `1px solid ${meBord}`, background: meBg, color: meClr, fontWeight: 600, fontSize: 13.5, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 10 }}>
             <X size={15} color={meClr} /> Delete for Me
           </motion.button>
           <button onClick={onCancel}
-            style={{ width: "100%", padding: "10px 16px", borderRadius: 12, border: `1px solid ${cancelBord}`, background: cancelBg, color: cancelClr, fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
+            style={{ width: "100%", padding: "9px 14px", borderRadius: 9, border: `1px solid ${cancelBord}`, background: cancelBg, color: cancelClr, fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
             Cancel
           </button>
         </div>
@@ -99,13 +99,13 @@ export function AttachThumb({ f, onRemove, isDark }) {
     : isVid  ? { icon: "🎬", accentBg: isDark ? "rgba(124,58,237,0.15)" : "#f5f3ff" }
     : isAud  ? { icon: "🎵", accentBg: isDark ? "rgba(8,145,178,0.15)" : "#ecfeff" }
     : isZip  ? { icon: "🗜️", accentBg: isDark ? "rgba(133,77,14,0.15)" : "#fefce8" }
-    :          { icon: "📎", accentBg: isDark ? "rgba(99,102,241,0.15)" : "#eef2ff" };
+    :          { icon: "📎", accentBg: isDark ? "rgba(99,102,241,0.15)" : "#e6f4fb" };
 
   const isUnsupported = f.status === "unsupported";
-  const statusColor = f.status === "done" ? "#16a34a" : f.status === "error" || f.status === "cancelled" ? "#dc2626" : isUnsupported ? "#f59e0b" : "#4f46e5";
+  const statusColor = f.status === "done" ? "#16a34a" : f.status === "error" || f.status === "cancelled" ? "#dc2626" : isUnsupported ? "#f59e0b" : "#0684BC";
   const statusLabel = f.status === "done" ? "Done" : f.status === "error" ? "Failed" : f.status === "cancelled" ? "Cancelled" : isUnsupported ? "Unsupported" : f.status === "uploading" ? `${f.progress}%` : "Waiting…";
 
-  const barColor = f.status === "done" ? "#16a34a" : f.status === "error" || f.status === "cancelled" ? "#dc2626" : isUnsupported ? "#f59e0b" : "#4f46e5";
+  const barColor = f.status === "done" ? "#16a34a" : f.status === "error" || f.status === "cancelled" ? "#dc2626" : isUnsupported ? "#f59e0b" : "#0684BC";
   const barWidth = f.status === "done" || f.status === "error" || f.status === "cancelled" || isUnsupported ? "100%" : `${f.progress}%`;
   const isShimmer = f.status === "uploading";
 
@@ -126,7 +126,7 @@ export function AttachThumb({ f, onRemove, isDark }) {
           : <span style={{ fontSize: 20, lineHeight: 1 }}>{typeInfo.icon}</span>
         }
         {f.status === "uploading" && (
-          <div style={{ position: "absolute", inset: 3, borderRadius: "50%", border: `2px solid ${isDark ? "#1e1e3a" : "#e0e0ff"}`, borderTopColor: "#4f46e5", animation: "tc-spin 0.75s linear infinite", pointerEvents: "none" }} />
+          <div style={{ position: "absolute", inset: 3, borderRadius: "50%", border: `2px solid ${isDark ? "#1e1e3a" : "#d5ecf6"}`, borderTopColor: "#0684BC", animation: "tc-spin 0.75s linear infinite", pointerEvents: "none" }} />
         )}
         {f.status === "done" && (
           <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(22,163,74,0.18)", borderRadius: 10 }}>
@@ -161,7 +161,7 @@ export function AttachThumb({ f, onRemove, isDark }) {
             height: "100%", borderRadius: 99,
             width: barWidth,
             background: isShimmer
-              ? `linear-gradient(90deg, ${isDark ? "#1e1e3a" : "#c7d2fe"} 25%, ${barColor} 50%, ${isDark ? "#1e1e3a" : "#c7d2fe"} 75%)`
+              ? `linear-gradient(90deg, ${isDark ? "#1e1e3a" : "#b8e0ef"} 25%, ${barColor} 50%, ${isDark ? "#1e1e3a" : "#b8e0ef"} 75%)`
               : barColor,
             backgroundSize: isShimmer ? "200% 100%" : undefined,
             animation: isShimmer ? "tc-shimmer 1.2s infinite" : undefined,
@@ -195,7 +195,7 @@ export function MsgAttachView({ att, isMe }) {
           style={{ maxWidth: 220, maxHeight: 200, borderRadius: 10, display: "block", cursor: "pointer" }}
           onClick={handleDownload} />
         <button type="button" onClick={handleDownload}
-          style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: isMe ? "rgba(255,255,255,0.70)" : "#6366f1", marginTop: 4, textDecoration: "none", background: "transparent", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit" }}>
+          style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: isMe ? "rgba(255,255,255,0.70)" : "#0684BC", marginTop: 4, textDecoration: "none", background: "transparent", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit" }}>
           <Download size={11} /> Download
         </button>
       </div>
@@ -207,7 +207,7 @@ export function MsgAttachView({ att, isMe }) {
   return (
     <button type="button" onClick={handleDownload}
       style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, background: isMe ? "rgba(255,255,255,0.15)" : "#f3f4f6", borderRadius: 10, padding: "10px 12px", textDecoration: "none", marginBottom: 6, border: isMe ? "1px solid rgba(255,255,255,0.2)" : "1px solid #e5e7eb", cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
-      <AttachIcon size={20} color={isMe ? "#c7d2fe" : "#6366f1"} />
+      <AttachIcon size={20} color={isMe ? "#b8e0ef" : "#0684BC"} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 12.5, fontWeight: 600, color: isMe ? "#fff" : "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {att.fileName}
@@ -230,7 +230,7 @@ export function MsgBubbleActions({ isMe, msg, onEdit, onDelete, isDark }) {
       {isMe && msg.text && (
         <button title="Edit" onClick={onEdit}
           style={{ ...btnBase, background: isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)", color: isDark ? "#a0a0c0" : "#888" }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = isDark ? "rgba(79,70,229,0.18)" : "rgba(79,70,229,0.10)"; e.currentTarget.style.color = "#4f46e5"; }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = isDark ? "rgba(6,132,188,0.18)" : "rgba(6,132,188,0.10)"; e.currentTarget.style.color = "#0684BC"; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)"; e.currentTarget.style.color = isDark ? "#a0a0c0" : "#888"; }}>
           <Pencil size={12} />
         </button>
