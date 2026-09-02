@@ -364,7 +364,7 @@ function TenantApp() {
         />
         <main
           className="console-main"
-          style={page === "team-chat" ? { padding: 0, maxWidth: "none" } : undefined}
+          style={page === "team-chat" || page === "dialer" ? { padding: 0, maxWidth: "none" } : undefined}
         >
           {!ownerAccount && session.sip && (
             <div style={{ display: page === "dialer" ? "block" : "none" }}>

@@ -1019,11 +1019,11 @@ const addPstnParticipant = () => {
 
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 p-6">
+    <div className="flex h-full min-h-0 flex-col gap-3 p-3 sm:gap-4 sm:p-4">
       <audio ref={remoteAudioRef} autoPlay playsInline />
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[380px_1fr]">
-        <Card animate={false} className="flex min-h-0 flex-col overflow-y-auto !p-4">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto sm:gap-4 lg:grid-cols-[minmax(320px,360px)_1fr] lg:overflow-hidden">
+        <Card animate={false} className="flex flex-col !p-4 lg:min-h-0 lg:overflow-y-auto">
           <div className="mb-2.5 flex items-center justify-between gap-3 border-b border-border pb-2.5">
             <div className="flex min-w-0 items-center gap-2.5">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand/10 text-sm font-bold text-brand">
@@ -1298,7 +1298,7 @@ const addPstnParticipant = () => {
                 }}
                 onDragLeave={() => setDialDragOver(false)}
                 onDrop={handleDialDrop}
-                className={`flex items-center gap-2 rounded-xl border bg-surface-2 px-3.5 py-2.5 transition-colors ${
+                className={`flex items-center gap-2 rounded-lg border bg-surface-2 px-3.5 py-2.5 transition-colors ${
                   dialDragOver ? "border-brand ring-2 ring-brand/20" : "border-border"
                 }`}
               >
@@ -1331,14 +1331,14 @@ const addPstnParticipant = () => {
                   between them; capping the grid's own width and keeping
                   the gap small is what actually gives the tight,
                   handset-style cluster instead. */}
-              <div className="mx-auto grid w-[188px] grid-cols-3 gap-x-2.5 gap-y-2">
+              <div className="mx-auto grid w-[200px] grid-cols-3 gap-2">
                 {KEYPAD.map(([key, letters]) => (
                   <button
                     type="button"
                     key={key}
                     onClick={() => pressKey(key)}
                     aria-label={`Dial ${key}`}
-                    className="flex h-14 w-14 flex-col items-center justify-center rounded-full bg-surface-2 text-text transition-colors hover:bg-surface-3 active:scale-95"
+                    className="flex aspect-square flex-col items-center justify-center rounded-full bg-surface-2 text-text transition-colors hover:bg-surface-3 active:scale-95"
                   >
                     <span className="text-lg font-semibold leading-none">{key}</span>
                     <span className="mt-0.5 text-[8px] font-medium tracking-wide text-muted">{letters || " "}</span>
@@ -1351,9 +1351,9 @@ const addPstnParticipant = () => {
                 onClick={placeCall}
                 disabled={!can("MAKE_CALLS") || !isRegistered || !isValidDialString(dialNumber)}
                 aria-label="Start call"
-                className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-success text-white shadow-[0_10px_24px_-6px_rgb(var(--rn-green)/0.5)] transition-transform hover:scale-105 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
+                className="mx-auto flex h-11 w-[200px] items-center justify-center gap-2 rounded-lg bg-success text-sm font-semibold text-white transition-colors hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                <PhoneCall size={19} />
+                <PhoneCall size={17} /> Call
               </button>
               <p className="text-center text-xs text-muted">
                 {!can("MAKE_CALLS")
@@ -1366,7 +1366,7 @@ const addPstnParticipant = () => {
           )}
         </Card>
 
-        <Card animate={false} className="flex min-h-0 flex-col !p-4">
+        <Card animate={false} className="flex flex-col !p-4 lg:min-h-0">
           <div className="mb-2 flex items-center justify-between gap-2 border-b border-border">
             <div className="flex gap-1">
               {HISTORY_TABS.map((tab) => (
@@ -1395,7 +1395,7 @@ const addPstnParticipant = () => {
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-y-auto">
             {/* The one call in progress, if any — separate from the persisted
                 history below (which only gains an entry once a call ends),
                 so an active/ringing call shows up here the instant it
