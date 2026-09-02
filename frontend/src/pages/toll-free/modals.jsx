@@ -121,7 +121,7 @@ export function CreateCampaignModal({ open, onClose, campaign = null, currentAge
   return (
     <Modal open={open} onClose={onClose} title={isEdit ? "Edit campaign" : "Create toll-free campaign"} width="max-w-lg">
       <div className="flex flex-col gap-4">
-        {error && <div className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>}
+        {error && <div className="rounded-lg border border-danger/30 bg-danger-soft px-4 py-2.5 text-sm text-danger">{error}</div>}
 
         <label className={fieldLabelClass()}>
           Campaign name
@@ -190,7 +190,7 @@ export function CreateCampaignModal({ open, onClose, campaign = null, currentAge
           {active ? "Active — this number rings the roster" : "Inactive — callers hear a busy tone"}
         </label>
 
-        <div className="flex justify-end gap-2 pt-1">
+        <div className="flex justify-end gap-2 border-t border-border pt-4">
           <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
@@ -287,7 +287,7 @@ export function CreateIvrModal({ open, onClose, ivr = null, campaigns, onSaved }
   return (
     <Modal open={open} onClose={onClose} title={isEdit ? "Edit IVR" : "Create IVR"} width="max-w-xl">
       <div className="flex flex-col gap-4">
-        {error && <div className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>}
+        {error && <div className="rounded-lg border border-danger/30 bg-danger-soft px-4 py-2.5 text-sm text-danger">{error}</div>}
 
         <label className={fieldLabelClass()}>
           IVR name
@@ -305,7 +305,7 @@ export function CreateIvrModal({ open, onClose, ivr = null, campaigns, onSaved }
           />
         </label>
 
-        <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface-2 px-4 py-3.5">
+        <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold text-text">Menu options</p>
             <Button type="button" size="sm" variant="secondary" icon={Plus} onClick={() => setOptions((current) => [...current, emptyOption()])}>
@@ -313,7 +313,7 @@ export function CreateIvrModal({ open, onClose, ivr = null, campaigns, onSaved }
             </Button>
           </div>
           {options.map((option) => (
-            <div key={option.key} className="flex flex-col gap-2 rounded-lg border border-border bg-surface px-3 py-3">
+            <div key={option.key} className="flex flex-col gap-2 rounded-lg border border-border bg-surface-2 p-3">
               <div className="flex items-center gap-2">
                 <div className="w-16 shrink-0">
                   <Input
@@ -365,7 +365,7 @@ export function CreateIvrModal({ open, onClose, ivr = null, campaigns, onSaved }
           ))}
         </div>
 
-        <div className="flex justify-end gap-2 pt-1">
+        <div className="flex justify-end gap-2 border-t border-border pt-4">
           <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
             Cancel
           </Button>

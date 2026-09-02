@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Headset, MonitorPlay, Phone, Plus, Trash2, Voicemail } from "lucide-react";
 
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
+import DataTable from "../../components/ui/DataTable";
 import EmptyState from "../../components/ui/EmptyState";
 import PageHeader from "../../components/ui/PageHeader";
-import { SkeletonTable } from "../../components/ui/Skeleton";
 import StatusBadge from "../../components/ui/StatusBadge";
 import Toggle from "../../components/ui/Toggle";
 import { confirmModal } from "../../lib/modal";
@@ -38,6 +38,7 @@ export default function TollFreePage({ permissions = [], isOwner = false }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const [activeTab, setActiveTab] = useState("campaigns");
   const [campaignModal, setCampaignModal] = useState({ open: false, campaign: null, agents: [] });
   const [ivrModal, setIvrModal] = useState({ open: false, ivr: null });
   // Keyed by campaign id -> { waiting, longestWaitSec } | undefined (still
@@ -165,43 +166,164 @@ export default function TollFreePage({ permissions = [], isOwner = false }) {
 
   const unassignedNumbers = numbers.filter((n) => !n.campaign_id);
 
+  const renderQueue = (campaign) => {
+    if (campaign.status !== "ACTIVE") return <span className="text-muted/60">—</span>;
+    const q = queueStatus[campaign.id];
+    if (q === undefined) return <span className="text-xs text-muted">…</span>;
+    if (q.ok === false)
+      return (
+        <span className="text-xs text-muted" title={q.error}>
+          unavailable
+        </span>
+      );
+    if (q.waiting > 0)
+      return (
+        <StatusBadge tone="warning">
+          {q.waiting} waiting · {q.longestWaitSec}s
+        </StatusBadge>
+      );
+    return <span className="text-xs text-muted">0 waiting</span>;
+  };
+
+  const campaignColumns = useMemo(
+    () => [
+      {
+        key: "name",
+        header: "Campaign",
+        sortable: true,
+        cellClassName: "text-text",
+        cell: (c) => <span className="font-medium">{c.name}</span>
+      },
+      { key: "did_number", header: "Number", sortable: true, cell: (c) => <span className="font-mono text-xs">{c.did_number}</span> },
+      {
+        key: "agent_count",
+        header: "Agents",
+        align: "right",
+        sortable: true,
+        cell: (c) => <span className="tabular-nums">{c.agent_count}</span>
+      },
+      { key: "ivr_name", header: "IVR", cell: (c) => c.ivr_name || <span className="text-muted/60">—</span> },
+      {
+        key: "status",
+        header: "Status",
+        sortable: true,
+        cell: (c) =>
+          canManage ? (
+            <div className="flex items-center gap-2">
+              <Toggle checked={c.status === "ACTIVE"} onChange={() => toggleCampaignStatus(c)} label="Campaign active" />
+              <StatusBadge tone={c.status === "ACTIVE" ? "success" : "neutral"}>{c.status}</StatusBadge>
+            </div>
+          ) : (
+            <StatusBadge tone={c.status === "ACTIVE" ? "success" : "neutral"}>{c.status}</StatusBadge>
+          )
+      },
+      { key: "queue", header: "Queue", cell: renderQueue },
+      ...(canManage
+        ? [
+            {
+              key: "actions",
+              header: "",
+              align: "right",
+              cell: (c) => (
+                <div className="flex items-center justify-end gap-1">
+                  <Button size="sm" variant="secondary" onClick={() => openEditCampaign(c)}>
+                    Edit
+                  </Button>
+                  <button
+                    onClick={() => removeCampaign(c)}
+                    className="rounded-lg p-1.5 text-muted hover:bg-danger-soft hover:text-danger"
+                    aria-label={`Delete ${c.name}`}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              )
+            }
+          ]
+        : [])
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [canManage, queueStatus]
+  );
+
+  const ivrColumns = useMemo(
+    () => [
+      {
+        key: "name",
+        header: "IVR menu",
+        sortable: true,
+        cellClassName: "text-text",
+        cell: (v) => <span className="font-medium">{v.name}</span>
+      },
+      {
+        key: "greeting_text",
+        header: "Greeting",
+        cell: (v) => <span className="line-clamp-1 block max-w-md text-muted">{v.greeting_text || "—"}</span>
+      },
+      ...(canManage
+        ? [
+            {
+              key: "actions",
+              header: "",
+              align: "right",
+              cell: (v) => (
+                <div className="flex items-center justify-end gap-1">
+                  <Button size="sm" variant="secondary" onClick={() => openEditIvr(v)}>
+                    Edit
+                  </Button>
+                  <button
+                    onClick={() => removeIvr(v)}
+                    className="rounded-lg p-1.5 text-muted hover:bg-danger-soft hover:text-danger"
+                    aria-label={`Delete ${v.name}`}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              )
+            }
+          ]
+        : [])
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [canManage]
+  );
+
+  const TABS = [
+    { id: "campaigns", label: "Campaigns", icon: Headset, count: campaigns.length },
+    { id: "ivrs", label: "IVRs", icon: Voicemail, count: ivrs.length }
+  ];
+
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <PageHeader
         eyebrow="INBOUND"
         title="Toll-Free"
         description="Buy a toll-free number from Phone Numbers, then build a campaign here — agents, an optional IVR, and Active/Inactive."
         actions={
-          <>
-            {isOwner && (
-              <Button
-                variant="secondary"
-                icon={MonitorPlay}
-                onClick={() =>
-                  // Deliberately no "noopener" feature — same-origin
-                  // window.open() clones sessionStorage (the auth token)
-                  // into the new window at creation time, which is what
-                  // lets it authenticate with no separate login step; that
-                  // only reliably happens when the opener relationship is
-                  // kept intact.
-                  window.open(`${window.location.pathname}#toll-free-live`, "ringnex-toll-free-live", "width=1360,height=880")
-                }
-              >
-                Open Dashboard Mode
-              </Button>
-            )}
-            {canManage && (
-              <Button icon={Plus} onClick={() => setCampaignModal({ open: true, campaign: null, agents: [] })} disabled={!unassignedNumbers.length}>
-                New campaign
-              </Button>
-            )}
-          </>
+          isOwner ? (
+            <Button
+              variant="secondary"
+              icon={MonitorPlay}
+              onClick={() =>
+                // Deliberately no "noopener" feature — same-origin window.open()
+                // clones sessionStorage (the auth token) into the new window at
+                // creation time, which is what lets it authenticate with no
+                // separate login step; that only reliably happens when the
+                // opener relationship is kept intact.
+                window.open(`${window.location.pathname}#toll-free-live`, "ringnex-toll-free-live", "width=1360,height=880")
+              }
+            >
+              Open Dashboard Mode
+            </Button>
+          ) : null
         }
       />
 
-      {error && <div className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>}
+      {error && (
+        <div className="rounded-lg border border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>
+      )}
 
-      {!loading && !numbers.length && (
+      {!loading && !numbers.length ? (
         <Card animate={false}>
           <EmptyState
             icon={Phone}
@@ -209,134 +331,115 @@ export default function TollFreePage({ permissions = [], isOwner = false }) {
             description="Buy one from the Phone Numbers page (choose 'Toll-free' as the type) to start building a campaign."
           />
         </Card>
-      )}
-
-      <Card animate={false} title="Campaigns" description={`${campaigns.length} campaign${campaigns.length === 1 ? "" : "s"}`} icon={Headset}>
-        {loading ? (
-          <SkeletonTable rows={3} cols={7} />
-        ) : campaigns.length ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-border text-[11px] font-semibold uppercase tracking-wide text-muted">
-                  <th className="pb-2 pr-4">Campaign</th>
-                  <th className="pb-2 pr-4">Number</th>
-                  <th className="pb-2 pr-4">Agents</th>
-                  <th className="pb-2 pr-4">IVR</th>
-                  <th className="pb-2 pr-4">Status</th>
-                  <th className="pb-2 pr-4">Queue</th>
-                  <th className="pb-2">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {campaigns.map((campaign) => (
-                  <tr key={campaign.id} className="border-b border-border/60 last:border-0">
-                    <td className="py-3 pr-4 font-medium text-text">{campaign.name}</td>
-                    <td className="py-3 pr-4 text-muted">{campaign.did_number}</td>
-                    <td className="py-3 pr-4 text-muted">{campaign.agent_count}</td>
-                    <td className="py-3 pr-4 text-muted">{campaign.ivr_name || "—"}</td>
-                    <td className="py-3 pr-4">
-                      {canManage ? (
-                        <label className="flex items-center gap-2">
-                          <Toggle checked={campaign.status === "ACTIVE"} onChange={() => toggleCampaignStatus(campaign)} label="Campaign active" />
-                          <StatusBadge tone={campaign.status === "ACTIVE" ? "success" : "neutral"}>{campaign.status}</StatusBadge>
-                        </label>
-                      ) : (
-                        <StatusBadge tone={campaign.status === "ACTIVE" ? "success" : "neutral"}>{campaign.status}</StatusBadge>
-                      )}
-                    </td>
-                    <td className="py-3 pr-4 text-muted">
-                      {campaign.status !== "ACTIVE" ? (
-                        "—"
-                      ) : queueStatus[campaign.id] === undefined ? (
-                        <span className="text-xs">…</span>
-                      ) : queueStatus[campaign.id].ok === false ? (
-                        <span className="text-xs text-muted" title={queueStatus[campaign.id].error}>
-                          unavailable
-                        </span>
-                      ) : queueStatus[campaign.id].waiting > 0 ? (
-                        <StatusBadge tone="warning">
-                          {queueStatus[campaign.id].waiting} waiting · {queueStatus[campaign.id].longestWaitSec}s
-                        </StatusBadge>
-                      ) : (
-                        <span className="text-xs">0 waiting</span>
-                      )}
-                    </td>
-                    <td className="py-3">
-                      {canManage && (
-                        <div className="flex items-center gap-1">
-                          <Button size="sm" variant="secondary" onClick={() => openEditCampaign(campaign)}>
-                            Edit
-                          </Button>
-                          <button
-                            onClick={() => removeCampaign(campaign)}
-                            className="rounded-lg p-1.5 text-muted hover:bg-danger-soft hover:text-danger"
-                            aria-label={`Delete ${campaign.name}`}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <EmptyState
-            icon={Headset}
-            title="No campaigns yet"
-            action={
-              canManage && unassignedNumbers.length ? (
-                <Button size="sm" icon={Plus} onClick={() => setCampaignModal({ open: true, campaign: null, agents: [] })}>
-                  New campaign
-                </Button>
-              ) : undefined
-            }
-          />
-        )}
-      </Card>
-
-      <Card animate={false} title="IVRs" description={`${ivrs.length} menu${ivrs.length === 1 ? "" : "s"}`} icon={Voicemail}>
-        <div className="mb-3 flex justify-end">
-          {canManage && (
-            <Button size="sm" variant="secondary" icon={Plus} onClick={() => setIvrModal({ open: true, ivr: null })}>
-              New IVR
-            </Button>
-          )}
-        </div>
-        {loading ? (
-          <SkeletonTable rows={2} cols={3} />
-        ) : ivrs.length ? (
-          <div className="flex flex-col divide-y divide-border/60">
-            {ivrs.map((ivr) => (
-              <div key={ivr.id} className="flex items-center justify-between gap-3 py-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-text">{ivr.name}</p>
-                  <p className="truncate text-xs text-muted">{ivr.greeting_text}</p>
-                </div>
-                {canManage && (
-                  <div className="flex shrink-0 items-center gap-1">
-                    <Button size="sm" variant="secondary" onClick={() => openEditIvr(ivr)}>
-                      Edit
-                    </Button>
-                    <button
-                      onClick={() => removeIvr(ivr)}
-                      className="rounded-lg p-1.5 text-muted hover:bg-danger-soft hover:text-danger"
-                      aria-label={`Delete ${ivr.name}`}
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border">
+            <div className="flex">
+              {TABS.map((t) => {
+                const on = activeTab === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setActiveTab(t.id)}
+                    className={
+                      "relative -mb-px flex items-center gap-2 border-b-2 px-3.5 py-2.5 text-sm font-medium transition-colors " +
+                      (on ? "border-brand text-text" : "border-transparent text-muted hover:text-text")
+                    }
+                  >
+                    <t.icon size={15} className={on ? "text-brand" : ""} />
+                    {t.label}
+                    <span
+                      className={
+                        "rounded-full px-1.5 text-[11px] font-semibold tabular-nums " +
+                        (on ? "bg-brand/10 text-brand" : "bg-surface-2 text-muted")
+                      }
                     >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
+                      {t.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {canManage && activeTab === "campaigns" && (
+              <Button
+                size="sm"
+                icon={Plus}
+                className="mb-1.5"
+                disabled={!unassignedNumbers.length}
+                onClick={() => setCampaignModal({ open: true, campaign: null, agents: [] })}
+              >
+                New campaign
+              </Button>
+            )}
+            {canManage && activeTab === "ivrs" && (
+              <Button size="sm" icon={Plus} className="mb-1.5" onClick={() => setIvrModal({ open: true, ivr: null })}>
+                New IVR
+              </Button>
+            )}
           </div>
-        ) : (
-          <EmptyState icon={Voicemail} title="No IVRs yet" description="Optional — campaigns can route straight to a queue instead." />
-        )}
-      </Card>
+
+          {activeTab === "campaigns" &&
+            (loading || campaigns.length ? (
+              <DataTable
+                columns={campaignColumns}
+                data={campaigns}
+                loading={loading}
+                getRowKey={(c) => c.id}
+                searchKeys={["name", "did_number"]}
+                searchPlaceholder="Filter campaigns…"
+                initialSort={{ key: "name", dir: "asc" }}
+                pageSize={12}
+                emptyState={<EmptyState icon={Headset} title="No campaigns match" />}
+              />
+            ) : (
+              <Card animate={false}>
+                <EmptyState
+                  icon={Headset}
+                  title="No campaigns yet"
+                  description="Point one of your toll-free numbers at a campaign to start taking inbound calls."
+                  action={
+                    canManage && unassignedNumbers.length ? (
+                      <Button size="sm" icon={Plus} onClick={() => setCampaignModal({ open: true, campaign: null, agents: [] })}>
+                        New campaign
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              </Card>
+            ))}
+
+          {activeTab === "ivrs" &&
+            (loading || ivrs.length ? (
+              <DataTable
+                columns={ivrColumns}
+                data={ivrs}
+                loading={loading}
+                getRowKey={(v) => v.id}
+                searchKeys={["name"]}
+                searchPlaceholder="Filter IVRs…"
+                initialSort={{ key: "name", dir: "asc" }}
+                pageSize={12}
+                emptyState={<EmptyState icon={Voicemail} title="No IVRs match" />}
+              />
+            ) : (
+              <Card animate={false}>
+                <EmptyState
+                  icon={Voicemail}
+                  title="No IVRs yet"
+                  description="Optional — a campaign can route straight to its agent queue without a phone menu."
+                  action={
+                    canManage ? (
+                      <Button size="sm" icon={Plus} onClick={() => setIvrModal({ open: true, ivr: null })}>
+                        New IVR
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              </Card>
+            ))}
+        </>
+      )}
 
       <CreateCampaignModal
         open={campaignModal.open}
