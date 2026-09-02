@@ -45,6 +45,11 @@ export function fieldLabelClass() {
   return "flex flex-col gap-1.5 text-xs font-medium text-muted";
 }
 
+// Matches the Create Role modal's search/text field — flat white, visible
+// border, h-10, soft blue focus ring.
+const FIELD_INPUT =
+  "h-10 w-full rounded-lg border border-border-strong bg-surface pl-9 pr-3 text-sm text-text placeholder:text-muted transition-colors focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/15";
+
 export function Filters({ filters, setFilters, onApply, agents, includeCallFilters = false, loading = false }) {
   const agentOptions = [
     { value: "", label: "All agents" },
@@ -92,17 +97,19 @@ export function Filters({ filters, setFilters, onApply, agents, includeCallFilte
       )}
       <label className={`${fieldLabelClass()} min-w-[220px] flex-1`}>
         Search
-        <div className="flex items-center gap-2 rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 transition-colors focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20">
-          <Search size={15} className="shrink-0 text-muted" />
+        <div className="relative">
+          <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-muted">
+            <Search size={14} />
+          </span>
           <input
             value={filters.search}
             onChange={(e) => setFilters({ ...filters, search: e.target.value })}
             placeholder="Number or agent…"
-            className="min-w-0 flex-1 bg-transparent text-sm text-text outline-none"
+            className={FIELD_INPUT}
           />
         </div>
       </label>
-      <Button type="submit" icon={Filter} loading={loading}>
+      <Button type="submit" icon={Filter} loading={loading} className="h-10">
         Apply
       </Button>
     </form>

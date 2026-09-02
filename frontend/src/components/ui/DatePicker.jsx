@@ -78,7 +78,7 @@ export default function DatePicker({ value, onChange, placeholder = "Pick a date
         // chrome elsewhere) wins over the padding utilities here, so height
         // can't be left to padding alone the way Input/Select do it — an
         // explicit height is the only thing nothing else contests.
-        className="flex h-[42px] w-full items-center gap-2 rounded-xl border border-border bg-surface-2 px-3.5 text-left text-sm outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/20"
+        className="flex h-10 w-full items-center gap-2 rounded-lg border border-border bg-surface-2 px-3.5 text-left text-sm outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/20"
       >
         <CalendarIcon size={15} className="shrink-0 text-muted" />
         <span className={selected ? "text-text" : "text-muted"}>{selected ? LABEL_FORMAT.format(selected) : placeholder}</span>

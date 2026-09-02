@@ -11,7 +11,7 @@ import ReactSelect from "react-select";
 const baseStyles = {
   control: (base, state) => ({
     ...base,
-    minHeight: 30,
+    minHeight: 38,
     borderRadius: 8,
     borderWidth: 1,
     borderStyle: "solid",
