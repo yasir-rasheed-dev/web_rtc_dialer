@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
-import { Building2, CircleDollarSign, LogOut, RefreshCw } from "lucide-react";
+import { Building2, CircleDollarSign, LayoutDashboard, LogOut, RefreshCw } from "lucide-react";
 
 import Button from "../../components/ui/Button";
+import Logo from "../../components/ui/Logo";
 import ThemeToggle from "../../components/ui/ThemeToggle";
 import { getSuperAdminToken, setSuperAdminToken, superApi } from "../../lib/api";
 import SuperAdminLogin from "./Login";
+import OverviewPage from "./OverviewPage";
 import SetupsPage from "./SetupsPage";
 import PlansPage from "./PlansPage";
 
 const NAV_ITEMS = [
+  { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "setups", label: "Setups", icon: Building2 },
   { id: "plans", label: "Plans", icon: CircleDollarSign }
 ];
@@ -16,7 +19,7 @@ const NAV_ITEMS = [
 export default function SuperAdminApp() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(Boolean(getSuperAdminToken()));
-  const [tab, setTab] = useState("setups");
+  const [tab, setTab] = useState("overview");
   const [overview, setOverview] = useState({ summary: {}, tenants: [] });
   const [plans, setPlans] = useState([]);
   const [dataLoading, setDataLoading] = useState(true);
@@ -63,22 +66,19 @@ export default function SuperAdminApp() {
 
   return (
     <div className="min-h-screen bg-bg">
-      <header className="sticky top-0 z-30 border-b border-border bg-surface/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3.5">
+      <header className="sticky top-0 z-30 border-b border-border bg-surface/80 backdrop-blur-md">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3">
           <div className="flex items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand to-blue-700 text-xs font-extrabold text-white">
-              RN
+            <Logo height={24} />
+            <span className="hidden rounded-md border border-border bg-surface-2 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted sm:inline">
+              Product Owner
             </span>
-            <div>
-              <p className="text-sm font-bold leading-tight text-text">Ringnex SaaS</p>
-              <p className="text-[11px] text-muted">Product Owner</p>
-            </div>
           </div>
           <div className="flex items-center gap-3">
             <ThemeToggle />
             <div className="hidden text-right sm:block">
               <p className="text-sm font-semibold leading-tight text-text">{session.admin?.name || session.name}</p>
-              <p className="text-[11px] text-muted">SUPER ADMIN</p>
+              <p className="text-[11px] text-muted">Super Admin</p>
             </div>
             <Button
               variant="icon"
@@ -98,11 +98,11 @@ export default function SuperAdminApp() {
               <button
                 key={id}
                 onClick={() => setTab(id)}
-                className={`relative flex items-center gap-2 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
-                  active ? "border-brand text-brand" : "border-transparent text-muted hover:text-text"
+                className={`relative -mb-px flex items-center gap-2 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
+                  active ? "border-brand text-text" : "border-transparent text-muted hover:text-text"
                 }`}
               >
-                <Icon size={15} />
+                <Icon size={15} className={active ? "text-brand" : ""} />
                 {label}
               </button>
             );
@@ -111,7 +111,10 @@ export default function SuperAdminApp() {
       </header>
 
       <main className="mx-auto max-w-7xl px-6 py-8">
-        {error && <div className="mb-4 rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>}
+        {error && <div className="mb-4 rounded-lg border border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>}
+        {tab === "overview" && (
+          <OverviewPage summary={overview.summary || {}} tenants={overview.tenants || []} loading={dataLoading} onReload={load} />
+        )}
         {tab === "setups" && (
           <SetupsPage plans={plans} tenants={overview.tenants || []} summary={overview.summary || {}} loading={dataLoading} onReload={load} />
         )}

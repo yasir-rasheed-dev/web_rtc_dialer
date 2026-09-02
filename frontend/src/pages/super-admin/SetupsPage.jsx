@@ -11,7 +11,7 @@ import { statusTone } from "./shared";
 import { CreateSetupModal } from "./modals";
 import TenantDetailView from "./TenantDetailView";
 
-export default function SetupsPage({ plans, tenants, summary, loading, onReload }) {
+export default function SetupsPage({ plans, tenants, loading, onReload }) {
   const [createOpen, setCreateOpen] = useState(false);
   // Holds just the id, not a snapshot of the tenant object — the detail
   // view below re-derives its `tenant` prop from the live `tenants` array
@@ -49,61 +49,46 @@ export default function SetupsPage({ plans, tenants, summary, loading, onReload 
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card>
-          <p className="text-xs font-medium uppercase tracking-wide text-muted">Setups</p>
-          <p className="mt-1 text-2xl font-bold text-text">{summary.totalTenants || 0}</p>
-          <p className="mt-1 text-xs text-muted">{summary.activeTenants || 0} active</p>
-        </Card>
-        <Card>
-          <p className="text-xs font-medium uppercase tracking-wide text-muted">Users</p>
-          <p className="mt-1 text-2xl font-bold text-text">{summary.totalUsers || 0}</p>
-          <p className="mt-1 text-xs text-muted">{summary.activeUsers || 0} active</p>
-        </Card>
-        <Card>
-          <p className="text-xs font-medium uppercase tracking-wide text-muted">Carrier cost</p>
-          <p className="mt-1 text-2xl font-bold text-text">${Number(summary.carrierCost || 0).toFixed(2)}</p>
-          <p className="mt-1 text-xs text-muted">Current month</p>
-        </Card>
-      </div>
-
-      <Card title="Setups" description={`${tenants.length} workspaces`}>
-        <div className="overflow-x-auto">
+      <Card title="All setups" description={`${tenants.length} workspace${tenants.length === 1 ? "" : "s"}`}>
+        <div className="-mx-1 overflow-x-auto">
           {loading ? (
             <SkeletonTable rows={6} cols={7} />
           ) : (
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-border text-[11px] font-semibold uppercase tracking-wide text-muted">
-                  <th className="pb-2 pr-4">Company</th>
-                  <th className="pb-2 pr-4">Workspace</th>
-                  <th className="pb-2 pr-4">Users</th>
-                  <th className="pb-2 pr-4">Plan</th>
-                  <th className="pb-2 pr-4">Routing profile</th>
-                  <th className="pb-2 pr-4">Status</th>
-                  <th className="pb-2" />
+                  <th className="px-2 pb-2.5">Company</th>
+                  <th className="px-2 pb-2.5">Workspace</th>
+                  <th className="px-2 pb-2.5">Seats</th>
+                  <th className="px-2 pb-2.5">Plan</th>
+                  <th className="px-2 pb-2.5">Routing profile</th>
+                  <th className="px-2 pb-2.5">Status</th>
+                  <th className="px-2 pb-2.5" />
                 </tr>
               </thead>
               <tbody>
                 {tenants.map((tenant) => (
-                  <tr key={tenant.id} className="border-b border-border/60 last:border-0">
-                    <td className="py-3 pr-4 font-semibold text-text">{tenant.name}</td>
-                    <td className="py-3 pr-4 text-muted">{tenant.workspace}</td>
-                    <td className="py-3 pr-4 text-muted">
+                  <tr
+                    key={tenant.id}
+                    className="border-b border-border/60 transition-colors last:border-0 hover:bg-surface-2"
+                  >
+                    <td className="px-2 py-3 font-semibold text-text">{tenant.name}</td>
+                    <td className="px-2 py-3 text-muted">{tenant.workspace}</td>
+                    <td className="px-2 py-3 tabular-nums text-muted">
                       {tenant.active_users || tenant.users || 0}/{tenant.max_users ?? "∞"}
                     </td>
-                    <td className="py-3 pr-4 text-muted">{tenant.plan_name || "Custom"}</td>
-                    <td className="py-3 pr-4">
+                    <td className="px-2 py-3 text-muted">{tenant.plan_name || "Custom"}</td>
+                    <td className="px-2 py-3">
                       {tenant.commio_routing_profile_id ? (
                         <StatusBadge tone="success">{tenant.commio_routing_profile_name || `#${tenant.commio_routing_profile_id}`}</StatusBadge>
                       ) : (
                         <StatusBadge tone="warning">Not assigned</StatusBadge>
                       )}
                     </td>
-                    <td className="py-3 pr-4">
+                    <td className="px-2 py-3">
                       <StatusBadge tone={statusTone(tenant.status)}>{tenant.status}</StatusBadge>
                     </td>
-                    <td className="py-3">
+                    <td className="px-2 py-3 text-right">
                       <Button size="sm" variant="ghost" icon={Eye} onClick={() => setViewingId(tenant.id)}>
                         View
                       </Button>

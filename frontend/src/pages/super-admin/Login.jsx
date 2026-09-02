@@ -4,6 +4,7 @@ import { Building2, ShieldCheck } from "lucide-react";
 
 import Button from "../../components/ui/Button";
 import Input from "../../components/ui/Input";
+import Logo from "../../components/ui/Logo";
 import ThemeToggle from "../../components/ui/ThemeToggle";
 import { setSuperAdminToken, superApi } from "../../lib/api";
 import { fieldLabelClass } from "./shared";
@@ -41,16 +42,13 @@ export default function SuperAdminLogin({ onAuthenticated }) {
           className="mx-auto w-full max-w-sm"
         >
           <div className="mb-9 flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-brand to-blue-700 text-sm font-extrabold text-white shadow-[0_12px_30px_-8px_rgb(var(--rn-blue)/0.45)]">
-              RN
+            <Logo height={30} />
+            <span className="rounded-md border border-border bg-surface-2 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
+              Product Owner
             </span>
-            <div>
-              <p className="text-base font-bold text-text">Ringnex</p>
-              <p className="text-xs text-muted">Product Owner Portal</p>
-            </div>
           </div>
 
-          <span className="text-[11px] font-extrabold tracking-[0.16em] text-brand">SUPER ADMIN</span>
+          <span className="text-[11px] font-extrabold tracking-[0.16em] text-accent">SUPER ADMIN</span>
           <h1 className="mt-2 text-[38px] font-bold leading-tight tracking-tight text-text">Manage every setup</h1>
           <p className="mt-2 text-sm leading-relaxed text-muted">
             Create tenants, control plans, extension ranges, limits and workspace status.

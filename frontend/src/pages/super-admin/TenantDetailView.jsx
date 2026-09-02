@@ -1,15 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, CircleDollarSign, KeyRound, Phone, Plus, Search, Settings2 } from "lucide-react";
+import {
+  ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
+  CircleDollarSign,
+  KeyRound,
+  Plus,
+  Route,
+  Search,
+  Settings2
+} from "lucide-react";
 
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import EmptyState from "../../components/ui/EmptyState";
 import Input from "../../components/ui/Input";
 import Modal from "../../components/ui/Modal";
-import PageHeader from "../../components/ui/PageHeader";
 import Select from "../../components/ui/Select";
 import { SkeletonTable } from "../../components/ui/Skeleton";
-import StatusBadge from "../../components/ui/StatusBadge";
 import Toggle from "../../components/ui/Toggle";
 import { confirmModal } from "../../lib/modal";
 import { notifyError, notifySuccess } from "../../lib/toast";
@@ -243,6 +251,66 @@ function formatMonthLabel(monthStr) {
   return new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(new Date(Date.UTC(year, month - 1, 1)));
 }
 
+const STATUS_DOT = {
+  ACTIVE: "bg-success",
+  TRIAL: "bg-brand",
+  INACTIVE: "bg-muted",
+  SUSPENDED: "bg-danger",
+  CANCELLED: "bg-danger"
+};
+
+/** A single flat card holding several inline stats separated by hairlines. */
+function MetricStrip({ items }) {
+  return (
+    <Card compact className="grid grid-cols-2 divide-y divide-border sm:flex sm:divide-x sm:divide-y-0">
+      {items.map((it, i) => (
+        <div key={i} className="flex-1 px-4 py-3 sm:py-1">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">{it.label}</p>
+          <p className={"mt-1 text-lg font-bold tracking-tight " + (it.accent ? "text-brand" : "text-text")}>{it.value}</p>
+          {it.hint && <p className="mt-0.5 text-[11px] text-muted">{it.hint}</p>}
+        </div>
+      ))}
+    </Card>
+  );
+}
+
+/** Label + helper text on the left, a control on the right, hairline-divided. */
+function SettingRow({ title, description, children }) {
+  return (
+    <div className="flex items-start justify-between gap-4 py-3.5 first:pt-0 last:pb-0">
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-text">{title}</p>
+        {description && <p className="mt-0.5 text-xs leading-relaxed text-muted">{description}</p>}
+      </div>
+      <div className="shrink-0 pt-0.5">{children}</div>
+    </div>
+  );
+}
+
+/** Small pill segmented control. */
+function Segmented({ value, onChange, options }) {
+  return (
+    <div className="inline-flex rounded-lg border border-border bg-surface-2 p-0.5 text-xs font-semibold">
+      {options.map((o) => {
+        const active = value === o.value;
+        return (
+          <button
+            key={o.value}
+            type="button"
+            onClick={() => onChange(o.value)}
+            className={
+              "rounded-md px-3 py-1.5 transition-colors " +
+              (active ? "bg-surface text-text ring-1 ring-border" : "text-muted hover:text-text")
+            }
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function TenantDetailView({ tenant, onBack, onStatusChanged }) {
   const [statusBusy, setStatusBusy] = useState(false);
   const [buyOpen, setBuyOpen] = useState(false);
@@ -372,25 +440,67 @@ export default function TenantDetailView({ tenant, onBack, onStatusChanged }) {
     }
   };
 
+  const mrr = Number(tenant.price_per_user || 0) * Number(tenant.active_users || 0);
+  const featureRows = [
+    {
+      key: "autoDialer",
+      bodyKey: "canUseAutoDialer",
+      title: "Auto Dialer",
+      description: "Outbound campaigns, contact upload, assignment and locking.",
+      checked: Boolean(tenant.can_use_auto_dialer),
+      on: "Auto Dialer is now enabled for this workspace.",
+      off: "Auto Dialer is now disabled for this workspace."
+    },
+    {
+      key: "tollFree",
+      bodyKey: "canUseTollFree",
+      title: "Toll-Free",
+      description: "Inbound toll-free numbers, queue campaigns and the data-driven IVR.",
+      checked: Boolean(tenant.can_use_toll_free),
+      on: "Toll-Free is now enabled for this workspace.",
+      off: "Toll-Free is now disabled for this workspace."
+    },
+    {
+      key: "leads",
+      bodyKey: "canUseLeads",
+      title: "Lead Management",
+      description: "Persistent leads, follow-ups dashboard and the end-call capture popup.",
+      checked: Boolean(tenant.can_use_leads),
+      on: "Lead Management is now enabled for this workspace.",
+      off: "Lead Management is now disabled for this workspace."
+    }
+  ];
+  const routingAssigned = Boolean(tenant.commio_routing_profile_id);
+
   return (
     <div className="flex flex-col gap-6">
-      <button onClick={onBack} className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-muted transition-colors hover:text-text">
+      <button
+        onClick={onBack}
+        className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-muted transition-colors hover:text-text"
+      >
         <ArrowLeft size={15} /> Back to setups
       </button>
 
-      <PageHeader
-        eyebrow="SETUP DETAIL"
-        title={tenant.name}
-        description={`${tenant.workspace} · ${tenant.plan_name || "Custom plan"}`}
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" variant="secondary" icon={Settings2} onClick={() => setEditOpen(true)}>
-              Edit limits
-            </Button>
-            <Button size="sm" variant="secondary" icon={KeyRound} onClick={() => setResetPasswordOpen(true)}>
-              Reset owner password
-            </Button>
-            <div className="w-44">
+      {/* Identity + primary controls */}
+      <div className="flex flex-col gap-4 border-b border-border pb-5 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-accent">Setup detail</p>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-text">{tenant.name}</h1>
+          <p className="mt-1 text-sm text-muted">
+            <span className="font-medium text-text">{tenant.workspace}</span> · {tenant.plan_name || "Custom plan"} ·
+            extensions from {tenant.extension_start}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="ghost" icon={Settings2} onClick={() => setEditOpen(true)}>
+            Edit limits
+          </Button>
+          <Button size="sm" variant="ghost" icon={KeyRound} onClick={() => setResetPasswordOpen(true)}>
+            Reset password
+          </Button>
+          <div className="flex items-center gap-2">
+            <span className={"h-2.5 w-2.5 shrink-0 rounded-full " + (STATUS_DOT[tenant.status] || "bg-muted")} />
+            <div className="w-40">
               <Select
                 options={STATUS_OPTIONS}
                 value={STATUS_OPTIONS.find((o) => o.value === tenant.status)}
@@ -399,149 +509,125 @@ export default function TenantDetailView({ tenant, onBack, onStatusChanged }) {
               />
             </div>
           </div>
-        }
-      />
-
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card>
-          <p className="text-xs font-medium uppercase tracking-wide text-muted">Users</p>
-          <p className="mt-1 text-2xl font-bold text-text">
-            {tenant.active_users || 0}/{tenant.max_users ?? "∞"}
-          </p>
-        </Card>
-        <Card>
-          <p className="text-xs font-medium uppercase tracking-wide text-muted">Price / user</p>
-          <p className="mt-1 text-2xl font-bold text-text">${Number(tenant.price_per_user || 0).toFixed(2)}</p>
-        </Card>
-        <Card>
-          <p className="text-xs font-medium uppercase tracking-wide text-muted">Extension start</p>
-          <p className="mt-1 text-2xl font-bold text-text">{tenant.extension_start}</p>
-        </Card>
+        </div>
       </div>
 
-      <div className="grid items-start gap-4 lg:grid-cols-2">
+      <MetricStrip
+        items={[
+          {
+            label: "Seats",
+            value: `${tenant.active_users || 0} / ${tenant.max_users ?? "∞"}`,
+            hint: tenant.max_users ? `${Math.max(0, tenant.max_users - (tenant.active_users || 0))} free` : "unlimited"
+          },
+          { label: "Price / user", value: `$${Number(tenant.price_per_user || 0).toFixed(2)}` },
+          { label: "Monthly recurring", value: `$${mrr.toFixed(2)}`, hint: "price × active seats" },
+          {
+            label: "Commio cost",
+            value: `$${Number(cost?.totalCost || 0).toFixed(2)}`,
+            hint: formatMonthLabel(month),
+            accent: true
+          }
+        ]}
+      />
+
+      <div className="grid gap-6 lg:grid-cols-2">
         <Card
           title="Setup limits"
-          description="Max users and monthly minutes for this workspace — edit anytime, without touching the pricing plan template."
-          icon={Settings2}
+          description="Seat and monthly-minute ceilings for this workspace — independent of the pricing-plan template."
+          actions={
+            <Button size="sm" variant="secondary" icon={Settings2} onClick={() => setEditOpen(true)}>
+              Edit
+            </Button>
+          }
         >
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div>
-              <p className="text-xs text-muted">Max users</p>
-              <p className="mt-1 text-lg font-semibold text-text">{tenant.max_users ?? "Unlimited"}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted">Outbound min / mo</p>
-              <p className="mt-1 text-lg font-semibold text-text">{tenant.outbound_minutes ?? "Unlimited"}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted">Inbound min / mo</p>
-              <p className="mt-1 text-lg font-semibold text-text">{tenant.inbound_minutes ?? "Unlimited"}</p>
-            </div>
+          <div className="grid grid-cols-3 divide-x divide-border rounded-lg border border-border">
+            {[
+              ["Max users", tenant.max_users ?? "∞"],
+              ["Outbound min / mo", tenant.outbound_minutes ?? "∞"],
+              ["Inbound min / mo", tenant.inbound_minutes ?? "∞"]
+            ].map(([label, val]) => (
+              <div key={label} className="px-4 py-3">
+                <p className="text-[11px] text-muted">{label}</p>
+                <p className="mt-1 text-lg font-semibold tabular-nums text-text">{val}</p>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card
+          title="Feature access"
+          description="Whole features on or off for this workspace, on top of what its own roles allow."
+        >
+          <div className="divide-y divide-border">
+            {featureRows.map((f) => (
+              <SettingRow key={f.key} title={f.title} description={f.description}>
+                <Toggle
+                  checked={f.checked}
+                  onChange={(v) => toggleFeatureFlag(f.key, f.bodyKey, v, f.on, f.off)}
+                  disabled={featureFlagBusy === f.key}
+                  label={`${f.title} ${f.checked ? "enabled" : "disabled"}`}
+                />
+              </SettingRow>
+            ))}
           </div>
         </Card>
 
         <Card
           title="Phone numbers"
-          description="Whether this workspace can search and buy its own numbers, and a way to hand them one directly regardless."
-          icon={Phone}
+          description="Whether this workspace buys its own numbers — and a way to hand it one regardless."
         >
-          <div className="flex flex-col gap-3">
-            <label className="flex items-center gap-2 text-sm font-medium text-text">
+          <div className="divide-y divide-border">
+            <SettingRow
+              title="Self-service purchasing"
+              description="Let this workspace search and buy Commio numbers on its own."
+            >
               <Toggle
                 checked={Boolean(tenant.can_purchase_numbers)}
                 onChange={togglePurchaseFlag}
                 disabled={purchaseFlagBusy}
                 label="Workspace can buy its own phone numbers"
               />
-              Workspace can buy its own numbers
-            </label>
-            <Button size="sm" icon={Plus} onClick={() => setBuyOpen(true)} className="self-start">
-              Buy number for this tenant
-            </Button>
-          </div>
-        </Card>
-
-        <Card
-          title="Feature access"
-          description="Turn whole features on or off for this workspace, on top of whatever roles inside it are permitted."
-        >
-          <div className="flex flex-col gap-3">
-            <label className="flex items-center gap-2 text-sm font-medium text-text">
-              <Toggle
-                checked={Boolean(tenant.can_use_auto_dialer)}
-                onChange={(v) =>
-                  toggleFeatureFlag(
-                    "autoDialer",
-                    "canUseAutoDialer",
-                    v,
-                    "Auto Dialer is now enabled for this workspace.",
-                    "Auto Dialer is now disabled for this workspace."
-                  )
-                }
-                disabled={featureFlagBusy === "autoDialer"}
-                label="Auto Dialer enabled"
-              />
-              Auto Dialer
-            </label>
-            <label className="flex items-center gap-2 text-sm font-medium text-text">
-              <Toggle
-                checked={Boolean(tenant.can_use_toll_free)}
-                onChange={(v) =>
-                  toggleFeatureFlag(
-                    "tollFree",
-                    "canUseTollFree",
-                    v,
-                    "Toll-Free is now enabled for this workspace.",
-                    "Toll-Free is now disabled for this workspace."
-                  )
-                }
-                disabled={featureFlagBusy === "tollFree"}
-                label="Toll-Free enabled"
-              />
-              Toll-Free
-            </label>
-            <label className="flex items-center gap-2 text-sm font-medium text-text">
-              <Toggle
-                checked={Boolean(tenant.can_use_leads)}
-                onChange={(v) =>
-                  toggleFeatureFlag(
-                    "leads",
-                    "canUseLeads",
-                    v,
-                    "Lead Management is now enabled for this workspace.",
-                    "Lead Management is now disabled for this workspace."
-                  )
-                }
-                disabled={featureFlagBusy === "leads"}
-                label="Lead Management enabled"
-              />
-              Lead Management
-            </label>
+            </SettingRow>
+            <SettingRow
+              title="Hand over a number"
+              description="Buy one on the Commio account and assign it straight to this workspace."
+            >
+              <Button size="sm" variant="secondary" icon={Plus} onClick={() => setBuyOpen(true)}>
+                Buy number
+              </Button>
+            </SettingRow>
           </div>
         </Card>
 
         <Card
           title="Commio incoming routing profile"
-          description="DIDs this setup buys are assigned to this profile. Each setup gets its own, so routing changes for one tenant never affect another."
+          description="DIDs this setup buys land on this profile. Each setup gets its own — routing changes never cross tenants."
         >
-          <div className="flex flex-col gap-3">
-            <StatusBadge tone={tenant.commio_routing_profile_id ? "success" : "warning"}>
-              {tenant.commio_routing_profile_id
-                ? `Assigned: ${tenant.commio_routing_profile_name || "Unnamed"} (#${tenant.commio_routing_profile_id})`
+          <div className="flex flex-col gap-4">
+            <div
+              className={
+                "flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium " +
+                (routingAssigned
+                  ? "border-success/25 bg-success-soft text-success"
+                  : "border-warning/25 bg-warning-soft text-warning")
+              }
+            >
+              <Route size={14} className="shrink-0" />
+              {routingAssigned
+                ? `Assigned — ${tenant.commio_routing_profile_name || "Unnamed"} (#${tenant.commio_routing_profile_id})`
                 : "No routing profile assigned yet"}
-            </StatusBadge>
-            <div className="flex flex-wrap items-end gap-2">
-              <div className="flex gap-2">
-                <Button type="button" size="sm" variant={routingMode === "new" ? "primary" : "secondary"} onClick={() => setRoutingMode("new")}>
-                  Create new
-                </Button>
-                <Button type="button" size="sm" variant={routingMode === "existing" ? "primary" : "secondary"} onClick={() => setRoutingMode("existing")}>
-                  Use existing profile
-                </Button>
-              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Segmented
+                value={routingMode}
+                onChange={setRoutingMode}
+                options={[
+                  { value: "new", label: "Create new" },
+                  { value: "existing", label: "Use existing" }
+                ]}
+              />
               {routingMode === "existing" && (
-                <div className="w-64">
+                <div className="w-56">
                   <Select
                     isLoading={routingProfilesLoading}
                     options={routingProfileOptions}
@@ -555,7 +641,7 @@ export default function TenantDetailView({ tenant, onBack, onStatusChanged }) {
                 </div>
               )}
               <Button size="sm" loading={routingBusy} onClick={saveRoutingProfile}>
-                {tenant.commio_routing_profile_id ? "Replace" : "Assign"}
+                {routingAssigned ? "Replace" : "Assign"}
               </Button>
             </div>
           </div>
@@ -567,61 +653,70 @@ export default function TenantDetailView({ tenant, onBack, onStatusChanged }) {
         description="Real per-number outbound call cost from Commio's CDR API, plus each number's known purchase cost."
         icon={CircleDollarSign}
         actions={
-          <div className="flex items-center gap-2 rounded-xl border border-border bg-surface-2 px-2 py-1.5">
-            <Button size="sm" variant="ghost" onClick={() => setMonth((m) => shiftMonth(m, -1))}>
-              ←
-            </Button>
+          <div className="flex items-center gap-1 rounded-lg border border-border bg-surface px-1 py-1">
+            <Button size="sm" variant="ghost" icon={ChevronLeft} onClick={() => setMonth((m) => shiftMonth(m, -1))} />
             <span className="min-w-[110px] text-center text-xs font-semibold text-text">{formatMonthLabel(month)}</span>
-            <Button size="sm" variant="ghost" disabled={month === currentMonth} onClick={() => setMonth((m) => shiftMonth(m, 1))}>
-              →
-            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={ChevronRight}
+              disabled={month === currentMonth}
+              onClick={() => setMonth((m) => shiftMonth(m, 1))}
+            />
           </div>
         }
       >
-        {costError && <div className="mb-4 rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">{costError}</div>}
+        {costError && (
+          <div className="mb-4 rounded-lg border border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger">{costError}</div>
+        )}
         {costLoading ? (
           <SkeletonTable rows={3} cols={4} />
         ) : (
           <>
-            <div className="mb-5 grid gap-4 sm:grid-cols-3">
-              <div>
-                <p className="text-xs text-muted">Outbound call cost</p>
-                <p className="mt-1 text-lg font-semibold text-text">${Number(cost?.outboundCost || 0).toFixed(2)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted">Number purchase cost</p>
-                <p className="mt-1 text-lg font-semibold text-text">${Number(cost?.flatDidCost || 0).toFixed(2)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted">Total</p>
-                <p className="mt-1 text-lg font-bold text-brand">${Number(cost?.totalCost || 0).toFixed(2)}</p>
-              </div>
+            <div className="mb-5 grid grid-cols-3 divide-x divide-border rounded-lg border border-border">
+              {[
+                ["Outbound calls", Number(cost?.outboundCost || 0), false],
+                ["Number purchases", Number(cost?.flatDidCost || 0), false],
+                ["Total", Number(cost?.totalCost || 0), true]
+              ].map(([label, val, accent]) => (
+                <div key={label} className="px-4 py-3">
+                  <p className="text-[11px] text-muted">{label}</p>
+                  <p className={"mt-1 text-lg font-bold tabular-nums " + (accent ? "text-brand" : "text-text")}>
+                    ${val.toFixed(2)}
+                  </p>
+                </div>
+              ))}
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-border text-[11px] font-semibold uppercase tracking-wide text-muted">
-                    <th className="pb-2 pr-4">Number</th>
-                    <th className="pb-2 pr-4">Calls</th>
-                    <th className="pb-2 pr-4">Outbound cost</th>
-                    <th className="pb-2">Purchase cost</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(cost?.byNumber || []).map((row) => (
-                    <tr key={row.number} className="border-b border-border/60 last:border-0">
-                      <td className="py-2.5 pr-4 font-medium text-text">{row.number}</td>
-                      <td className="py-2.5 pr-4 text-muted">{row.calls ?? "—"}</td>
-                      <td className="py-2.5 pr-4 text-muted">
-                        {row.outboundCost !== null ? `$${Number(row.outboundCost).toFixed(2)}` : row.error || "—"}
-                      </td>
-                      <td className="py-2.5 text-muted">${Number(row.purchaseCost || 0).toFixed(2)}</td>
+            {(cost?.byNumber || []).length ? (
+              <div className="-mx-1 overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-[11px] font-semibold uppercase tracking-wide text-muted">
+                      <th className="px-2 pb-2.5">Number</th>
+                      <th className="px-2 pb-2.5">Calls</th>
+                      <th className="px-2 pb-2.5">Outbound cost</th>
+                      <th className="px-2 pb-2.5">Purchase cost</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-              {!(cost?.byNumber || []).length && <EmptyState title="No numbers on this setup" />}
-            </div>
+                  </thead>
+                  <tbody>
+                    {cost.byNumber.map((row) => (
+                      <tr key={row.number} className="border-b border-border/60 transition-colors last:border-0 hover:bg-surface-2">
+                        <td className="px-2 py-2.5 font-medium text-text">{row.number}</td>
+                        <td className="px-2 py-2.5 tabular-nums text-muted">{row.calls ?? "—"}</td>
+                        <td className="px-2 py-2.5 tabular-nums text-muted">
+                          {row.outboundCost !== null ? `$${Number(row.outboundCost).toFixed(2)}` : row.error || "—"}
+                        </td>
+                        <td className="px-2 py-2.5 tabular-nums text-muted">${Number(row.purchaseCost || 0).toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="rounded-lg border border-dashed border-border py-6 text-center text-xs text-muted">
+                No numbers on this setup for {formatMonthLabel(month)}.
+              </p>
+            )}
           </>
         )}
       </Card>

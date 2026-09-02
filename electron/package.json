@@ -9,14 +9,17 @@
     "prepare-frontend": "node scripts/copy-frontend.js",
     "start": "npm run build:frontend && npm run prepare-frontend && electron .",
     "start:quick": "electron .",
-    "predist": "npm run build:frontend && npm run prepare-frontend",
+    "make-icon": "node scripts/make-icon.mjs",
+    "predist": "npm run make-icon && npm run build:frontend && npm run prepare-frontend",
     "dist": "electron-builder",
     "dist:win": "npm run predist && electron-builder --win",
     "dist:mac": "npm run predist && electron-builder --mac"
   },
   "devDependencies": {
     "electron": "^33.0.0",
-    "electron-builder": "^25.1.8"
+    "electron-builder": "^25.1.8",
+    "png-to-ico": "^3.0.2",
+    "sharp": "^0.35.4"
   },
   "build": {
     "appId": "co.ringnex.desktop",
@@ -29,12 +32,26 @@
       "preload.js"
     ],
     "extraResources": [
-      { "from": "app", "to": "frontend-dist" }
+      {
+        "from": "app",
+        "to": "frontend-dist"
+      }
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "portable", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
     },
     "nsis": {
@@ -43,9 +60,22 @@
       "createDesktopShortcut": true
     },
     "mac": {
+      "icon": "build/icon.png",
       "target": [
-        { "target": "dmg", "arch": ["x64", "arm64"] },
-        { "target": "zip", "arch": ["x64", "arm64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ],
       "category": "public.app-category.business"
     }

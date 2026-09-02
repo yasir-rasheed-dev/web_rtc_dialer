@@ -3,16 +3,13 @@ import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
 
 const VARIANTS = {
-  primary:
-    "bg-brand text-white shadow-[0_10px_24px_-6px_rgb(var(--rn-blue)/0.45)] hover:brightness-110 " +
-    "disabled:hover:brightness-100",
+  primary: "bg-brand text-white hover:brightness-[1.07] disabled:hover:brightness-100",
+  accent: "bg-accent text-white hover:brightness-[1.07] disabled:hover:brightness-100",
   secondary:
-    "bg-surface-2 text-text border border-border hover:border-border-strong hover:bg-surface-3",
-  ghost: "bg-transparent text-brand hover:bg-brand/10 shadow-none",
-  danger:
-    "bg-danger text-white shadow-[0_10px_24px_-6px_rgb(var(--rn-red)/0.45)] hover:brightness-110 " +
-    "disabled:hover:brightness-100",
-  icon: "bg-surface-2 text-muted border border-border hover:text-text hover:border-border-strong"
+    "bg-surface text-text border border-border hover:bg-surface-2 hover:border-border-strong",
+  ghost: "bg-transparent text-text hover:bg-surface-2",
+  danger: "bg-danger text-white hover:brightness-[1.07] disabled:hover:brightness-100",
+  icon: "bg-surface text-muted border border-border hover:text-text hover:bg-surface-2 hover:border-border-strong"
 };
 
 const SIZES = {
@@ -37,9 +34,9 @@ const Button = forwardRef(function Button(
       whileTap={disabled || loading ? undefined : { scale: 0.97 }}
       disabled={disabled || loading}
       className={
-        "inline-flex items-center rounded-xl font-semibold transition-colors duration-150 " +
+        "inline-flex items-center rounded-lg font-semibold transition-colors duration-150 " +
         "disabled:opacity-55 disabled:cursor-not-allowed focus-visible:outline-none " +
-        "focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2 " +
+        "focus-visible:ring-2 focus-visible:ring-ring/55 focus-visible:ring-offset-2 " +
         "focus-visible:ring-offset-bg " +
         `${VARIANTS[variant] || VARIANTS.primary} ${SIZES[size] || SIZES.md} ${className}`
       }

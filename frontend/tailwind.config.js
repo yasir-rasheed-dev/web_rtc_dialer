@@ -20,6 +20,11 @@ export default {
           DEFAULT: "rgb(var(--rn-blue) / <alpha-value>)",
           soft: "rgb(var(--rn-blue) / 0.15)"
         },
+        accent: {
+          DEFAULT: "rgb(var(--rn-accent) / <alpha-value>)",
+          soft: "rgb(var(--rn-accent) / 0.14)"
+        },
+        ring: "rgb(var(--rn-ring) / <alpha-value>)",
         success: {
           DEFAULT: "rgb(var(--rn-green) / <alpha-value>)",
           soft: "rgb(var(--rn-green) / 0.14)"
@@ -34,10 +39,14 @@ export default {
         }
       },
       boxShadow: {
-        card: "0 24px 64px rgba(0, 0, 0, 0.28)"
+        // Floating surfaces only (modals, popovers, toasts, call overlay).
+        // Page cards are intentionally flat — border only.
+        card: "0 10px 30px -12px rgba(9, 9, 11, 0.25)"
       },
       borderRadius: {
-        xl2: "1.25rem"
+        lg: "var(--rn-radius)",
+        xl: "calc(var(--rn-radius) + 0.25rem)",
+        xl2: "calc(var(--rn-radius) + 0.5rem)"
       }
     }
   },
