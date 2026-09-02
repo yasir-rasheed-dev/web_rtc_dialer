@@ -124,6 +124,55 @@ export async function exportCallReport({ direction, filters = {}, format, onProg
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 
+// Agent Performance report — per-agent aggregates ordered by dialed DESC.
+export function getPerformanceReport({ from, to, agentId } = {}) {
+  const query = new URLSearchParams();
+  if (from) query.set("from", from);
+  if (to) query.set("to", to);
+  if (agentId) query.set("agentId", agentId);
+  return request(`/reports/performance?${query.toString()}`, {}, getToken());
+}
+
+export async function exportPerformanceReport({ from, to, agentId, format, onProgress }) {
+  const query = new URLSearchParams({ format });
+  if (from) query.set("from", from);
+  if (to) query.set("to", to);
+  if (agentId) query.set("agentId", agentId);
+
+  const response = await fetch(`${API_BASE}/api/reports/performance/export?${query.toString()}`, {
+    headers: { Authorization: `Bearer ${getToken()}` }
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || `Export failed (${response.status})`);
+  }
+
+  const contentLength = Number(response.headers.get("content-length") || 0);
+  const disposition = response.headers.get("content-disposition") || "";
+  const filename = disposition.match(/filename="([^"]+)"/)?.[1] || `agent-performance.${format}`;
+
+  const reader = response.body.getReader();
+  const chunks = [];
+  let bytesReceived = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    bytesReceived += value.length;
+    onProgress?.(contentLength > 0 ? Math.min(99, Math.round((bytesReceived / contentLength) * 100)) : 50);
+  }
+  onProgress?.(100);
+
+  const url = URL.createObjectURL(new Blob(chunks));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
 // Tab counters for the Call Logs page — all four (all/incoming/outgoing/
 // missed) in one call, against the shared filters only (date/agent/
 // search — never direction/status/outcome, which the tabs control).

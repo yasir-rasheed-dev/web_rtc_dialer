@@ -2395,6 +2395,152 @@ app.get("/api/calls/export", authenticate, requirePermission("VIEW_REPORTS", "VI
   res.end(buffer);
 }));
 
+// ---------------------------
+// Agent Performance report
+// ---------------------------
+// Per-agent aggregate over a date range: dialed (outbound), connected,
+// not-connected, inbound, missed, voicemails, total & average talk time.
+// Ordered by dialed DESC (most active dialer on top). Team-scoped exactly
+// like every other call report via callAccessScope.
+async function buildPerformanceQuery(req) {
+  const scope = await callAccessScope(req.user, "VIEW_TEAM_REPORTS");
+  const today = new Date().toISOString().slice(0, 10);
+  const from = normalizeDateFilter(req.query.from) || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const to = normalizeDateFilter(req.query.to) || today;
+
+  const params = [req.user.tenant_id];
+  let where = "WHERE c.tenant_id=?";
+  where = appendCallAgentScope(where, params, scope);
+  where = appendRequestedAgent(where, params, scope, req.query.agentId);
+  where += " AND c.started_at>=? AND c.started_at<DATE_ADD(?,INTERVAL 1 DAY)";
+  params.push(`${from} 00:00:00`, `${to} 00:00:00`);
+
+  const sql =
+    `SELECT
+       c.agent_user_id AS agentId,
+       COALESCE(u.name, c.agent_sip_username, 'Unassigned') AS agent,
+       u.extension AS extension,
+       COALESCE(SUM(c.direction='OUTBOUND'),0) AS dialed,
+       COALESCE(SUM(c.answered_at IS NOT NULL),0) AS connected,
+       COALESCE(SUM(c.direction='OUTBOUND' AND c.answered_at IS NULL AND c.ended_at IS NOT NULL),0) AS not_connected,
+       COALESCE(SUM(c.direction='INBOUND'),0) AS inbound,
+       COALESCE(SUM(c.direction='INBOUND' AND c.answered_at IS NULL AND c.ended_at IS NOT NULL),0) AS missed,
+       COALESCE(SUM(UPPER(COALESCE(c.disposition,'')) IN ('VOICEMAIL','VM')),0) AS voicemails,
+       COALESCE(SUM(c.billable_sec),0) AS talk_sec,
+       ROUND(AVG(NULLIF(c.billable_sec,0)),1) AS avg_talk_sec
+     FROM calls c LEFT JOIN users u ON u.id=c.agent_user_id AND u.tenant_id=c.tenant_id
+     ${where}
+     GROUP BY c.agent_user_id, agent, extension
+     ORDER BY dialed DESC, connected DESC, talk_sec DESC`;
+
+  return { sql, params, range: { from, to } };
+}
+
+app.get("/api/reports/performance", authenticate, requirePermission("VIEW_REPORTS"), asyncRoute(async (req, res) => {
+  const { sql, params, range } = await buildPerformanceQuery(req);
+  const [rows] = await db.execute(sql, params);
+  res.json({
+    range,
+    rows: rows.map((r) => ({
+      agentId: r.agentId,
+      agent: r.agent,
+      extension: r.extension || null,
+      dialed: Number(r.dialed) || 0,
+      connected: Number(r.connected) || 0,
+      notConnected: Number(r.not_connected) || 0,
+      inbound: Number(r.inbound) || 0,
+      missed: Number(r.missed) || 0,
+      voicemails: Number(r.voicemails) || 0,
+      talkSec: Number(r.talk_sec) || 0,
+      avgTalkSec: Number(r.avg_talk_sec) || 0
+    }))
+  });
+}));
+
+app.get("/api/reports/performance/export", authenticate, requirePermission("VIEW_REPORTS"), asyncRoute(async (req, res) => {
+  const format = String(req.query.format || "xlsx").toLowerCase();
+  if (!["csv", "xlsx", "pdf"].includes(format)) {
+    return res.status(400).json({ error: "format must be csv, xlsx or pdf" });
+  }
+  const { sql, params, range } = await buildPerformanceQuery(req);
+  const [rows] = await db.execute(sql, params);
+  const filenameBase = `agent-performance-${range.from}_to_${range.to}`;
+
+  const HEADERS = ["Agent", "Extension", "Dialed", "Connected", "Not connected", "Inbound", "Missed", "Voicemails", "Total talk (sec)", "Avg talk (sec)"];
+  const toFields = (r) => [
+    r.agent || "",
+    r.extension || "",
+    Number(r.dialed) || 0,
+    Number(r.connected) || 0,
+    Number(r.not_connected) || 0,
+    Number(r.inbound) || 0,
+    Number(r.missed) || 0,
+    Number(r.voicemails) || 0,
+    Number(r.talk_sec) || 0,
+    Number(r.avg_talk_sec) || 0
+  ];
+
+  if (format === "csv") {
+    const csvCell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filenameBase}.csv"`);
+    res.write(HEADERS.join(",") + "\n");
+    res.write(rows.map((r) => toFields(r).map(csvCell).join(",")).join("\n"));
+    return res.end();
+  }
+
+  if (format === "pdf") {
+    const PDFDocument = (await import("pdfkit")).default;
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${filenameBase}.pdf"`);
+    const doc = new PDFDocument({ margin: 30, size: "A4", layout: "landscape", bufferPages: true });
+    doc.pipe(res);
+    const colWidths = [130, 60, 55, 65, 80, 60, 55, 70, 90, 80];
+    const startX = doc.page.margins.left;
+    let y = doc.page.margins.top;
+    function drawHeader() {
+      doc.font("Helvetica-Bold").fontSize(9);
+      let x = startX;
+      HEADERS.forEach((label, i) => {
+        doc.text(label, x, y, { width: colWidths[i] });
+        x += colWidths[i];
+      });
+      y += 16;
+      doc.moveTo(startX, y).lineTo(startX + colWidths.reduce((a, b) => a + b, 0), y).strokeColor("#cccccc").stroke();
+      y += 4;
+      doc.font("Helvetica").fontSize(8);
+    }
+    doc.text(`Agent Performance — ${range.from} to ${range.to} — ${rows.length} agent${rows.length === 1 ? "" : "s"}`, startX, y);
+    y += 20;
+    drawHeader();
+    for (const r of rows) {
+      if (y > doc.page.height - doc.page.margins.bottom - 20) {
+        doc.addPage();
+        y = doc.page.margins.top;
+        drawHeader();
+      }
+      let x = startX;
+      toFields(r).forEach((value, i) => {
+        doc.text(String(value), x, y, { width: colWidths[i], ellipsis: true });
+        x += colWidths[i];
+      });
+      y += 14;
+    }
+    doc.end();
+    return undefined;
+  }
+
+  const XLSX = (await import("xlsx")).default;
+  const sheet = XLSX.utils.aoa_to_sheet([HEADERS, ...rows.map(toFields)]);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, "Performance");
+  const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", `attachment; filename="${filenameBase}.xlsx"`);
+  res.setHeader("Content-Length", String(buffer.length));
+  res.end(buffer);
+}));
+
 app.patch("/api/calls/:id", authenticate, requirePermission("EDIT_CALL_DISPOSITION"), asyncRoute(async (req, res) => {
   const [rows] = await db.execute("SELECT agent_user_id FROM calls WHERE id=? AND tenant_id=? LIMIT 1", [req.params.id, req.user.tenant_id]);
   const call = rows[0];

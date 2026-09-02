@@ -17,13 +17,24 @@ import {
 
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
+import DatePicker from "../../components/ui/DatePicker";
 import EmptyState from "../../components/ui/EmptyState";
 import PageHeader from "../../components/ui/PageHeader";
+import Select from "../../components/ui/Select";
 import { SkeletonTable } from "../../components/ui/Skeleton";
-import { api, exportCallReport } from "../../lib/api";
+import { api, exportCallReport, exportPerformanceReport, getPerformanceReport } from "../../lib/api";
 import { notifyError, notifySuccess } from "../../lib/toast";
 import TollFreeReportPage from "./TollFreeReport";
-import { CustomPagination, ExportProgressModal, ReportFilters, formatDate, formatSeconds, useAgentOptions } from "./shared";
+import {
+  CustomPagination,
+  ExportProgressModal,
+  FILTER_INPUT,
+  ReportFilters,
+  fieldLabelClass,
+  formatDate,
+  formatSeconds,
+  useAgentOptions
+} from "./shared";
 
 // `extraParams` merges fixed, non-user-editable query params into every
 // request (list + export) alongside the usual filter form — the Toll-Free
@@ -285,17 +296,223 @@ function OutboundReportPage() {
   );
 }
 
+const PERF_COLUMNS = [
+  { key: "dialed", label: "Dialed" },
+  { key: "connected", label: "Connected" },
+  { key: "notConnected", label: "Not connected" },
+  { key: "inbound", label: "Inbound" },
+  { key: "missed", label: "Missed" },
+  { key: "voicemails", label: "Voicemails" }
+];
+
 function PerformanceReportPage() {
+  const agents = useAgentOptions();
+  const today = new Date().toISOString().slice(0, 10);
+  const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const [filters, setFilters] = useState({ from: monthAgo, to: today, agentId: "" });
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [exportState, setExportState] = useState(null);
+  const [sort, setSort] = useState({ key: "dialed", dir: "desc" });
+
+  const agentOptions = useMemo(
+    () => [
+      { value: "", label: "All agents" },
+      ...agents.map((a) => ({ value: a.id, label: a.extension ? `${a.name} · ${a.extension}` : a.name }))
+    ],
+    [agents]
+  );
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const payload = await getPerformanceReport(filters);
+      setRows(payload.rows || []);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [filters]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const sortedRows = useMemo(() => {
+    const get =
+      sort.key === "agent"
+        ? (r) => r.agent || ""
+        : sort.key === "talkSec"
+          ? (r) => r.talkSec || 0
+          : sort.key === "avgTalkSec"
+            ? (r) => r.avgTalkSec || 0
+            : (r) => r[sort.key] || 0;
+    return [...rows].sort((a, b) => {
+      const av = get(a);
+      const bv = get(b);
+      const cmp = typeof av === "number" ? av - bv : String(av).localeCompare(String(bv));
+      return sort.dir === "desc" ? -cmp : cmp;
+    });
+  }, [rows, sort]);
+  const toggleSort = (key) =>
+    setSort((cur) => (cur.key === key ? { key, dir: cur.dir === "asc" ? "desc" : "asc" } : { key, dir: "desc" }));
+
+  const handleExport = async (format) => {
+    setExportState({ format, percent: 0, done: false });
+    try {
+      await exportPerformanceReport({
+        ...filters,
+        format,
+        onProgress: (percent) => setExportState((current) => (current ? { ...current, percent } : current))
+      });
+      setExportState((current) => (current ? { ...current, percent: 100, done: true } : current));
+      notifySuccess(`${format === "pdf" ? "PDF" : "Excel"} export downloaded`);
+    } catch (exportError) {
+      notifyError(exportError.message || "Export failed");
+      setExportState(null);
+    }
+  };
+  const exportBusy = (format) => exportState?.format === format && !exportState.done;
+
+  const SortTh = ({ colKey, children, align = "left" }) => {
+    const active = sort.key === colKey;
+    return (
+      <th className={`h-10 whitespace-nowrap px-4 font-semibold ${align === "right" ? "text-right" : "text-left"}`}>
+        <button
+          type="button"
+          onClick={() => toggleSort(colKey)}
+          className={
+            "inline-flex items-center gap-1 transition-colors hover:text-text " + (active ? "text-text" : "")
+          }
+        >
+          {children}
+          {active ? (
+            sort.dir === "asc" ? <ChevronUp size={13} /> : <ChevronDown size={13} />
+          ) : (
+            <ChevronsUpDown size={13} className="opacity-50" />
+          )}
+        </button>
+      </th>
+    );
+  };
+
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader eyebrow="COMING SOON" title="Performance Report" description="Agent performance analytics for this tenant." />
-      <Card>
-        <EmptyState
-          icon={Timer}
-          title="Performance report is coming soon"
-          description="This report is still being built and will be available in a future update."
-        />
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        eyebrow="AGENT PERFORMANCE"
+        title="Performance Report"
+        description="Per-agent call activity over a date range — busiest dialer on top."
+        actions={
+          <>
+            <Button variant="secondary" icon={RefreshCw} loading={loading} onClick={load}>
+              Refresh
+            </Button>
+            <Button variant="secondary" icon={FileText} loading={exportBusy("pdf")} onClick={() => handleExport("pdf")}>
+              Export PDF
+            </Button>
+            <Button variant="secondary" icon={FileSpreadsheet} loading={exportBusy("xlsx")} onClick={() => handleExport("xlsx")}>
+              Export Excel
+            </Button>
+          </>
+        }
+      />
+
+      <Card compact>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            load();
+          }}
+          className="flex flex-wrap items-end gap-3"
+        >
+          <label className={`${fieldLabelClass()} w-[150px]`}>
+            From
+            <DatePicker value={filters.from} onChange={(value) => setFilters((f) => ({ ...f, from: value }))} />
+          </label>
+          <label className={`${fieldLabelClass()} w-[150px]`}>
+            To
+            <DatePicker value={filters.to} onChange={(value) => setFilters((f) => ({ ...f, to: value }))} />
+          </label>
+          <label className={`${fieldLabelClass()} w-[220px]`}>
+            Agent
+            <Select
+              options={agentOptions}
+              value={agentOptions.find((o) => o.value === filters.agentId) || agentOptions[0]}
+              onChange={(o) => setFilters((f) => ({ ...f, agentId: o?.value || "" }))}
+            />
+          </label>
+          <Button type="submit" icon={Timer} loading={loading} className="h-10">
+            Apply
+          </Button>
+        </form>
       </Card>
+
+      {error && (
+        <div className="rounded-lg border border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>
+      )}
+
+      <Card compact title="Agents" description={`${rows.length} agent${rows.length === 1 ? "" : "s"} with activity in this range`}>
+        {loading ? (
+          <SkeletonTable rows={6} cols={9} />
+        ) : sortedRows.length ? (
+          <div className="overflow-hidden rounded-lg border border-border">
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="bg-surface-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
+                    <SortTh colKey="agent">Agent</SortTh>
+                    {PERF_COLUMNS.map((c) => (
+                      <SortTh key={c.key} colKey={c.key} align="right">
+                        {c.label}
+                      </SortTh>
+                    ))}
+                    <SortTh colKey="talkSec" align="right">Total talk</SortTh>
+                    <SortTh colKey="avgTalkSec" align="right">Avg talk</SortTh>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedRows.map((r, i) => (
+                    <tr key={r.agentId || r.agent || i} className="border-t border-border transition-colors hover:bg-surface-2">
+                      <td className="px-4 py-3">
+                        <span className="flex items-center gap-2.5">
+                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand/10 text-[11px] font-bold text-brand">
+                            {(r.agent || "?").slice(0, 1).toUpperCase()}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block truncate text-text">{r.agent}</span>
+                            {r.extension && <span className="block text-[11px] text-muted">Ext {r.extension}</span>}
+                          </span>
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold tabular-nums text-text">{r.dialed}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-success">{r.connected}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-muted">{r.notConnected}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-text">{r.inbound}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-accent">{r.missed}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-muted">{r.voicemails}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-text">{formatSeconds(r.talkSec)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-muted">{formatSeconds(r.avgTalkSec)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : (
+          <EmptyState icon={Timer} title="No agent activity in this range" />
+        )}
+      </Card>
+
+      <ExportProgressModal
+        open={Boolean(exportState)}
+        format={exportState?.format}
+        percent={exportState?.percent ?? 0}
+        done={Boolean(exportState?.done)}
+        onClose={() => setExportState(null)}
+      />
     </div>
   );
 }
@@ -418,8 +635,7 @@ export default function ReportsHub({ session } = {}) {
         <ReportCard
           icon={Timer}
           title="Performance Report"
-          description="Agent performance analytics for this tenant."
-          pending
+          description="Per-agent dialed / connected / missed / talk-time over a date range — sorted by busiest dialer, exportable to PDF or Excel."
           onClick={() => setView("performance")}
         />
       </div>
