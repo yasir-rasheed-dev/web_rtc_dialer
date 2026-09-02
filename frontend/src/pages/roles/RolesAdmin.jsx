@@ -191,12 +191,14 @@ function RoleFormModal({ open, onClose, role, grouped, onSaved }) {
 
         <div className="flex items-center gap-3">
           <div className="relative flex-1">
-            <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+            <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-muted">
+              <Search size={14} />
+            </span>
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Filter privileges…"
-              className={`${FIELD_INPUT} pl-8`}
+              className={`${FIELD_INPUT} pl-9`}
             />
           </div>
           <span className="shrink-0 text-xs font-medium text-muted">

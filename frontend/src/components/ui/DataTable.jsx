@@ -84,7 +84,9 @@ export default function DataTable({
         <div className="flex flex-wrap items-center gap-2">
           {searchKeys.length > 0 && (
             <div className="relative">
-              <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+              <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-muted">
+                <Search size={14} />
+              </span>
               <input
                 value={query}
                 onChange={(e) => {
@@ -92,7 +94,7 @@ export default function DataTable({
                   setPage(0);
                 }}
                 placeholder={searchPlaceholder}
-                className="h-9 w-full rounded-lg border border-border bg-surface pl-8 pr-3 text-sm text-text placeholder:text-muted focus:border-border-strong focus:outline-none focus:ring-2 focus:ring-ring/40 sm:w-64"
+                className="h-9 w-full rounded-lg border border-border bg-surface pl-9 pr-3 text-sm text-text placeholder:text-muted focus:border-border-strong focus:outline-none focus:ring-2 focus:ring-ring/40 sm:w-64"
               />
             </div>
           )}
