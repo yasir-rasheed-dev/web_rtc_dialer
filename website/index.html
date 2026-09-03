@@ -283,7 +283,10 @@
     transition:background-color .5s ease, color .5s ease, border-color .5s ease !important;
   }
   .theme-sweep{
-    position:fixed; inset:0; z-index:9998; pointer-events:none; opacity:0;
+    /* sits on the BACKGROUND plane (above .bgfx, below .page content) so
+       the darkness spreads across the page's background, not as a sheet
+       over the header/content */
+    position:fixed; inset:0; z-index:0; pointer-events:none; opacity:0;
     --sx:92%; --sy:5%; --r:60vmax;
     clip-path:circle(0px at var(--sx) var(--sy));
     overflow:hidden;
@@ -1007,13 +1010,13 @@
         animating=false;
       }, 680);
     }else{
-      // dusk: night covers the screen, THEN the page settles dark and the
-      // overlay fades away
+      // dusk: flip early so the text/cards brighten in step with the
+      // night spreading across the background behind them
+      setTimeout(function(){ setTheme('dark'); }, 150);
       setTimeout(function(){
-        setTheme('dark');
         sweep.classList.remove('run');
-        sweep.classList.add('done');       // hold full-screen, fade opacity to 0
-      }, 610);
+        sweep.classList.add('done');       // hold full, fade the sky away
+      }, 630);
       setTimeout(function(){
         sweep.classList.remove('done');
         root.classList.remove('theme-anim');
