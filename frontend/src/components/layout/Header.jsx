@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CircleUserRound, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Phone } from "lucide-react";
+import { CircleUserRound, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Phone, RotateCw } from "lucide-react";
 
 import Button from "../ui/Button";
 import Select from "../ui/Select";
@@ -111,6 +111,14 @@ export default function Header({
           <span className="hidden md:inline">{amiConnected ? "Connected" : "Offline"}</span>
         </span>
         <DesktopCallPill />
+        <Button
+          variant="icon"
+          size="icon"
+          icon={RotateCw}
+          onClick={() => window.location.reload()}
+          title="Refresh page"
+          aria-label="Refresh page"
+        />
         <ThemeToggle />
         {canSeeAgentState && (
           <Select

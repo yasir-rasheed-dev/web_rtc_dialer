@@ -9,3 +9,4 @@ before-saas-db.sql
 
 # marketing site — large binary, distributed via the server not git
 website/downloads/*.exe
+website/downloads/*.zip

@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Clock3, PhoneCall, Radio, Users } from "lucide-react";
+import { Clock3, PhoneCall, Radio, RotateCw, Users } from "lucide-react";
 
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import EmptyState from "../../components/ui/EmptyState";
 import KpiCard from "../../components/ui/KpiCard";
+import Modal from "../../components/ui/Modal";
 import PageHeader from "../../components/ui/PageHeader";
 import StatusBadge from "../../components/ui/StatusBadge";
 import { notifyError, notifySuccess } from "../../lib/toast";
@@ -23,8 +24,39 @@ const AGENT_STATUS_TONE = {
   OFFLINE: "neutral"
 };
 
-export default function Supervisor({ liveCalls, presence, agents = [], liveAgentStatus = {}, amiConnected, permissions }) {
+// Agents currently bridged into a call: the live agent leg first, then any
+// warm-transfer / add-party agents folded into call.participants by the
+// backend. De-duped by userId. Listen/barge/whisper supervisor legs never
+// appear here (they are suppressed from participants server-side).
+function agentsOnCall(call) {
+  const out = [];
+  const seen = new Set();
+  const push = (id, name, extension) => {
+    const key = String(id || name || extension || "");
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    out.push({ id: id != null ? String(id) : null, name: name || extension || "Agent", extension: extension || "" });
+  };
+  if (call.agentUserId || call.agent) push(call.agentUserId, call.agent, call.agentExtension);
+  for (const p of call.participants || []) {
+    if (p.type === "agent") push(p.userId, p.name, p.extension);
+  }
+  return out;
+}
+
+export default function Supervisor({
+  liveCalls,
+  presence,
+  agents = [],
+  liveAgentStatus = {},
+  amiConnected,
+  permissions,
+  onRefreshLive
+}) {
   const [busyAction, setBusyAction] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+  // { call } while the supervisor is choosing which of 2+ agents to whisper to
+  const [whisperPick, setWhisperPick] = useState(null);
   const can = (key) => permissions.includes(key);
 
   // Real-time roster: on-call beats the explicit "agent:status" push
@@ -38,16 +70,40 @@ export default function Supervisor({ liveCalls, presence, agents = [], liveAgent
     return { ...agent, status };
   });
 
-  const monitor = async (linkedid, mode) => {
+  const doRefresh = async () => {
+    if (!onRefreshLive) return;
+    setRefreshing(true);
+    try {
+      await onRefreshLive();
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const monitor = async (linkedid, mode, targetAgentId) => {
     setBusyAction(`${linkedid}:${mode}`);
     try {
-      await api("/supervisor/monitor", { method: "POST", body: { linkedid, mode } });
+      const body = { linkedid, mode };
+      if (targetAgentId) body.targetAgentId = targetAgentId;
+      await api("/supervisor/monitor", { method: "POST", body });
       notifySuccess(`${mode[0].toUpperCase()}${mode.slice(1)} request sent to your SIP phone.`);
     } catch (e) {
       notifyError(e.message);
     } finally {
       setBusyAction(null);
     }
+  };
+
+  // Whisper needs a specific agent when more than one is on the call —
+  // otherwise ChanSpy would attach to whichever leg it matches first. One
+  // agent → whisper straight away; 2+ → open the picker.
+  const startWhisper = (call) => {
+    const onCall = agentsOnCall(call);
+    if (onCall.length >= 2) {
+      setWhisperPick({ call, agents: onCall });
+      return;
+    }
+    monitor(call.linkedid, "whisper", onCall[0]?.id || undefined);
   };
 
   return (
@@ -111,7 +167,23 @@ export default function Supervisor({ liveCalls, presence, agents = [], liveAgent
         </div>
       </Card>
 
-      <Card title="Active calls" description="Buttons are shown only when the assigned role permits that monitoring mode.">
+      <Card
+        title="Active calls"
+        description="Buttons are shown only when the assigned role permits that monitoring mode."
+        actions={
+          <Button
+            size="sm"
+            variant="secondary"
+            icon={RotateCw}
+            loading={refreshing}
+            onClick={doRefresh}
+            title="Refresh live calls"
+            aria-label="Refresh live calls"
+          >
+            Refresh
+          </Button>
+        }
+      >
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
@@ -151,7 +223,7 @@ export default function Supervisor({ liveCalls, presence, agents = [], liveAgent
                           size="sm"
                           variant="secondary"
                           loading={busyAction === `${call.linkedid}:whisper`}
-                          onClick={() => monitor(call.linkedid, "whisper")}
+                          onClick={() => startWhisper(call)}
                         >
                           Whisper
                         </Button>
@@ -175,6 +247,39 @@ export default function Supervisor({ liveCalls, presence, agents = [], liveAgent
           {!liveCalls.length && <EmptyState title="No live calls to monitor" />}
         </div>
       </Card>
+
+      <Modal
+        open={Boolean(whisperPick)}
+        onClose={() => setWhisperPick(null)}
+        title="Whisper to which agent?"
+      >
+        <p className="mb-4 text-sm text-muted">
+          This call has more than one agent. Pick the agent who should hear you — the customer and the
+          other agent will not.
+        </p>
+        <div className="flex flex-col gap-2">
+          {(whisperPick?.agents || []).map((a) => (
+            <button
+              key={a.id || a.name}
+              type="button"
+              onClick={() => {
+                const { call } = whisperPick;
+                setWhisperPick(null);
+                monitor(call.linkedid, "whisper", a.id || undefined);
+              }}
+              className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5 text-left text-sm text-text hover:border-border-strong hover:bg-surface-2"
+            >
+              <span className="font-medium">{a.name}</span>
+              {a.extension && <span className="text-xs text-muted">Ext. {a.extension}</span>}
+            </button>
+          ))}
+        </div>
+        <div className="mt-5 flex justify-end">
+          <Button variant="secondary" size="sm" onClick={() => setWhisperPick(null)}>
+            Cancel
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

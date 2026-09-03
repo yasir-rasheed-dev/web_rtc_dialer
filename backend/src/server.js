@@ -147,6 +147,12 @@ tracker.onAgentCallStarted = (userId, linkedid) =>
   onAgentCallStarted(userId, linkedid).catch((error) =>
     console.error("[auth] onAgentCallStarted failed:", error.message)
   );
+// Lets the tracker hang up a supervisor monitor (ChanSpy) leg the moment
+// the call it's attached to ends.
+tracker.hangupChannel = (channel) =>
+  ami.action({ Action: "Hangup", Channel: channel }).catch((error) =>
+    console.error("[monitor] leg hangup failed:", error.message)
+  );
 let amiConnected = false;
 const loginAttempts = new Map();
 
@@ -3437,12 +3443,12 @@ app.get("/api/supervisor/live", authenticate, requirePermission("MONITOR_CALLS",
 app.post("/api/supervisor/monitor", authenticate, requirePermission("MONITOR_CALLS"), asyncRoute(async (req, res) => {
   const linkedid = String(req.body.linkedid || "");
   const mode = String(req.body.mode || "listen");
+  const requestedAgentId = req.body.targetAgentId ? String(req.body.targetAgentId) : null;
   const modePermissions = { listen: "LISTEN_LIVE_CALLS", whisper: "WHISPER_CALLS", barge: "BARGE_CALLS" };
   const teamModePermissions = { listen: "LISTEN_TEAM_CALLS", whisper: "WHISPER_TEAM_CALLS", barge: "BARGE_TEAM_CALLS" };
-  // `q` quiet (no beep), `w` whisper, `B` barge (talk to both). `E` makes
-  // ChanSpy EXIT the moment the spied channel hangs up instead of hunting
-  // for the next channel to attach to — so the supervisor's leg drops as
-  // soon as the real call ends.
+  // `q` quiet (no beep), `w` whisper — supervisor -> agent only, the
+  // customer never hears it, `B` barge (talk to everyone). `E` makes
+  // ChanSpy exit when the spied channel hangs up.
   const flags = { listen: "qE", whisper: "qwE", barge: "qBE" };
   if (!flags[mode]) return res.status(400).json({ error: "Invalid monitoring mode" });
   if (!hasPermission(req.user, modePermissions[mode])) return res.status(403).json({ error: "You do not have permission for this monitoring mode" });
@@ -3450,31 +3456,57 @@ app.post("/api/supervisor/monitor", authenticate, requirePermission("MONITOR_CAL
   const call = tracker.find(linkedid);
   if (!call || call.tenantId !== req.user.tenant_id) return res.status(404).json({ error: "Live call no longer exists" });
 
+  // Which agent are we spying on? Default = the call's attributed agent;
+  // for whisper on a multi-agent call the supervisor picks one.
+  let spyAgentUserId = call.agentUserId;
+  let spySip = call.agent;
+  if (requestedAgentId && requestedAgentId !== call.agentUserId) {
+    const [[a]] = await db.execute(
+      "SELECT id, sip_username FROM users WHERE id=? AND tenant_id=? AND active=1 LIMIT 1",
+      [requestedAgentId, req.user.tenant_id]
+    );
+    if (!a?.sip_username) return res.status(400).json({ error: "That agent can't be monitored on this call" });
+    // the chosen agent must actually be on this call
+    const onCall =
+      spySip === a.sip_username ||
+      [...call.channels].some((c) => c.startsWith(`PJSIP/${a.sip_username}-`)) ||
+      (Array.isArray(call.participants) && call.participants.some((p) => p.userId === a.id));
+    if (!onCall) return res.status(409).json({ error: "That agent is no longer on this call" });
+    spyAgentUserId = a.id;
+    spySip = a.sip_username;
+  }
+
   if (isSupervisor(req.user)) {
     const monitorIds = await supervisorAgentIdsForPrivilege(req.user.id, req.user.tenant_id, "MONITOR_TEAM_CALLS");
     const modeIds = await supervisorAgentIdsForPrivilege(req.user.id, req.user.tenant_id, teamModePermissions[mode]);
-    if (!monitorIds.includes(call.agentUserId) || !modeIds.includes(call.agentUserId)) {
+    if (!monitorIds.includes(spyAgentUserId) || !modeIds.includes(spyAgentUserId)) {
       return res.status(403).json({ error: "This team does not allow the requested monitoring action" });
     }
   }
 
-  const targetChannel = [...call.channels].find((channel) => call.agent && channel.startsWith(`PJSIP/${call.agent}-`));
-  if (!targetChannel) return res.status(409).json({ error: "Agent channel is not available" });
-  // Pre-assign the spy leg's channel id and tell the tracker to ignore
-  // it — a listen/whisper/barge leg must never surface as a call log or
-  // in the live dashboard.
+  if (!spySip) return res.status(409).json({ error: "Agent channel is not available" });
+  // Spy on the agent's ENDPOINT prefix (PJSIP/<sip>), not a frozen
+  // PJSIP/<sip>-<uid> — the exact channel changes across transfers /
+  // re-invites, and ChanSpy resolves the prefix to whatever channel that
+  // endpoint currently has. `E` keeps it bound to that one call.
+  const spyTarget = `PJSIP/${spySip}`;
   const monitorChannelId = `rnmon-${crypto.randomUUID()}`;
-  tracker.registerMonitorChannel(monitorChannelId);
+  tracker.registerMonitorChannel(monitorChannelId, linkedid);
+  console.log(
+    `[monitor] ${mode} — supervisor ${req.user.sip_username} -> ${spyTarget} (agent ${spyAgentUserId}) ` +
+    `flags=${flags[mode]} channelId=${monitorChannelId} call=${linkedid}`
+  );
   await ami.action({
     Action: "Originate",
     Channel: `PJSIP/${req.user.sip_username}`,
     Application: "ChanSpy",
-    Data: `${targetChannel},${flags[mode]}`,
+    Data: `${spyTarget},${flags[mode]}`,
     CallerID: `Ringnex Monitor <${req.user.extension || "9000"}>`,
     ChannelId: monitorChannelId,
     Async: "true"
   });
-  await audit(req.user.id, `SUPERVISOR_${mode.toUpperCase()}`, "call", linkedid, { targetChannel }, req.user.tenant_id);
+  await audit(req.user.id, `SUPERVISOR_${mode.toUpperCase()}`, "call", linkedid,
+    { spyTarget, spyAgentUserId }, req.user.tenant_id);
   res.json({ accepted: true });
 }));
 

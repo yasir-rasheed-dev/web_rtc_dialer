@@ -116,8 +116,15 @@ export class CallTracker {
     // /api/supervisor/monitor route pre-registers here with a known
     // ChannelId — they are NOT calls, so every AMI event for them is
     // dropped: no `calls` row, no `call_events` row, no live-call emit.
-    this.monitorChannelIds = new Set();
-    this.monitorChannelNames = new Set();
+    // monitorChannelId -> { linkedid, channelName } ; channelName -> monitorChannelId
+    this.monitorChannelIds = new Map();
+    this.monitorChannelNames = new Map();
+    // linkedid -> Set(monitorChannelId) so a call's monitor legs can be
+    // torn down the moment the call ends (barge keeps the agent channel
+    // alive otherwise, and the board would never clear).
+    this.monitorsByCall = new Map();
+    // server.js sets this to (channel) => ami.action({Action:"Hangup", Channel:channel})
+    this.hangupChannel = null;
     // Warm-transfer / conference legs the tracker should fold into an
     // EXISTING call as a participant instead of logging as their own call.
     // channelId -> { linkedid, participant }. Registered by
@@ -152,26 +159,58 @@ export class CallTracker {
   // From then on the tracker recognises that channel's events and ignores
   // them entirely, so a supervisor listening/whispering/barging never
   // shows up as a call in the logs or the live dashboard.
-  registerMonitorChannel(channelId) {
+  registerMonitorChannel(channelId, linkedid = null) {
     if (!channelId) return;
-    this.monitorChannelIds.add(channelId);
-    // Safety GC — if we somehow never see this channel's Hangup, don't
-    // leak the entry forever.
-    const timer = setTimeout(() => this.monitorChannelIds.delete(channelId), 4 * 60 * 60 * 1000);
+    this.monitorChannelIds.set(channelId, { linkedid, channelName: null });
+    if (linkedid) {
+      if (!this.monitorsByCall.has(linkedid)) this.monitorsByCall.set(linkedid, new Set());
+      this.monitorsByCall.get(linkedid).add(channelId);
+    }
+    // Safety GC — if we somehow never see this channel's Hangup, don't leak.
+    const timer = setTimeout(() => this.#forgetMonitor(channelId), 4 * 60 * 60 * 1000);
     timer.unref?.();
+  }
+
+  #forgetMonitor(channelId) {
+    const entry = this.monitorChannelIds.get(channelId);
+    if (!entry) return;
+    if (entry.channelName) this.monitorChannelNames.delete(entry.channelName);
+    if (entry.linkedid && this.monitorsByCall.has(entry.linkedid)) {
+      this.monitorsByCall.get(entry.linkedid).delete(channelId);
+      if (!this.monitorsByCall.get(entry.linkedid).size) this.monitorsByCall.delete(entry.linkedid);
+    }
+    this.monitorChannelIds.delete(channelId);
+  }
+
+  // Hangs up every supervisor monitor leg attached to this call. Called
+  // when the call's non-agent leg drops (or the call fully ends) so barge/
+  // listen never keeps the board row alive.
+  #dropMonitorsForCall(linkedid) {
+    const set = this.monitorsByCall.get(linkedid);
+    if (!set || !set.size) return;
+    for (const channelId of [...set]) {
+      const entry = this.monitorChannelIds.get(channelId);
+      const name = entry?.channelName;
+      if (name && typeof this.hangupChannel === "function") {
+        try { this.hangupChannel(name); } catch (e) { console.error("[callTracker] monitor hangup failed:", e.message); }
+      }
+      this.#forgetMonitor(channelId);
+    }
   }
 
   #isMonitorEvent(event) {
     const id = event.Uniqueid || event.Linkedid;
-    if ((id && this.monitorChannelIds.has(id)) || (event.Channel && this.monitorChannelNames.has(event.Channel))) {
-      if (event.Channel) this.monitorChannelNames.add(event.Channel);
-      if (event.Event === "Hangup") {
-        if (event.Channel) this.monitorChannelNames.delete(event.Channel);
-        if (id) this.monitorChannelIds.delete(id);
-      }
-      return true;
+    const byId = id ? this.monitorChannelIds.get(id) : null;
+    const monitorId = byId ? id : (event.Channel ? this.monitorChannelNames.get(event.Channel) : null);
+    if (!byId && !monitorId) return false;
+    const key = byId ? id : monitorId;
+    const entry = this.monitorChannelIds.get(key);
+    if (entry && event.Channel && !entry.channelName) {
+      entry.channelName = event.Channel;
+      this.monitorChannelNames.set(event.Channel, key);
     }
-    return false;
+    if (event.Event === "Hangup") this.#forgetMonitor(key);
+    return true;
   }
 
   // Called by the warm-transfer / add-participant routes right before they
@@ -439,10 +478,17 @@ export class CallTracker {
         }
       }
     } else if (event.Event === "Hangup") {
+      const hungEndpoint = endpointFromChannel(event.Channel);
       call.channels.delete(event.Channel);
       call.status = event.Cause === "16" ? "COMPLETED" : "FAILED";
       call.endedAt = new Date().toISOString();
       call.hangupCause = event["Cause-txt"] || event.Cause || "";
+      // The customer / non-agent leg just dropped, or nothing's left —
+      // tear down any supervisor monitor legs so barge/listen doesn't hold
+      // the agent channel (and this call's row) open.
+      if (this.monitorsByCall.has(linkedid) && (call.channels.size === 0 || hungEndpoint !== call.agent)) {
+        this.#dropMonitorsForCall(linkedid);
+      }
     }
 
     await this.#event(call, event);
@@ -456,6 +502,7 @@ export class CallTracker {
 
     if (event.Event === "Hangup" && call.channels.size === 0) {
       this.calls.delete(linkedid);
+      this.#dropMonitorsForCall(linkedid); // belt & braces
       if (call.tenantId) {
         this.io.to(`tenant:${call.tenantId}:live`).emit("call:ended", visibleCall);
         this.#emitCallTeamEvent(call, "call:ended", visibleCall);

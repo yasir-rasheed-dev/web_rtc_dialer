@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlarmClock,
   BarChart3,
@@ -123,7 +123,11 @@ function PageLoadingFallback() {
 function TenantApp() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(Boolean(getToken() || getRefreshToken()));
-  const [page, setPage] = useState("dashboard");
+  // Persist the current page so a reload (or the header Refresh button)
+  // lands back where the user was, not on the dashboard.
+  const [page, setPage] = useState(() => {
+    try { return localStorage.getItem("ringnex.page") || "dashboard"; } catch { return "dashboard"; }
+  });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem("ringnex.sidebarCollapsed") === "1");
   const [liveCalls, setLiveCalls] = useState([]);
@@ -144,6 +148,10 @@ function TenantApp() {
   useEffect(() => {
     localStorage.setItem("ringnex.sidebarCollapsed", collapsed ? "1" : "0");
   }, [collapsed]);
+
+  useEffect(() => {
+    try { localStorage.setItem("ringnex.page", page); } catch { /* private mode */ }
+  }, [page]);
 
   useEffect(() => {
     if (!getToken() && !getRefreshToken()) {
@@ -258,9 +266,15 @@ function TenantApp() {
     };
   }, [session, missedCalls.recordCallEnded, voicemails.recordNew]);
 
-  useEffect(() => {
-    if (!session || !hasAny(session, ["MONITOR_CALLS", "VIEW_REPORTS"])) return;
-    api("/supervisor/live")
+  // Live-calls reconciliation. Socket call:update/call:ended keep the board
+  // fresh in real time, but a supervisor monitor leg can briefly hold a
+  // finished call's channel open, so we also re-sync to server truth every
+  // ~10s (and expose refreshLive() for the manual buttons). This makes any
+  // stuck row self-heal without a page reload.
+  const canSeeLive = session && hasAny(session, ["MONITOR_CALLS", "VIEW_REPORTS"]);
+  const refreshLive = useCallback(() => {
+    if (!canSeeLive) return Promise.resolve();
+    return api("/supervisor/live")
       .then((state) => {
         setLiveCalls(state.calls || []);
         setPresence(state.presence || []);
@@ -268,7 +282,14 @@ function TenantApp() {
         setAmiConnected(Boolean(state.ami));
       })
       .catch(() => undefined);
-  }, [session]);
+  }, [canSeeLive]);
+
+  useEffect(() => {
+    if (!canSeeLive) return undefined;
+    refreshLive();
+    const t = setInterval(refreshLive, 10000);
+    return () => clearInterval(t);
+  }, [canSeeLive, refreshLive]);
 
   const ownerAccount = session?.role?.name === "Tenant Owner";
   const navigation = useMemo(
@@ -345,6 +366,7 @@ function TenantApp() {
           liveAgentStatus={liveAgentStatus}
           amiConnected={amiConnected}
           permissions={session.permissions || []}
+          onRefreshLive={refreshLive}
         />
       );
     }
