@@ -188,6 +188,11 @@ function initDialer() {
   $("d-back").addEventListener("click", () => { num.value = num.value.slice(0, -1); });
   $("d-call").addEventListener("click", startCall);
   num.addEventListener("keydown", (e) => { if (e.key === "Enter") startCall(); });
+  // dial field takes digits and + * # only — strip anything else on type / paste
+  num.addEventListener("input", () => {
+    const clean = num.value.replace(/[^\d+*#]/g, "");
+    if (clean !== num.value) num.value = clean;
+  });
 
   document.querySelectorAll("#dtmf-pad button").forEach((b) =>
     b.addEventListener("click", () => chrome.runtime.sendMessage({ type: "sip:dtmf", tone: b.textContent }))
