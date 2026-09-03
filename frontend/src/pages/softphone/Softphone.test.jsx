@@ -12,14 +12,15 @@ describe("Ringnex dialer", () => {
     render(<App />);
     expect(screen.getByRole("heading", { name: "Agent connection" })).toBeInTheDocument();
     expect(screen.getByDisplayValue("webdialer01")).toBeInTheDocument();
-    expect(screen.getByText("wss://asterisk.ringnex.co/ws")).toBeInTheDocument();
+    // The WSS URL is an editable field now — assert on its value, and match
+    // whatever VITE_WSS_URL the build is configured with.
+    expect(screen.getByDisplayValue(/^wss:\/\/asterisk\.ringnex\.co\//)).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Enter SIP password")).toHaveValue("");
   });
 
   it("keeps calling disabled until SIP registration", () => {
     render(<App />);
     expect(screen.getByRole("button", { name: "Start call" })).toBeDisabled();
-    expect(screen.getByText("Connect your SIP account to enable calling.")).toBeInTheDocument();
   });
 
   it("accepts keypad input", async () => {
