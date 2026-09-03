@@ -46,12 +46,13 @@ input:focus,select:focus{border-color:var(--blue)}
 
 .numrow{display:flex;gap:6px}
 .numrow input{height:40px;font-size:17px;text-align:center;letter-spacing:1px}
-/* dial keypad */
-.keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px;justify-items:center}
-.keypad button{width:52px;height:52px;border-radius:50%;border:0;background:rgba(255,255,255,.10);color:var(--text);font-size:22px;font-weight:500;cursor:pointer;transition:background .12s}
+/* dial keypad — columns sized to the button (not 1fr) so the circles sit
+   close together instead of spread across the panel */
+.keypad{display:grid;grid-template-columns:repeat(3,52px);gap:9px 12px;justify-content:center;margin:10px auto 0}
+.keypad button{width:52px;height:52px;border-radius:50%;border:0;background:rgba(255,255,255,.10);color:var(--text);font-size:21px;font-weight:500;cursor:pointer;transition:background .12s;padding:0}
 .keypad button:active{background:rgba(255,255,255,.22)}
-.keypad.small{gap:8px;margin:12px auto 4px;max-width:230px}
-.keypad.small button{width:46px;height:46px;font-size:19px}
+.keypad.small{grid-template-columns:repeat(3,44px);gap:7px 10px;margin:12px auto 4px}
+.keypad.small button{width:44px;height:44px;font-size:18px}
 
 /* ===== iPhone-style active-call screen ===== */
 .ios-call{padding:8px 4px 6px;text-align:center}
