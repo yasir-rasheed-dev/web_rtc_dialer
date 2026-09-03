@@ -9,37 +9,64 @@ function toast(msg) {
   clearTimeout(toastT); toastT = setTimeout(() => (t.hidden = true), 3200);
 }
 
+/* ---- tiny confirm modal ---- */
+function confirmModal(message, okText = "Continue") {
+  return new Promise((resolve) => {
+    const wrap = $("modal");
+    $("modal-msg").textContent = message;
+    $("modal-ok").textContent = okText;
+    wrap.hidden = false;
+    const done = (v) => { wrap.hidden = true; $("modal-ok").onclick = null; $("modal-cancel").onclick = null; resolve(v); };
+    $("modal-ok").onclick = () => done(true);
+    $("modal-cancel").onclick = () => done(false);
+  });
+}
+
 /* ============================ AUTH ============================ */
 let pending2fa = null; // { pendingToken, mode }
+
+async function doLogin(forceLogout = false) {
+  if (pending2fa) {
+    const code = $("li-code").value.trim();
+    const path = pending2fa.mode === "setup" ? "/auth/2fa/setup-confirm" : "/auth/2fa/verify";
+    return onAuthed(await api(path, { method: "POST", body: { pendingToken: pending2fa.pendingToken, code } }));
+  }
+  const workspace = $("li-workspace").value.trim();
+  const email = $("li-email").value.trim();
+  const password = $("li-password").value;
+  const p = await api("/auth/login", { method: "POST", body: { workspace, email, password, forceLogout } });
+  if (p.requiresSetup) {
+    pending2fa = { pendingToken: p.pendingToken, mode: "setup" };
+    $("li-qr").src = p.qr; show($("li-qr-wrap"), true); show($("li-2fa"), true);
+    $("li-submit").textContent = "Verify & sign in"; return;
+  }
+  if (p.requires2fa) {
+    pending2fa = { pendingToken: p.pendingToken, mode: "verify" };
+    show($("li-2fa"), true); $("li-submit").textContent = "Verify & sign in"; return;
+  }
+  onAuthed(p);
+}
 
 $("login-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const btn = $("li-submit"); btn.disabled = true;
   show($("li-error"), false);
   try {
-    if (pending2fa) {
-      const code = $("li-code").value.trim();
-      const path = pending2fa.mode === "setup" ? "/auth/2fa/setup-confirm" : "/auth/2fa/verify";
-      const p = await api(path, { method: "POST", body: { pendingToken: pending2fa.pendingToken, code } });
-      return onAuthed(p);
-    }
-    const workspace = $("li-workspace").value.trim();
-    const email = $("li-email").value.trim();
-    const password = $("li-password").value;
-    const p = await api("/auth/login", { method: "POST", body: { workspace, email, password } });
-    if (p.requiresSetup) {
-      pending2fa = { pendingToken: p.pendingToken, mode: "setup" };
-      $("li-qr").src = p.qr; show($("li-qr-wrap"), true); show($("li-2fa"), true);
-      $("li-submit").textContent = "Verify & sign in"; return;
-    }
-    if (p.requires2fa) {
-      pending2fa = { pendingToken: p.pendingToken, mode: "verify" };
-      show($("li-2fa"), true); $("li-submit").textContent = "Verify & sign in"; return;
-    }
-    onAuthed(p);
+    await doLogin(false);
   } catch (err) {
-    $("li-error").textContent = err.message || "Sign in failed";
-    show($("li-error"), true);
+    if (err.code === "SESSION_ACTIVE") {
+      const ok = await confirmModal(
+        "This account is already signed in on another device or browser. Sign that session out and continue here?",
+        "Force sign out & continue"
+      );
+      if (ok) {
+        try { await doLogin(true); }
+        catch (e2) { $("li-error").textContent = e2.message || "Sign in failed"; show($("li-error"), true); }
+      }
+    } else {
+      $("li-error").textContent = err.message || "Sign in failed";
+      show($("li-error"), true);
+    }
   } finally {
     btn.disabled = false;
   }
@@ -90,22 +117,47 @@ async function enterMain(p) {
   $("m-name").textContent = p.user?.name || SIP.username;
   $("m-ext").textContent = SIP.extension ? "Ext " + SIP.extension : "";
 
-  // mic permission prompt must come from a real extension page, once — the
-  // offscreen doc then inherits it.
-  try {
-    const st = await navigator.mediaDevices.getUserMedia({ audio: true });
-    st.getTracks().forEach((t) => t.stop());
-  } catch {
-    toast("Microphone blocked — calls need mic access. Enable it for this extension.");
-  }
+  initTabs(); initDialer(); initLogs();
+  loadLogs();
 
+  await ensureMic();
   await chrome.runtime.sendMessage({ type: "ensure-offscreen" }).catch(() => {});
   setTimeout(() => {
     chrome.runtime.sendMessage({ type: "sip:connect", config: SIP }).catch(() => {});
   }, 300);
+}
 
-  initTabs(); initDialer(); initLogs();
-  loadLogs();
+// The side panel can't surface the mic prompt, so a dedicated page is
+// opened in its own small window; it requests access and closes itself.
+let micWin = null;
+function ensureMic() {
+  return new Promise(async (resolve) => {
+    try {
+      const st = await navigator.permissions.query({ name: "microphone" });
+      if (st.state === "granted") return resolve(true);
+    } catch { /* older Chrome — fall through */ }
+
+    let settled = false;
+    const finish = (v) => { if (settled) return; settled = true; chrome.runtime.onMessage.removeListener(onMsg); resolve(v); };
+    const onMsg = (m) => { if (m?.type === "mic:granted") finish(true); };
+    chrome.runtime.onMessage.addListener(onMsg);
+
+    try {
+      micWin = await chrome.windows.create({
+        url: chrome.runtime.getURL("permission.html"),
+        type: "popup",
+        width: 420,
+        height: 360,
+        focused: true
+      });
+    } catch {
+      toast("Enable microphone for this extension, then reopen the panel.");
+      finish(false);
+      return;
+    }
+    // don't block the SIP connect forever if the user ignores the window
+    setTimeout(() => finish(false), 60000);
+  });
 }
 
 function initTabs() {
@@ -150,7 +202,7 @@ function initDialer() {
       hangup: () => send("sip:hangup"),
       mute: () => send(call.muted ? "sip:unmute" : "sip:mute"),
       hold: () => send(call.held ? "sip:unhold" : "sip:hold"),
-      dtmf: () => show($("dtmf-pad"), $("dtmf-pad").hidden),
+      dtmf: () => { if (call.state === "active" || call.state === "held") { show($("dtmf-pad"), $("dtmf-pad").hidden); syncDtmfBtn(); } },
       warm: startWarm,
       addpart: startAddParticipant,
       "warm-complete": completeWarm,
@@ -169,15 +221,23 @@ function startCall() {
   send("sip:call", { number: n });
 }
 
+function syncDtmfBtn() {
+  const b = $("call-card").querySelector('[data-act="dtmf"]');
+  if (b) b.classList.toggle("active", !$("dtmf-pad").hidden);
+}
+
 function renderCall(info) {
   const idle = $("dialer-idle"), card = $("call-card");
   const active = call.state !== "idle";
+  const connected = call.state === "active" || call.state === "held";
   show(idle, !active); show(card, active);
-  if (!active) { show($("dtmf-pad"), false); return; }
+  // DTMF pad only exists once a call is connected
+  if (!connected) { show($("dtmf-pad"), false); syncDtmfBtn(); }
+  if (!active) return;
   if (info?.name) $("cc-name").textContent = info.name;
   if (info?.sub != null) $("cc-sub").textContent = info.sub;
   show($("cc-incoming"), call.state === "incoming");
-  show($("cc-controls"), call.state === "active" || call.state === "held");
+  show($("cc-controls"), connected);
   show($("cc-warm"), call.warm.stage !== "idle");
   $("cc-warm-t").textContent = call.warm.target;
   const muteBtn = $("call-card").querySelector('[data-act="mute"]');
@@ -272,6 +332,7 @@ chrome.runtime.onMessage.addListener((msg) => {
     case "call:answered":
       call.state = "active";
       renderCall({ name: data?.number || $("cc-name").textContent, sub: "" });
+      show($("dtmf-pad"), true); syncDtmfBtn();   // keypad available once connected
       startTimer();
       break;
     case "call:hold": call.held = !!data?.held; call.state = call.held ? "held" : "active"; renderCall(); break;

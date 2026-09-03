@@ -6,6 +6,9 @@
   --radius:9px;
 }
 *{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+/* author display:grid/flex on .keypad/.cc-row/etc otherwise beats the
+   `hidden` attribute — force it so every [hidden] toggle actually hides */
+[hidden]{display:none!important}
 body{background:var(--bg);color:var(--text);font-size:13px;min-width:300px}
 .view{padding:14px}
 .muted{color:var(--muted)} .sm{font-size:11.5px} .pad{padding:10px}
@@ -81,3 +84,8 @@ input:focus,select:focus{border-color:var(--blue)}
 .row .r-play{border:1px solid var(--border-strong);background:transparent;color:var(--text);border-radius:6px;height:26px;padding:0 8px;font-size:11px;cursor:pointer}
 
 .toast{position:fixed;left:12px;right:12px;bottom:12px;background:var(--surface-3);border:1px solid var(--border-strong);border-radius:8px;padding:9px 11px;font-size:12px;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:50}
+
+.modal-wrap{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:18px;z-index:60}
+.modal{background:var(--surface);border:1px solid var(--border-strong);border-radius:11px;padding:16px;max-width:280px}
+.modal p{font-size:13px;line-height:1.5}
+.modal-row{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
