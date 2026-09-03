@@ -75,6 +75,11 @@ app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 
 function corsOriginCheck(origin, callback) {
   if (!origin || config.frontendOrigins.includes(origin)) return callback(null, true);
+  // The ringNex Dialer Chrome extension calls from chrome-extension://<id>,
+  // and the id differs per install. CORS isn't the security boundary here
+  // (every route still requires a Bearer token — see the comment above), so
+  // any packaged-extension origin is allowed through.
+  if (/^chrome-extension:\/\/[a-p]{32}$/.test(origin)) return callback(null, true);
   return callback(new Error(`Origin not allowed: ${origin}`));
 }
 
