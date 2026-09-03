@@ -41,6 +41,7 @@ import {
   tenantUsageSummary
 } from "./saas.js";
 import { PERMISSIONS } from "./permissions.js";
+import { writeSheetBuffer } from "./spreadsheet.js";
 import createCampaignRoutes from "./campaignRoutes.js";
 import createCommioRoutes, { createSuperAdminCommioRoutes } from "./commioRoutes.js";
 import * as commio from "./commio.js";
@@ -2684,21 +2685,18 @@ app.get("/api/calls/export", authenticate, requirePermission("VIEW_REPORTS", "VI
     return undefined;
   }
 
-  // xlsx — SheetJS has no row-streaming write mode, so this format builds
-  // the full workbook in memory and reports progress via Content-Length /
+  // xlsx has no row-streaming write mode, so this format builds the full
+  // workbook in memory and reports progress via Content-Length /
   // bytes-received on the client instead of the row-count header.
-  const XLSX = (await import("xlsx")).default;
   const allRows = [];
   for await (const rows of rowBatches()) {
     for (const row of rows) allRows.push(rowToFields(row));
   }
-  const sheet = XLSX.utils.aoa_to_sheet([
+  const buffer = await writeSheetBuffer(
+    "Calls",
     ["To", "From", "Duration (sec)", "Status", "Time", "Agent", "Direction", "Disposition"],
-    ...allRows
-  ]);
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, sheet, "Calls");
-  const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+    allRows
+  );
   res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   res.setHeader("Content-Disposition", `attachment; filename="${filenameBase}.xlsx"`);
   res.setHeader("Content-Length", String(buffer.length));
@@ -2840,11 +2838,7 @@ app.get("/api/reports/performance/export", authenticate, requirePermission("VIEW
     return undefined;
   }
 
-  const XLSX = (await import("xlsx")).default;
-  const sheet = XLSX.utils.aoa_to_sheet([HEADERS, ...rows.map(toFields)]);
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, sheet, "Performance");
-  const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+  const buffer = await writeSheetBuffer("Performance", HEADERS, rows.map(toFields));
   res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   res.setHeader("Content-Disposition", `attachment; filename="${filenameBase}.xlsx"`);
   res.setHeader("Content-Length", String(buffer.length));
@@ -3507,6 +3501,12 @@ ami.on("error", (error) => console.error("AMI error", error.message));
 app.use((error, _req, res, _next) => {
   console.error(error);
   if (error?.code === "ER_DUP_ENTRY") return res.status(409).json({ error: "This value already exists in this scope" });
+  // multer: file too large / too many files / rejected by fileFilter
+  if (error?.name === "MulterError") {
+    const msg = error.code === "LIMIT_FILE_SIZE" ? "File is too large" : "Upload was rejected";
+    return res.status(400).json({ error: msg });
+  }
+  if (error?.message === "Upload a .csv or .xlsx file") return res.status(400).json({ error: error.message });
   if (error?.statusCode) return res.status(error.statusCode).json({ error: error.message });
   res.status(500).json({ error: config.env === "production" ? "Unexpected server error" : error.message });
 });

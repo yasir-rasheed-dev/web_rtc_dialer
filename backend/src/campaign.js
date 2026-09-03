@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
-import XLSX from "xlsx";
 
 import { db, audit } from "./db.js";
+import { readSheetRows } from "./spreadsheet.js";
 
 // Buckets the raw campaign_contacts.status enum into the 5 groups the
 // "Manage" detail view filters/counts by.
@@ -232,19 +232,10 @@ error:"Excel file required"
 
 }
 
-
-const workbook =
-XLSX.readFile(req.file.path);
-
-
-const sheet =
-workbook.Sheets[
-workbook.SheetNames[0]
-];
-
+try {
 
 const rows =
-XLSX.utils.sheet_to_json(sheet);
+await readSheetRows(req.file.path);
 
 
 
@@ -316,10 +307,6 @@ inserted++;
 
 
 
-fs.unlinkSync(req.file.path);
-
-
-
 res.json({
 
 total:rows.length,
@@ -330,6 +317,9 @@ skipped
 
 });
 
+} finally {
+  fs.promises.unlink(req.file.path).catch(() => {});
+}
 
 }
 

@@ -11,14 +11,21 @@ import { fileURLToPath } from "node:url";
 
 import express from "express";
 import multer from "multer";
-import XLSX from "xlsx";
 
 import { db } from "./db.js";
 import { requirePermission, hasPermission } from "./saas.js";
+import { readSheetRows } from "./spreadsheet.js";
 
 const uploadDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "uploads/dnc");
 fs.mkdirSync(uploadDir, { recursive: true });
-const upload = multer({ dest: uploadDir });
+const upload = multer({
+  dest: uploadDir,
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, cb) => {
+    const ok = /\.(csv|xlsx|xls)$/i.test(file.originalname || "");
+    cb(ok ? null : new Error("Upload a .csv or .xlsx file"), ok);
+  }
+});
 
 function asyncRoute(handler) {
   return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
@@ -101,9 +108,7 @@ async function uploadDnc(req, res) {
   if (!req.file) return res.status(400).json({ error: "Excel file is required" });
 
   try {
-    const workbook = XLSX.readFile(req.file.path);
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(sheet);
+    const rows = await readSheetRows(req.file.path);
 
     let inserted = 0;
     let duplicates = 0;

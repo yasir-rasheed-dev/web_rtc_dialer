@@ -28,7 +28,14 @@ import { requirePermission, requireTenantFeature } from "./saas.js";
 const uploadDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "uploads/campaigns");
 fs.mkdirSync(uploadDir, { recursive: true });
 
-const upload = multer({ dest: uploadDir });
+const upload = multer({
+    dest: uploadDir,
+    limits: { fileSize: 15 * 1024 * 1024, files: 1 },
+    fileFilter: (_req, file, cb) => {
+        const ok = /\.(csv|xlsx|xls)$/i.test(file.originalname || "");
+        cb(ok ? null : new Error("Upload a .csv or .xlsx file"), ok);
+    }
+});
 
 function asyncRoute(handler) {
     return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
