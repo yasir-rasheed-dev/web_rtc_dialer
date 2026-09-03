@@ -74,8 +74,19 @@ app.set("trust proxy", config.trustProxy);
 // CORS itself allows them.
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 
+// The public marketing site (ringnex.co) calls the /api/public/* endpoints
+// for pricing + onboarding intake — no auth, no cookies, so allowing these
+// origins is harmless.
+const PUBLIC_SITE_ORIGINS = new Set([
+  "https://ringnex.co",
+  "https://www.ringnex.co",
+  "http://ringnex.co",
+  "http://www.ringnex.co"
+]);
+
 function corsOriginCheck(origin, callback) {
   if (!origin || config.frontendOrigins.includes(origin)) return callback(null, true);
+  if (PUBLIC_SITE_ORIGINS.has(origin)) return callback(null, true);
   // The ringNex Dialer Chrome extension calls from chrome-extension://<id>,
   // and the id differs per install. CORS isn't the security boundary here
   // (every route still requires a Bearer token — see the comment above), so
