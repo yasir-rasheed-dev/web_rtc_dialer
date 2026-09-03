@@ -698,7 +698,9 @@ async function finalizeSuperAdminLogin(admin, req) {
     "UPDATE super_admins SET current_session_id=?, last_login_at=UTC_TIMESTAMP() WHERE id=?",
     [sessionId, admin.id]
   );
-  await audit(admin.id, "SA_LOGIN", "super_admin", admin.id, { ip: req.ip }, null);
+  // actor_user_id has an FK to users(id); a Super Admin isn't a user, so
+  // keep actorId null and record the id in metadata + entity_id.
+  await audit(null, "SA_LOGIN", "super_admin", admin.id, { superAdminId: admin.id, ip: req.ip }, null);
   return {
     token: signSuperAdminToken({ ...admin, current_session_id: sessionId }),
     admin: { id: admin.id, email: admin.email, name: admin.name }
@@ -758,7 +760,7 @@ app.post("/api/super-admin/auth/login", asyncRoute(async (req, res) => {
   if (!admin || !admin.active || !(await verifyPassword(password, admin.password_hash))) {
     attempt.count += 1;
     loginAttempts.set(attemptKey, attempt);
-    await audit(admin?.id || null, "SA_LOGIN_FAIL", "super_admin", admin?.id || null, { ip: req.ip, email }, null);
+    await audit(null, "SA_LOGIN_FAIL", "super_admin", admin?.id || null, { superAdminId: admin?.id || null, ip: req.ip, email }, null);
     return res.status(401).json({ error: "Invalid email or password" });
   }
   loginAttempts.delete(attemptKey);
