@@ -14,6 +14,16 @@ export default function SuperAdminLogin({ onAuthenticated }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // "credentials" -> "2fa-setup" (first sign-in, shows a QR) or
+  // "2fa-verify" (already enrolled) -> done.
+  const [stage, setStage] = useState("credentials");
+  const [twoFactor, setTwoFactor] = useState(null); // { pendingToken, secret?, otpauthUrl?, qr? }
+  const [code, setCode] = useState("");
+
+  const finish = (payload) => {
+    setSuperAdminToken(payload.token);
+    onAuthenticated(payload);
+  };
 
   const submit = async (event) => {
     event.preventDefault();
@@ -21,14 +31,118 @@ export default function SuperAdminLogin({ onAuthenticated }) {
     setError("");
     try {
       const payload = await superApi("/super-admin/auth/login", { method: "POST", body: { email, password } });
-      setSuperAdminToken(payload.token);
-      onAuthenticated(payload);
+      if (payload.requiresSetup) {
+        setTwoFactor(payload);
+        setStage("2fa-setup");
+        return;
+      }
+      if (payload.requires2fa) {
+        setTwoFactor(payload);
+        setStage("2fa-verify");
+        return;
+      }
+      finish(payload);
     } catch (e) {
       setError(e.message);
     } finally {
       setBusy(false);
     }
   };
+
+  const submitTwoFactor = async (event) => {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const endpoint = stage === "2fa-setup"
+        ? "/super-admin/auth/2fa/setup-confirm"
+        : "/super-admin/auth/2fa/verify";
+      const payload = await superApi(endpoint, { method: "POST", body: { pendingToken: twoFactor.pendingToken, code } });
+      finish(payload);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const backToCredentials = () => {
+    setStage("credentials");
+    setTwoFactor(null);
+    setCode("");
+    setError("");
+    setPassword("");
+  };
+
+  if (stage === "2fa-setup" || stage === "2fa-verify") {
+    return (
+      <main className="relative grid min-h-screen place-content-center bg-bg px-6">
+        <ThemeToggle className="absolute right-6 top-6 z-10" />
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, ease: "easeOut" }}
+          className="w-full max-w-sm rounded-2xl border border-border bg-surface p-8 shadow-card"
+        >
+          <div className="mb-5 flex items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent">
+              <ShieldCheck size={20} />
+            </span>
+            <div>
+              <p className="text-sm font-bold text-text">
+                {stage === "2fa-setup" ? "Set up two-factor authentication" : "Two-factor authentication"}
+              </p>
+              <p className="text-xs text-muted">
+                {stage === "2fa-setup"
+                  ? "Required for the Super Admin account"
+                  : "Enter the code from your authenticator app"}
+              </p>
+            </div>
+          </div>
+
+          {stage === "2fa-setup" && (
+            <div className="mb-5 flex flex-col items-center gap-3 rounded-xl border border-border bg-surface-2 p-4">
+              <p className="text-center text-xs text-muted">
+                Scan this with Google Authenticator (or any TOTP app), then enter the 6-digit code it shows.
+              </p>
+              {twoFactor?.qr && <img src={twoFactor.qr} alt="2FA QR code" className="h-40 w-40 rounded-lg bg-white p-2" />}
+              {twoFactor?.secret && (
+                <p className="break-all rounded-md bg-surface-3 px-2 py-1 text-center font-mono text-[11px] text-muted">
+                  {twoFactor.secret}
+                </p>
+              )}
+            </div>
+          )}
+
+          <form onSubmit={submitTwoFactor} className="flex flex-col gap-4">
+            <label className={fieldLabelClass()}>
+              6-digit code
+              <Input
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                placeholder="000000"
+                required
+                autoFocus
+              />
+            </label>
+            {error && <div className="rounded-lg bg-danger-soft px-3 py-2 text-xs font-medium text-danger">{error}</div>}
+            <Button type="submit" loading={busy} icon={ShieldCheck} className="w-full justify-center">
+              {busy ? "Verifying…" : stage === "2fa-setup" ? "Confirm & sign in" : "Verify & sign in"}
+            </Button>
+            <button
+              type="button"
+              onClick={backToCredentials}
+              className="text-center text-xs font-medium text-muted hover:text-text"
+            >
+              Back
+            </button>
+          </form>
+        </motion.div>
+      </main>
+    );
+  }
 
   return (
     <main className="relative grid min-h-screen grid-cols-1 bg-bg lg:grid-cols-[480px_1fr]">
@@ -73,6 +187,7 @@ export default function SuperAdminLogin({ onAuthenticated }) {
             <Button type="submit" loading={busy} icon={ShieldCheck} className="mt-1 w-full justify-center">
               {busy ? "Signing in…" : "Super Admin Sign in"}
             </Button>
+            <p className="text-center text-[11px] text-muted">Protected by two-factor authentication</p>
           </form>
         </motion.div>
       </section>

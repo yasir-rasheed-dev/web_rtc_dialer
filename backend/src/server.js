@@ -606,16 +606,24 @@ const authenticateSuperAdmin = asyncRoute(async (req, res, next) => {
   let claims;
   try {
     claims = verifyToken(token);
-  } catch {
-    return res.status(401).json({ error: "Session expired or invalid" });
+  } catch (error) {
+    if (error?.name === "TokenExpiredError") {
+      return res.status(401).json({ error: "TOKEN_EXPIRED", message: "Super Admin session expired — sign in again" });
+    }
+    return res.status(401).json({ error: "TOKEN_INVALID", message: "Session expired or invalid" });
   }
   if (claims.scope !== "super-admin") return res.status(401).json({ error: "Invalid Super Admin session" });
   const [rows] = await db.execute(
-    `SELECT id,email,name,active FROM super_admins WHERE id=? LIMIT 1`,
+    `SELECT id,email,name,active,current_session_id FROM super_admins WHERE id=? LIMIT 1`,
     [claims.sub]
   );
-  if (!rows[0]?.active) return res.status(401).json({ error: "Super Admin account is disabled" });
-  req.superAdmin = rows[0];
+  const admin = rows[0];
+  if (!admin?.active) return res.status(401).json({ error: "Super Admin account is disabled" });
+  // One active Super Admin session — a newer sign-in invalidates this one.
+  if (admin.current_session_id && claims.sid !== admin.current_session_id) {
+    return res.status(401).json({ error: "SESSION_REVOKED", message: "Signed out — the Super Admin account signed in elsewhere." });
+  }
+  req.superAdmin = { id: admin.id, email: admin.email, name: admin.name, active: admin.active };
   next();
 });
 
@@ -683,23 +691,101 @@ app.use("/api/uploads/team-chat", express.static(path.resolve(path.dirname(fileU
 // ---------------------------
 // Super Admin / Product Owner
 // ---------------------------
+async function finalizeSuperAdminLogin(admin, req) {
+  const sessionId = crypto.randomUUID();
+  await db.execute(
+    "UPDATE super_admins SET current_session_id=?, last_login_at=UTC_TIMESTAMP() WHERE id=?",
+    [sessionId, admin.id]
+  );
+  await audit(admin.id, "SA_LOGIN", "super_admin", admin.id, { ip: req.ip }, null);
+  return {
+    token: signSuperAdminToken({ ...admin, current_session_id: sessionId }),
+    admin: { id: admin.id, email: admin.email, name: admin.name }
+  };
+}
+
+async function completeSuperAdminTotp(req, res, expectedScope) {
+  const pendingToken = String(req.body.pendingToken || "");
+  const code = String(req.body.code || "").trim();
+  let claims;
+  try {
+    claims = verifyToken(pendingToken);
+  } catch {
+    return res.status(401).json({ error: "This authenticator session expired — please sign in again." });
+  }
+  if (claims.scope !== expectedScope) return res.status(401).json({ error: "Invalid authenticator session" });
+  if (!checkTotpRateLimit(res, `sa:${req.ip}:${claims.sub}`)) return;
+
+  const [rows] = await db.execute(
+    `SELECT id,email,name,active,totp_secret_ciphertext FROM super_admins WHERE id=? LIMIT 1`,
+    [claims.sub]
+  );
+  const admin = rows[0];
+  if (!admin?.active) return res.status(401).json({ error: "Invalid authenticator session" });
+
+  const secret = admin.totp_secret_ciphertext ? decryptSecret(admin.totp_secret_ciphertext) : null;
+  if (!secret || !verifyTotpCode(secret, code)) {
+    return res.status(401).json({ error: "Incorrect authenticator code" });
+  }
+  if (expectedScope === "sa-2fa-setup") {
+    await db.execute("UPDATE super_admins SET totp_confirmed_at=UTC_TIMESTAMP() WHERE id=?", [admin.id]);
+  }
+  res.json(await finalizeSuperAdminLogin(admin, req));
+}
+
 app.post("/api/super-admin/auth/login", asyncRoute(async (req, res) => {
   const email = String(req.body.email || "").trim().toLowerCase();
   const password = String(req.body.password || "");
+
+  // Per-IP-per-email throttle — the Super Admin login had none, and it's
+  // the master key for the whole platform.
+  const attemptKey = `sa:${req.ip}:${email}`;
+  const attempt = loginAttempts.get(attemptKey) || { count: 0, resetAt: Date.now() + 15 * 60 * 1000 };
+  if (Date.now() > attempt.resetAt) { attempt.count = 0; attempt.resetAt = Date.now() + 15 * 60 * 1000; }
+  if (attempt.count >= 5) {
+    res.setHeader("Retry-After", Math.ceil((attempt.resetAt - Date.now()) / 1000));
+    return res.status(429).json({ error: "Too many attempts; try again later" });
+  }
+
   const [rows] = await db.execute(
-    `SELECT id,email,name,password_hash,active FROM super_admins WHERE email=? LIMIT 1`,
+    `SELECT id,email,name,password_hash,active,current_session_id,
+            totp_required,totp_secret_ciphertext,totp_confirmed_at
+       FROM super_admins WHERE email=? LIMIT 1`,
     [email]
   );
   const admin = rows[0];
   if (!admin || !admin.active || !(await verifyPassword(password, admin.password_hash))) {
+    attempt.count += 1;
+    loginAttempts.set(attemptKey, attempt);
+    await audit(admin?.id || null, "SA_LOGIN_FAIL", "super_admin", admin?.id || null, { ip: req.ip, email }, null);
     return res.status(401).json({ error: "Invalid email or password" });
   }
-  await db.execute("UPDATE super_admins SET last_login_at=UTC_TIMESTAMP() WHERE id=?", [admin.id]);
-  res.json({
-    token: signSuperAdminToken(admin),
-    admin: { id: admin.id, email: admin.email, name: admin.name }
-  });
+  loginAttempts.delete(attemptKey);
+
+  // 2FA is mandatory for Super Admin (totp_required defaults to 1).
+  if (admin.totp_required) {
+    if (admin.totp_confirmed_at) {
+      const pendingToken = signPendingToken({ sub: admin.id, scope: "sa-2fa-verify" });
+      return res.json({ requires2fa: true, pendingToken });
+    }
+    // First sign-in: hand back a QR to enrol. Reuse an unconfirmed secret
+    // across retries so a second attempt doesn't invalidate a QR already
+    // scanned.
+    let secret = admin.totp_secret_ciphertext ? decryptSecret(admin.totp_secret_ciphertext) : null;
+    if (!secret) {
+      secret = generateTotpSecret();
+      await db.execute("UPDATE super_admins SET totp_secret_ciphertext=? WHERE id=?", [encryptSecret(secret), admin.id]);
+    }
+    const { otpauthUrl, qr } = await totpQrCodeDataUrl(secret, `${admin.email} (Super Admin)`, "Ringnex");
+    const pendingToken = signPendingToken({ sub: admin.id, scope: "sa-2fa-setup" });
+    return res.json({ requiresSetup: true, pendingToken, secret, otpauthUrl, qr });
+  }
+
+  res.json(await finalizeSuperAdminLogin(admin, req));
 }));
+
+app.post("/api/super-admin/auth/2fa/setup-confirm", asyncRoute((req, res) => completeSuperAdminTotp(req, res, "sa-2fa-setup")));
+app.post("/api/super-admin/auth/2fa/verify", asyncRoute((req, res) => completeSuperAdminTotp(req, res, "sa-2fa-verify")));
 
 app.get("/api/super-admin/auth/session", authenticateSuperAdmin, (req, res) => {
   res.json({ admin: req.superAdmin });

@@ -43,9 +43,18 @@ export function signPendingToken(payload, expiresIn = "10m") {
 
 export function signSuperAdminToken(admin) {
   return jwt.sign(
-    { sub: admin.id, scope: "super-admin", name: admin.name },
+    {
+      sub: admin.id,
+      scope: "super-admin",
+      name: admin.name,
+      // One active Super Admin session — authenticateSuperAdmin rejects any
+      // token whose sid no longer matches super_admins.current_session_id.
+      sid: admin.current_session_id || null
+    },
     config.jwtSecret,
-    { expiresIn: config.jwtExpiresIn, issuer: "ringnex-dialer" }
+    // Deliberately short — the highest-privilege token on the platform.
+    // No refresh token for Super Admin; it re-authenticates.
+    { expiresIn: "1h", issuer: "ringnex-dialer" }
   );
 }
 
