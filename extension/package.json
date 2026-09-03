@@ -1,0 +1,14 @@
+{
+  "name": "ringnex-dialer-extension",
+  "private": true,
+  "version": "1.0.0",
+  "description": "ringNex Dialer — Chrome extension (MV3) softphone for agents.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.2",
+    "sip.js": "0.21.2"
+  }
+}

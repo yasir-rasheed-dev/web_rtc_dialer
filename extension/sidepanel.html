@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ringNex Dialer</title>
+<link rel="stylesheet" href="sidepanel.css" />
+</head>
+<body>
+
+<!-- ===== LOGIN ===== -->
+<section id="view-login" class="view">
+  <div class="brand"><img src="icons/icon48.png" alt="" /><b>ring<i>Nex</i> Dialer</b></div>
+  <p class="muted sm">Sign in with your agent account.</p>
+  <form id="login-form" class="stack">
+    <label>Workspace<input id="li-workspace" autocomplete="off" placeholder="acme" required /></label>
+    <label>Email<input id="li-email" type="email" autocomplete="username" required /></label>
+    <label>Password<input id="li-password" type="password" autocomplete="current-password" required /></label>
+    <div id="li-2fa" hidden>
+      <div id="li-qr-wrap" hidden>
+        <p class="sm muted">Scan with an authenticator app, then enter the code.</p>
+        <img id="li-qr" alt="2FA QR" />
+      </div>
+      <label>6-digit code<input id="li-code" inputmode="numeric" maxlength="6" placeholder="000000" /></label>
+    </div>
+    <p id="li-error" class="err" hidden></p>
+    <button class="btn primary" type="submit" id="li-submit">Sign in</button>
+  </form>
+</section>
+
+<!-- ===== MAIN ===== -->
+<section id="view-main" class="view" hidden>
+  <header class="topbar">
+    <div class="who"><span id="m-name">—</span><span id="m-ext" class="muted sm"></span></div>
+    <div class="reg" id="m-reg" title="SIP registration"><span class="dot"></span><span id="m-reg-t">…</span></div>
+    <button id="m-logout" class="icon-btn" title="Sign out">⎋</button>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="dialer">Dialer</button>
+    <button class="tab" data-tab="logs">Call Logs</button>
+  </nav>
+
+  <!-- DIALER -->
+  <div id="tab-dialer" class="tabpane">
+    <div id="call-card" class="call-card" hidden>
+      <div class="cc-top">
+        <div class="cc-id"><b id="cc-name">Unknown</b><span id="cc-sub" class="muted sm"></span></div>
+        <div id="cc-timer" class="cc-timer">00:00</div>
+      </div>
+      <div id="cc-incoming" class="cc-row" hidden>
+        <button class="btn green" data-act="answer">Answer</button>
+        <button class="btn red" data-act="decline">Decline</button>
+      </div>
+      <div id="cc-controls" class="cc-grid" hidden>
+        <button class="ctl" data-act="mute"><span>Mute</span></button>
+        <button class="ctl" data-act="hold"><span>Hold</span></button>
+        <button class="ctl" data-act="dtmf"><span>Keypad</span></button>
+        <button class="ctl" data-act="warm"><span>Transfer</span></button>
+        <button class="ctl" data-act="addpart"><span>Add&nbsp;party</span></button>
+        <button class="ctl danger" data-act="hangup"><span>Hang&nbsp;up</span></button>
+      </div>
+      <div id="cc-warm" class="cc-warm" hidden>
+        <span class="sm">Consulting <b id="cc-warm-t"></b> — customer on hold</span>
+        <button class="btn primary sm" data-act="warm-complete">Complete transfer</button>
+        <button class="btn ghost sm" data-act="warm-cancel">Cancel</button>
+      </div>
+    </div>
+
+    <div id="dialer-idle">
+      <div class="numrow">
+        <input id="d-number" placeholder="Enter a number" autocomplete="off" />
+        <button id="d-back" class="icon-btn" title="Delete">⌫</button>
+      </div>
+      <div class="keypad">
+        <button>1</button><button>2</button><button>3</button>
+        <button>4</button><button>5</button><button>6</button>
+        <button>7</button><button>8</button><button>9</button>
+        <button>*</button><button>0</button><button>#</button>
+      </div>
+      <button id="d-call" class="btn green big">Call</button>
+    </div>
+
+    <div id="dtmf-pad" class="keypad small" hidden>
+      <button>1</button><button>2</button><button>3</button>
+      <button>4</button><button>5</button><button>6</button>
+      <button>7</button><button>8</button><button>9</button>
+      <button>*</button><button>0</button><button>#</button>
+    </div>
+  </div>
+
+  <!-- CALL LOGS -->
+  <div id="tab-logs" class="tabpane" hidden>
+    <div class="filters">
+      <select id="lg-range">
+        <option value="today">Today</option>
+        <option value="week">This week</option>
+        <option value="month" selected>This month</option>
+        <option value="custom">Custom…</option>
+      </select>
+      <div id="lg-custom" class="custom" hidden>
+        <input type="date" id="lg-from" /> <span class="muted">–</span> <input type="date" id="lg-to" />
+      </div>
+    </div>
+    <div class="subtabs">
+      <button class="subtab active" data-dir="OUTBOUND">Outgoing</button>
+      <button class="subtab" data-dir="INBOUND">Inbound</button>
+      <button class="subtab" data-dir="MISSED">Missed</button>
+      <button class="subtab" data-dir="VOICEMAIL">Voicemail</button>
+    </div>
+    <div id="lg-list" class="list"><p class="muted sm pad">Loading…</p></div>
+    <div id="lg-more-wrap" class="pad" hidden><button id="lg-more" class="btn ghost sm">Load more</button></div>
+  </div>
+</section>
+
+<div id="toast" class="toast" hidden></div>
+
+<audio id="vm-audio"></audio>
+<script type="module" src="sidepanel.js"></script>
+</body>
+</html>
