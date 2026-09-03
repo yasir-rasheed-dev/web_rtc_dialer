@@ -54,6 +54,12 @@ input:focus,select:focus{border-color:var(--blue)}
 .keypad.small{grid-template-columns:repeat(3,44px);gap:7px 10px;margin:12px auto 4px}
 .keypad.small button{width:44px;height:44px;font-size:18px}
 
+/* green circular call button, iOS-style */
+.callbtn{width:58px;height:58px;border-radius:50%;background:#2ec46b;color:#fff;border:0;display:flex;align-items:center;justify-content:center;margin:14px auto 4px;cursor:pointer;transition:background .12s,transform .1s}
+.callbtn:active{background:#28ad5e;transform:scale(.94)}
+.callbtn svg{width:25px;height:25px}
+.callbtn:disabled{opacity:.5;pointer-events:none}
+
 /* ===== iPhone-style active-call screen ===== */
 .ios-call{padding:8px 4px 6px;text-align:center}
 .ios-head{padding:10px 0 2px}
