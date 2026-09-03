@@ -6,6 +6,26 @@ import Select from "../ui/Select";
 import ThemeToggle from "../ui/ThemeToggle";
 import { hasAny } from "../../lib/permissions";
 import { formatDuration } from "../../lib/phone";
+import { confirmModal } from "../../lib/modal";
+
+// Reload safely: on the web a mid-call reload tears down the SIP/WebRTC
+// session and drops the call, so confirm first. On the desktop app the
+// call runs in its own popup window and survives a main-window reload, so
+// no prompt is needed there.
+async function reloadWithCallGuard() {
+  const onCall = window.ringnexSoftphoneState && window.ringnexSoftphoneState.callStatus !== "idle";
+  if (onCall && !window.ringnexDesktop) {
+    const ok = await confirmModal({
+      title: "Reload while on a call?",
+      message: "You are on a live call. Reloading the page will end the call. Continue?",
+      confirmText: "Reload anyway",
+      cancelText: "Stay on call",
+      danger: true
+    });
+    if (!ok) return;
+  }
+  window.location.reload();
+}
 
 const AGENT_STATUS_OPTIONS = [
   { value: "OFFLINE", label: "Offline" },
@@ -115,7 +135,7 @@ export default function Header({
           variant="icon"
           size="icon"
           icon={RotateCw}
-          onClick={() => window.location.reload()}
+          onClick={reloadWithCallGuard}
           title="Refresh page"
           aria-label="Refresh page"
         />

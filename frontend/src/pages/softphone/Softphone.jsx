@@ -695,6 +695,21 @@ const [transferStage, setTransferStage] = useState("idle");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRegistered, callStatus, currentParty, muted, held, transferStage, transferTarget, conferenceId]);
 
+  useEffect(() => {
+    // On the web the SIP/WebRTC session lives in this page — a reload or tab
+    // close mid-call drops the call. Warn before that happens. On the
+    // desktop app the call runs in a separate popup window, so reloading
+    // the main window is harmless and this guard stays off.
+    if (window.ringnexDesktop || !callInProgress) return undefined;
+    const warn = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
+      return "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [callInProgress]);
+
   const answerCall = async () => {
     setError("");
     if (!can("RECEIVE_CALLS")) {
