@@ -43,27 +43,60 @@
 
   <!-- DIALER -->
   <div id="tab-dialer" class="tabpane">
-    <div id="call-card" class="call-card" hidden>
-      <div class="cc-top">
-        <div class="cc-id"><b id="cc-name">Unknown</b><span id="cc-sub" class="muted sm"></span></div>
-        <div id="cc-timer" class="cc-timer">00:00</div>
+    <div id="call-card" class="ios-call" hidden>
+      <div class="ios-head">
+        <b id="cc-name">Unknown</b>
+        <span id="cc-timer" class="ios-timer">00:00</span>
+        <span id="cc-sub" class="ios-sub"></span>
       </div>
-      <div id="cc-incoming" class="cc-row" hidden>
-        <button class="btn green" data-act="answer">Answer</button>
-        <button class="btn red" data-act="decline">Decline</button>
+
+      <div id="cc-incoming" class="ios-incoming" hidden>
+        <button class="ios-btn decline" data-act="decline">
+          <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.81.36 1.6.7 2.34a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.74-1.74a2 2 0 0 1 2.11-.45c.74.34 1.53.57 2.34.7A2 2 0 0 1 22 16.92z" transform="rotate(135 12 12)"/></svg></span>
+          <span class="lbl">decline</span>
+        </button>
+        <button class="ios-btn accept" data-act="answer">
+          <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.81.36 1.6.7 2.34a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.74-1.74a2 2 0 0 1 2.11-.45c.74.34 1.53.57 2.34.7A2 2 0 0 1 22 16.92z"/></svg></span>
+          <span class="lbl">accept</span>
+        </button>
       </div>
-      <div id="cc-controls" class="cc-grid" hidden>
-        <button class="ctl" data-act="mute"><span>Mute</span></button>
-        <button class="ctl" data-act="hold"><span>Hold</span></button>
-        <button class="ctl" data-act="dtmf"><span>Keypad</span></button>
-        <button class="ctl" data-act="warm"><span>Transfer</span></button>
-        <button class="ctl" data-act="addpart"><span>Add&nbsp;party</span></button>
-        <button class="ctl danger" data-act="hangup"><span>Hang&nbsp;up</span></button>
+
+      <div id="cc-controls" class="ios-grid" hidden>
+        <button class="ios-btn" data-act="mute">
+          <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1l22 22"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/></svg></span>
+          <span class="lbl">mute</span>
+        </button>
+        <button class="ios-btn" data-act="dtmf">
+          <span class="ic"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="5" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="12" cy="19" r="2"/><circle cx="19" cy="19" r="2"/></svg></span>
+          <span class="lbl">keypad</span>
+        </button>
+        <button class="ios-btn" data-act="hold">
+          <span class="ic"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></span>
+          <span class="lbl">hold</span>
+        </button>
+        <button class="ios-btn" data-act="addpart">
+          <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg></span>
+          <span class="lbl">add&nbsp;call</span>
+        </button>
+        <button class="ios-btn" data-act="warm">
+          <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></span>
+          <span class="lbl">transfer</span>
+        </button>
+        <span class="ios-spacer" aria-hidden="true"></span>
       </div>
-      <div id="cc-warm" class="cc-warm" hidden>
+
+      <div id="cc-warm" class="ios-warm" hidden>
         <span class="sm">Consulting <b id="cc-warm-t"></b> — customer on hold</span>
-        <button class="btn primary sm" data-act="warm-complete">Complete transfer</button>
-        <button class="btn ghost sm" data-act="warm-cancel">Cancel</button>
+        <div class="modal-row">
+          <button class="btn ghost sm" data-act="warm-cancel">Cancel</button>
+          <button class="btn primary sm" data-act="warm-complete">Complete transfer</button>
+        </div>
+      </div>
+
+      <div class="ios-end">
+        <button class="ios-btn hangup" data-act="hangup" title="Hang up">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.81.36 1.6.7 2.34a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.74-1.74a2 2 0 0 1 2.11-.45c.74.34 1.53.57 2.34.7A2 2 0 0 1 22 16.92z" transform="rotate(135 12 12)"/></svg>
+        </button>
       </div>
     </div>
 

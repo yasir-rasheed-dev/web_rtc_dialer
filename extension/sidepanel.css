@@ -46,23 +46,43 @@ input:focus,select:focus{border-color:var(--blue)}
 
 .numrow{display:flex;gap:6px}
 .numrow input{height:40px;font-size:17px;text-align:center;letter-spacing:1px}
-.keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:10px}
-.keypad button{height:40px;border-radius:8px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);font-size:16px;cursor:pointer}
-.keypad button:active{background:var(--surface-3)}
-.keypad.small button{height:34px;font-size:14px}
+/* dial keypad */
+.keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px;justify-items:center}
+.keypad button{width:52px;height:52px;border-radius:50%;border:0;background:rgba(255,255,255,.10);color:var(--text);font-size:22px;font-weight:500;cursor:pointer;transition:background .12s}
+.keypad button:active{background:rgba(255,255,255,.22)}
+.keypad.small{gap:8px;margin:12px auto 4px;max-width:230px}
+.keypad.small button{width:46px;height:46px;font-size:19px}
 
-.call-card{border:1px solid var(--border-strong);border-radius:var(--radius);background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:12px;margin-bottom:12px}
-.cc-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
-.cc-id{display:flex;flex-direction:column;min-width:0}
-.cc-id b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.cc-timer{font-variant-numeric:tabular-nums;color:#3ddc6a;font-weight:700}
-.cc-row{display:flex;gap:8px;margin-top:10px}
-.cc-row .btn{flex:1}
-.cc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:10px}
-.ctl{height:44px;border-radius:8px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);font-size:11.5px;font-weight:600;cursor:pointer}
-.ctl.active{border-color:var(--blue);background:rgba(6,132,188,.14);color:#fff}
-.ctl.danger{border-color:rgba(220,38,38,.4);color:#ff9a9a}
-.cc-warm{margin-top:10px;display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--border);padding-top:8px}
+/* ===== iPhone-style active-call screen ===== */
+.ios-call{padding:8px 4px 6px;text-align:center}
+.ios-head{padding:10px 0 2px}
+.ios-head b{display:block;font-size:20px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ios-timer{display:block;font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums;margin-top:3px}
+.ios-sub{display:block;font-size:11px;color:var(--muted);min-height:13px}
+
+.ios-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px 6px;max-width:238px;margin:18px auto 4px;justify-items:center}
+.ios-btn{background:transparent;border:0;display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer;color:var(--text);width:72px}
+.ios-btn .ic{width:58px;height:58px;border-radius:50%;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;transition:background .15s,color .15s}
+.ios-btn .ic svg{width:24px;height:24px}
+.ios-btn .lbl{font-size:11px;color:var(--muted);white-space:nowrap}
+.ios-btn:active .ic{background:rgba(255,255,255,.26)}
+.ios-btn.on .ic{background:#fff;color:#111}
+.ios-btn.on .lbl{color:var(--text)}
+.ios-btn:disabled{opacity:.4;pointer-events:none}
+.ios-spacer{width:72px}
+
+.ios-end{margin:12px 0 4px}
+.ios-btn.hangup{width:60px;height:60px;border-radius:50%;background:#e5484d;color:#fff;display:flex;align-items:center;justify-content:center;margin:0 auto}
+.ios-btn.hangup:active{background:#c93b40}
+.ios-btn.hangup svg{width:26px;height:26px}
+
+.ios-incoming{display:flex;justify-content:space-evenly;margin:20px 0 8px}
+.ios-btn.accept .ic{background:#2ec46b;color:#fff}
+.ios-btn.decline .ic{background:#e5484d;color:#fff}
+
+.ios-warm{margin-top:12px;border-top:1px solid var(--border);padding-top:12px;display:flex;flex-direction:column;gap:8px;text-align:left}
+.ios-warm .modal-row{justify-content:stretch}
+.ios-warm .modal-row .btn{flex:1}
 
 .filters{display:flex;flex-direction:column;gap:6px}
 .custom{display:flex;align-items:center;gap:6px}

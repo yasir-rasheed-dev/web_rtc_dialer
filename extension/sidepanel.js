@@ -223,7 +223,7 @@ function startCall() {
 
 function syncDtmfBtn() {
   const b = $("call-card").querySelector('[data-act="dtmf"]');
-  if (b) b.classList.toggle("active", !$("dtmf-pad").hidden);
+  if (b) b.classList.toggle("on", !$("dtmf-pad").hidden);
 }
 
 function renderCall(info) {
@@ -238,14 +238,20 @@ function renderCall(info) {
   if (info?.sub != null) $("cc-sub").textContent = info.sub;
   show($("cc-incoming"), call.state === "incoming");
   show($("cc-controls"), connected);
+  // on an incoming call the red "decline" IS the hangup — hide the bottom one
+  const endRow = $("call-card").querySelector(".ios-end");
+  if (endRow) show(endRow, call.state !== "incoming");
   show($("cc-warm"), call.warm.stage !== "idle");
   $("cc-warm-t").textContent = call.warm.target;
-  const muteBtn = $("call-card").querySelector('[data-act="mute"]');
-  const holdBtn = $("call-card").querySelector('[data-act="hold"]');
-  muteBtn.classList.toggle("active", call.muted);
-  muteBtn.querySelector("span").textContent = call.muted ? "Unmute" : "Mute";
-  holdBtn.classList.toggle("active", call.held);
-  holdBtn.querySelector("span").textContent = call.held ? "Resume" : "Hold";
+  $("call-card").querySelector('[data-act="mute"]')?.classList.toggle("on", call.muted);
+  $("call-card").querySelector('[data-act="hold"]')?.classList.toggle("on", call.held);
+  // add-call / transfer only make sense on a live (not still-ringing) call
+  const live = connected && !call.held;
+  ["addpart", "warm"].forEach((a) => {
+    const b = $("call-card").querySelector(`[data-act="${a}"]`);
+    if (b) b.disabled = !live;
+  });
+  syncDtmfBtn();
 }
 
 function startTimer() {
