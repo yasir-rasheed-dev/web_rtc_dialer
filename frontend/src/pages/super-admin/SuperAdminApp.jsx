@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Building2, CircleDollarSign, LayoutDashboard, LogOut, RefreshCw } from "lucide-react";
+import { Building2, CircleDollarSign, ClipboardList, LayoutDashboard, LogOut, RefreshCw } from "lucide-react";
 
 import Button from "../../components/ui/Button";
 import Logo from "../../components/ui/Logo";
@@ -9,9 +9,11 @@ import SuperAdminLogin from "./Login";
 import OverviewPage from "./OverviewPage";
 import SetupsPage from "./SetupsPage";
 import PlansPage from "./PlansPage";
+import OnboardingPage from "./OnboardingPage";
 
 const NAV_ITEMS = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
+  { id: "onboarding", label: "Onboarding", icon: ClipboardList },
   { id: "setups", label: "Setups", icon: Building2 },
   { id: "plans", label: "Plans", icon: CircleDollarSign }
 ];
@@ -114,6 +116,9 @@ export default function SuperAdminApp() {
         {error && <div className="mb-4 rounded-lg border border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>}
         {tab === "overview" && (
           <OverviewPage summary={overview.summary || {}} tenants={overview.tenants || []} loading={dataLoading} onReload={load} />
+        )}
+        {tab === "onboarding" && (
+          <OnboardingPage plans={plans} tenants={overview.tenants || []} onReload={load} />
         )}
         {tab === "setups" && (
           <SetupsPage plans={plans} tenants={overview.tenants || []} summary={overview.summary || {}} loading={dataLoading} onReload={load} />

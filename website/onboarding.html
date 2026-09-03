@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ringNex — Get started</title>
+<meta name="description" content="Tell us about your team and pick a plan — we'll set your ringNex workspace up for you." />
+<link rel="icon" type="image/png" href="./ringnex.png" />
+<style>
+  :root{
+    --blue:#0684BC; --blue-600:#0571a3; --blue-300:#38a8d8; --blue-100:#8fd2ee;
+    --orange:#FF7A00; --orange-300:#ff9a3d;
+    --bg:#f5f8fa; --bg-2:#eaf0f4; --surface:#ffffff; --surface-2:#f3f7f9; --surface-3:#e9eff3;
+    --border:#e3e9ee; --border-strong:#cfdae2;
+    --text:#0c1a24; --muted:#566572; --muted-2:#8293a0;
+    --tint:rgba(10,30,45,.035); --header-bg:rgba(255,255,255,.82);
+    --radius:12px; --radius-sm:8px; --maxw:1180px;
+    --ease:cubic-bezier(.22,1,.36,1);
+    --font:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  :root[data-theme="dark"]{
+    --bg:#070a0f; --bg-2:#0b1017; --surface:#101922; --surface-2:#0d151d; --surface-3:#16212c;
+    --border:#1c2833; --border-strong:#293a48;
+    --text:#e9eff5; --muted:#93a7b8; --muted-2:#647a8c;
+    --tint:rgba(255,255,255,.02); --header-bg:rgba(7,10,15,.88);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:1.6;-webkit-font-smoothing:antialiased}
+  a{color:inherit;text-decoration:none}
+  img{max-width:100%;display:block}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
+
+  .topbar{background:var(--tint);border-bottom:1px solid var(--border);font-size:12.5px}
+  .topbar .wrap{display:flex;align-items:center;justify-content:space-between;height:42px;color:var(--muted-2)}
+  .topbar a{color:var(--muted)} .topbar a:hover{color:var(--text)}
+  .topbar svg{width:13px;height:13px;vertical-align:-2px;margin-right:6px;color:var(--blue-300)}
+  .topbar .partner b{color:var(--orange-300)}
+  @media(max-width:640px){.topbar .l a:nth-child(2){display:none}}
+
+  header{position:sticky;top:0;z-index:50;background:var(--header-bg);backdrop-filter:blur(14px);border-bottom:1px solid var(--border)}
+  header .bar{display:flex;align-items:center;justify-content:space-between;height:70px;gap:16px}
+  .brand img{height:32px;width:auto}
+  header .r{display:flex;align-items:center;gap:12px}
+  .theme-toggle{width:38px;height:38px;border-radius:var(--radius-sm);border:1px solid var(--border-strong);background:var(--tint);color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .theme-toggle:hover{color:var(--text);border-color:var(--blue-300)}
+  .theme-toggle svg{width:17px;height:17px}
+  .theme-toggle .t-sun{display:none}
+  :root[data-theme="dark"] .theme-toggle .t-sun{display:block}
+  :root[data-theme="dark"] .theme-toggle .t-moon{display:none}
+  .btn{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:14px;border-radius:var(--radius-sm);padding:11px 20px;border:1px solid transparent;cursor:pointer;transition:transform .15s,box-shadow .25s,border-color .2s,background .2s;white-space:nowrap;font-family:inherit}
+  .btn svg{width:16px;height:16px}
+  .btn-primary{background:linear-gradient(135deg,var(--blue),var(--blue-600));color:#fff;box-shadow:0 10px 30px -12px rgba(6,132,188,.6)}
+  .btn-primary:hover{transform:translateY(-1px)}
+  .btn-ghost{border-color:var(--border-strong);color:var(--text);background:var(--tint)}
+  .btn-ghost:hover{border-color:var(--blue-300)}
+  .btn:disabled{opacity:.5;pointer-events:none}
+
+  /* form shell */
+  main{padding:48px 0 80px}
+  .head{text-align:center;max-width:52ch;margin:0 auto 34px}
+  .head .eyebrow{font-size:12px;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;color:var(--orange-300)}
+  .head h1{font-size:clamp(1.8rem,4vw,2.6rem);letter-spacing:-.7px;margin-top:10px;font-weight:800}
+  .head p{color:var(--muted);margin-top:12px}
+
+  .card{max-width:660px;margin:0 auto;border:1px solid var(--border-strong);border-radius:16px;background:var(--surface);padding:0;overflow:hidden}
+  .steps{display:flex;border-bottom:1px solid var(--border);background:var(--surface-2)}
+  .stepdot{flex:1;padding:12px 6px;text-align:center;font-size:11px;font-weight:700;color:var(--muted-2);position:relative}
+  .stepdot .n{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--surface-3);color:var(--muted);font-size:11px;margin-bottom:4px}
+  .stepdot.active{color:var(--text)} .stepdot.active .n{background:var(--blue);color:#fff}
+  .stepdot.done .n{background:var(--blue-300);color:#fff}
+  @media(max-width:560px){.stepdot .lbl{display:none}}
+
+  .pane{padding:28px}
+  .pane h2{font-size:1.15rem;font-weight:800;letter-spacing:-.3px}
+  .pane .sub{color:var(--muted);font-size:.9rem;margin-top:4px;margin-bottom:20px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:520px){.grid2{grid-template-columns:1fr}}
+  label{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:14px}
+  label .req{color:var(--orange-300)}
+  input,select,textarea{width:100%;height:42px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);border-radius:9px;padding:0 12px;font-size:14px;font-family:inherit;outline:none;transition:border-color .15s,box-shadow .15s}
+  textarea{height:auto;min-height:88px;padding:10px 12px;resize:vertical}
+  input:focus,select:focus,textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(6,132,188,.14)}
+  .check{flex-direction:row;align-items:center;gap:10px;font-size:13.5px;font-weight:500;color:var(--text);cursor:pointer}
+  .check input{width:18px;height:18px;flex:none}
+
+  .plans{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  @media(max-width:560px){.plans{grid-template-columns:1fr}}
+  .plan{border:1px solid var(--border-strong);border-radius:12px;padding:16px;cursor:pointer;transition:border-color .15s,background .15s;position:relative}
+  .plan:hover{border-color:var(--blue-300)}
+  .plan.sel{border-color:var(--blue);background:rgba(6,132,188,.06);box-shadow:0 0 0 3px rgba(6,132,188,.12)}
+  .plan .pn{font-weight:800}
+  .plan .pp{margin-top:6px;font-size:1.35rem;font-weight:800;letter-spacing:-.5px}
+  .plan .pp span{font-size:.72rem;color:var(--muted);font-weight:600}
+  .plan .pd{color:var(--muted);font-size:.8rem;margin-top:8px}
+  .plan ul{list-style:none;margin-top:10px;display:flex;flex-direction:column;gap:5px}
+  .plan li{font-size:.78rem;color:var(--muted);padding-left:16px;position:relative}
+  .plan li::before{content:"✓";position:absolute;left:0;color:var(--blue-300);font-weight:800}
+  .plan .tick{position:absolute;top:12px;right:12px;width:18px;height:18px;border-radius:50%;border:2px solid var(--border-strong)}
+  .plan.sel .tick{border-color:var(--blue);background:var(--blue)}
+
+  .review dl{display:grid;grid-template-columns:130px 1fr;gap:8px 14px;font-size:13px}
+  .review dt{color:var(--muted-2);font-weight:600}
+  .review dd{color:var(--text)}
+
+  .foot{display:flex;justify-content:space-between;gap:10px;padding:18px 28px;border-top:1px solid var(--border);background:var(--surface-2)}
+  .err{color:#e5484d;font-size:12.5px;margin:0 28px 14px;background:rgba(229,72,77,.1);border:1px solid rgba(229,72,77,.3);border-radius:8px;padding:8px 10px}
+
+  .done{text-align:center;padding:48px 28px}
+  .done .ok{width:60px;height:60px;border-radius:50%;background:rgba(22,163,74,.14);color:#22c55e;display:flex;align-items:center;justify-content:center;margin:0 auto 16px}
+  .done .ok svg{width:30px;height:30px}
+  .done h2{font-size:1.4rem;font-weight:800}
+  .done p{color:var(--muted);margin-top:10px;max-width:44ch;margin-inline:auto}
+
+  footer{border-top:1px solid var(--border);padding:40px 0}
+  footer .wrap{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;color:var(--muted-2);font-size:12.5px}
+  footer .brand img{height:24px}
+  footer .partner b{color:var(--orange-300)}
+</style>
+<script>
+  (function(){try{var t=localStorage.getItem('rnx-theme');document.documentElement.setAttribute('data-theme',(t==='dark'||t==='light')?t:'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();
+</script>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="wrap">
+    <div class="l">
+      <a href="mailto:tech@unisoftwares.com"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/></svg>tech@unisoftwares.com</a>
+      <a href="https://unisoftwares.com/contact/" target="_blank" rel="noopener">Book a strategy call</a>
+    </div>
+    <span class="partner">A <b>Unisoftwares</b> product</span>
+  </div>
+</div>
+
+<header>
+  <div class="wrap bar">
+    <a class="brand" href="./index.html" aria-label="ringNex"><img src="./ringnex.png" alt="ringNex" /></a>
+    <div class="r">
+      <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle light and dark mode">
+        <svg class="t-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="t-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      </button>
+      <a class="btn btn-ghost" href="./index.html">Back to site</a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="head">
+    <div class="eyebrow">Get started</div>
+    <h1>Set up your ringNex workspace</h1>
+    <p>Four quick steps. We review it, get in touch, and provision your workspace.</p>
+  </div>
+
+  <form class="card" id="ob" autocomplete="on">
+    <div class="steps" id="steps">
+      <div class="stepdot" data-s="0"><span class="n">1</span><span class="lbl">Company</span></div>
+      <div class="stepdot" data-s="1"><span class="n">2</span><span class="lbl">Contact</span></div>
+      <div class="stepdot" data-s="2"><span class="n">3</span><span class="lbl">Plan</span></div>
+      <div class="stepdot" data-s="3"><span class="n">4</span><span class="lbl">Needs</span></div>
+      <div class="stepdot" data-s="4"><span class="n">5</span><span class="lbl">Review</span></div>
+    </div>
+
+    <div class="err" id="err" hidden></div>
+
+    <!-- 0: company -->
+    <div class="pane" data-pane="0">
+      <h2>Your company</h2>
+      <p class="sub">This becomes your workspace.</p>
+      <label>Company name <span class="req">*</span>
+        <input id="companyName" name="organization" required maxlength="190" />
+      </label>
+      <label>Workspace URL <span class="req">*</span>
+        <input id="workspaceSlug" name="workspace" required maxlength="80" pattern="[a-z0-9-]+" />
+      </label>
+      <div class="grid2">
+        <label>Country
+          <input id="country" name="country" maxlength="80" />
+        </label>
+        <label>Team size
+          <select id="teamSize">
+            <option value="">Select…</option>
+            <option>1–5</option><option>6–15</option><option>16–50</option><option>51–150</option><option>150+</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <!-- 1: contact -->
+    <div class="pane" data-pane="1" hidden>
+      <h2>Who should we contact?</h2>
+      <p class="sub">We'll reach out to confirm and finish setup.</p>
+      <label>Your name <span class="req">*</span>
+        <input id="contactName" name="name" required maxlength="120" />
+      </label>
+      <div class="grid2">
+        <label>Work email <span class="req">*</span>
+          <input id="contactEmail" name="email" type="email" required maxlength="190" />
+        </label>
+        <label>Phone
+          <input id="contactPhone" name="tel" type="tel" maxlength="40" />
+        </label>
+      </div>
+    </div>
+
+    <!-- 2: plan -->
+    <div class="pane" data-pane="2" hidden>
+      <h2>Pick a plan</h2>
+      <p class="sub">You can change this later — it just tells us what to provision.</p>
+      <div class="plans" id="plans"><p class="sub">Loading plans…</p></div>
+    </div>
+
+    <!-- 3: needs -->
+    <div class="pane" data-pane="3" hidden>
+      <h2>What do you need?</h2>
+      <p class="sub">Helps us provision the right things from day one.</p>
+      <div class="grid2">
+        <label>Agents to start with
+          <input id="agentsNeeded" type="number" min="1" max="1000" />
+        </label>
+      </div>
+      <label>What will you use ringNex for?
+        <textarea id="useCase" maxlength="4000" placeholder="e.g. outbound sales for 12 agents, inbound support line, collections campaigns…"></textarea>
+      </label>
+      <label class="check"><input type="checkbox" id="needsTollFree" /> I need a toll-free number / inbound queues</label>
+      <label class="check"><input type="checkbox" id="needsAutoDialer" /> I need the auto dialer for campaigns</label>
+      <label class="check"><input type="checkbox" id="needsNumbers" /> I want to buy phone numbers through ringNex</label>
+      <label>Anything else?
+        <textarea id="extraNotes" maxlength="4000" placeholder="Timeline, existing carrier, number porting, questions…"></textarea>
+      </label>
+    </div>
+
+    <!-- 4: review -->
+    <div class="pane review" data-pane="4" hidden>
+      <h2>Review &amp; submit</h2>
+      <p class="sub">Check it over — then send it to our team.</p>
+      <dl id="reviewList"></dl>
+    </div>
+
+    <!-- done -->
+    <div class="pane done" data-pane="done" hidden>
+      <div class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+      <h2>Request received</h2>
+      <p>Thanks — we've got your details. Our team will review and reach out at <b id="doneEmail"></b> to finish setting up your workspace.</p>
+      <p style="margin-top:20px"><a class="btn btn-primary" href="./index.html">Back to ringnex.co</a></p>
+    </div>
+
+    <div class="foot" id="foot">
+      <button class="btn btn-ghost" type="button" id="back">Back</button>
+      <button class="btn btn-primary" type="button" id="next">Continue</button>
+    </div>
+  </form>
+</main>
+
+<footer>
+  <div class="wrap">
+    <a class="brand" href="./index.html" aria-label="ringNex"><img src="./ringnex.png" alt="ringNex" /></a>
+    <span>© <span id="yr"></span> ringNex · Built &amp; supported by Unisoftwares</span>
+    <span class="partner">In partnership with <b>Unisoftwares</b></span>
+  </div>
+</footer>
+
+<script>
+(function(){
+  var API = "https://demoapi.ringnex.co";
+  var root = document.documentElement;
+  document.getElementById('yr').textContent = new Date().getFullYear();
+
+  // theme toggle
+  var tt = document.getElementById('themeToggle');
+  tt.addEventListener('click', function(){
+    var n = root.getAttribute('data-theme')==='dark'?'light':'dark';
+    root.setAttribute('data-theme', n);
+    try{ localStorage.setItem('rnx-theme', n); }catch(e){}
+  });
+
+  var LAST = 4;
+  var step = 0;
+  var data = { planCode: "" };
+  var panes = [].slice.call(document.querySelectorAll('.pane[data-pane]'));
+  var dots  = [].slice.call(document.querySelectorAll('.stepdot'));
+  var errEl = document.getElementById('err');
+
+  function showErr(m){ errEl.textContent = m; errEl.hidden = !m; }
+  function paneEl(k){ return document.querySelector('.pane[data-pane="'+k+'"]'); }
+
+  function render(){
+    panes.forEach(function(p){ p.hidden = p.dataset.pane !== String(step); });
+    dots.forEach(function(d,i){ d.classList.toggle('active', i===step); d.classList.toggle('done', i<step); });
+    document.getElementById('back').style.visibility = step===0 ? 'hidden' : 'visible';
+    document.getElementById('next').textContent = step===LAST ? 'Submit request' : 'Continue';
+    showErr('');
+    if (step===LAST) buildReview();
+  }
+
+  // auto-slug from company name (until the user edits the slug directly)
+  var slugTouched = false;
+  var slugEl = document.getElementById('workspaceSlug');
+  slugEl.addEventListener('input', function(){ slugTouched = true; slugEl.value = slugify(slugEl.value); });
+  document.getElementById('companyName').addEventListener('input', function(e){
+    if (!slugTouched) slugEl.value = slugify(e.target.value);
+  });
+  function slugify(v){
+    return String(v||"").toLowerCase().replace(/[^a-z0-9-]+/g,'-').replace(/^-+|-+$/g,'').replace(/-{2,}/g,'-').slice(0,80);
+  }
+
+  function collect(){
+    data.companyName   = val('companyName');
+    data.workspaceSlug = val('workspaceSlug');
+    data.country       = val('country');
+    data.teamSize      = val('teamSize');
+    data.contactName   = val('contactName');
+    data.contactEmail  = val('contactEmail');
+    data.contactPhone  = val('contactPhone');
+    data.agentsNeeded  = val('agentsNeeded');
+    data.useCase       = val('useCase');
+    data.extraNotes    = val('extraNotes');
+    data.needsTollFree   = document.getElementById('needsTollFree').checked;
+    data.needsAutoDialer = document.getElementById('needsAutoDialer').checked;
+    data.needsNumbers    = document.getElementById('needsNumbers').checked;
+  }
+  function val(id){ return (document.getElementById(id).value||"").trim(); }
+
+  function validate(){
+    collect();
+    if (step===0){
+      if (!data.companyName) return "Company name is required.";
+      if (!/^[a-z0-9-]{2,80}$/.test(data.workspaceSlug)) return "Workspace URL: lowercase letters, numbers and hyphens only.";
+    }
+    if (step===1){
+      if (!data.contactName) return "Your name is required.";
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(data.contactEmail)) return "Enter a valid work email.";
+    }
+    if (step===2 && !data.planCode) return "Choose a plan to continue.";
+    return "";
+  }
+
+  document.getElementById('next').addEventListener('click', function(){
+    var e = validate();
+    if (e) return showErr(e);
+    if (step < LAST){ step++; render(); return; }
+    submit();
+  });
+  document.getElementById('back').addEventListener('click', function(){ if (step>0){ step--; render(); } });
+
+  /* ---- plans ---- */
+  fetch(API + "/api/public/plans").then(function(r){ return r.json(); }).then(function(d){
+    var box = document.getElementById('plans');
+    var plans = (d && d.plans) || [];
+    if (!plans.length){ box.innerHTML = '<p class="sub">Plans unavailable right now — you can still submit and we\'ll advise.</p>'; return; }
+    box.innerHTML = "";
+    plans.forEach(function(p){
+      var el = document.createElement('div');
+      el.className = 'plan'; el.dataset.code = p.code;
+      var feats = [];
+      feats.push(p.maxUsers ? p.maxUsers + ' seats' : 'Unlimited seats');
+      feats.push((p.outboundMinutes ? (p.outboundMinutes/1000)+'k' : 'Unlimited') + ' outbound min');
+      if (p.features && p.features.ALL) feats.push('Every feature');
+      else {
+        if (p.features && p.features.can_use_toll_free) feats.push('Toll-free & IVR');
+        if (p.features && p.features.can_use_auto_dialer) feats.push('Auto dialer');
+        if (p.features && p.features.can_purchase_numbers) feats.push('Buy numbers');
+      }
+      el.innerHTML =
+        '<div class="tick"></div>'+
+        '<div class="pn">'+esc(p.name)+'</div>'+
+        '<div class="pp">$'+p.pricePerUser+'<span> / user / mo</span></div>'+
+        '<div class="pd">'+esc(p.description||"")+'</div>'+
+        '<ul>'+feats.map(function(f){return '<li>'+esc(f)+'</li>';}).join('')+'</ul>';
+      el.addEventListener('click', function(){
+        data.planCode = p.code; data.planName = p.name;
+        [].slice.call(box.children).forEach(function(c){ c.classList.toggle('sel', c===el); });
+        showErr('');
+      });
+      box.appendChild(el);
+    });
+    // preselect from ?plan=
+    var pre = new URLSearchParams(location.search).get('plan');
+    if (pre){ var m = box.querySelector('.plan[data-code="'+pre.toLowerCase()+'"]'); if (m) m.click(); }
+  }).catch(function(){
+    document.getElementById('plans').innerHTML = '<p class="sub">Could not load plans — submit and we\'ll advise on the right one.</p>';
+  });
+
+  /* ---- review ---- */
+  function buildReview(){
+    collect();
+    var rows = [
+      ['Company', data.companyName],
+      ['Workspace', data.workspaceSlug + ' .ringnex.co'],
+      ['Country', data.country || '—'],
+      ['Team size', data.teamSize || '—'],
+      ['Contact', data.contactName + ' · ' + data.contactEmail + (data.contactPhone ? ' · ' + data.contactPhone : '')],
+      ['Plan', data.planName || data.planCode || '—'],
+      ['Agents to start', data.agentsNeeded || '—'],
+      ['Use case', data.useCase || '—'],
+      ['Toll-free / IVR', data.needsTollFree ? 'Yes' : 'No'],
+      ['Auto dialer', data.needsAutoDialer ? 'Yes' : 'No'],
+      ['Buy numbers', data.needsNumbers ? 'Yes' : 'No'],
+      ['Notes', data.extraNotes || '—']
+    ];
+    document.getElementById('reviewList').innerHTML = rows.map(function(r){
+      return '<dt>'+esc(r[0])+'</dt><dd>'+esc(String(r[1]))+'</dd>';
+    }).join('');
+  }
+
+  /* ---- submit ---- */
+  function submit(){
+    collect();
+    var btn = document.getElementById('next'); btn.disabled = true; btn.textContent = 'Submitting…';
+    fetch(API + "/api/public/onboarding", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify(data)
+    }).then(function(r){ return r.json().then(function(j){ return { ok:r.ok, j:j }; }); })
+      .then(function(res){
+        if (!res.ok) throw new Error(res.j && res.j.error || "Submission failed");
+        document.getElementById('steps').hidden = true;
+        document.getElementById('foot').hidden = true;
+        panes.forEach(function(p){ p.hidden = true; });
+        document.getElementById('doneEmail').textContent = data.contactEmail;
+        paneEl('done').hidden = false;
+      })
+      .catch(function(e){
+        btn.disabled = false; btn.textContent = 'Submit request';
+        showErr(e.message || "Could not submit — please try again.");
+      });
+  }
+
+  function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]); }); }
+
+  render();
+})();
+</script>
+</body>
+</html>

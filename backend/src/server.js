@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import express from "express";
+import rateLimit from "express-rate-limit";
 import cors from "cors";
 import helmet from "helmet";
 import { Server as SocketServer } from "socket.io";
@@ -672,6 +673,79 @@ app.get("/api/health", asyncRoute(async (_req, res) => {
   const database = await healthcheck();
   res.json({ ok: database, database, ami: amiConnected, time: new Date().toISOString() });
 }));
+
+// ---------------------------
+// Public (no auth) — pricing + onboarding intake
+// ---------------------------
+// Powers the ringnex.co pricing section and the onboarding form. Only the
+// published, active plans, and only display-safe columns.
+app.get("/api/public/plans", asyncRoute(async (_req, res) => {
+  const [plans] = await db.execute(
+    `SELECT id, code, name, description, price_per_user, max_users, outbound_minutes, inbound_minutes, features_json
+       FROM pricing_plans WHERE active=1 ORDER BY price_per_user ASC, name ASC`
+  );
+  res.json({
+    plans: plans.map((p) => ({
+      id: p.id,
+      code: p.code,
+      name: p.name,
+      description: p.description,
+      pricePerUser: Number(p.price_per_user),
+      maxUsers: p.max_users,
+      outboundMinutes: p.outbound_minutes,
+      inboundMinutes: p.inbound_minutes,
+      features: parseJson(p.features_json, {})
+    }))
+  });
+}));
+
+const onboardingLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 8, // per IP per hour
+  standardHeaders: true,
+  handler: (_req, res) => res.status(429).json({ error: "Too many submissions — please try again later." })
+});
+
+app.post("/api/public/onboarding", onboardingLimiter, asyncRoute(async (req, res) => {
+  const b = req.body || {};
+  const str = (v, n) => String(v ?? "").trim().slice(0, n);
+  const companyName = str(b.companyName, 190);
+  const contactName = str(b.contactName, 120);
+  const contactEmail = str(b.contactEmail, 190).toLowerCase();
+  if (!companyName || !contactName || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(contactEmail)) {
+    return res.status(400).json({ error: "Company name, your name and a valid email are required." });
+  }
+  const workspaceSlug = normalizeWorkspace(b.workspaceSlug || companyName) || "workspace";
+
+  let planId = null;
+  let planCode = str(b.planCode, 64) || null;
+  if (planCode) {
+    const [[plan]] = await db.execute("SELECT id, code FROM pricing_plans WHERE code=? AND active=1 LIMIT 1", [planCode]);
+    if (plan) { planId = plan.id; planCode = plan.code; }
+    else planCode = null;
+  }
+
+  const id = crypto.randomUUID();
+  await db.execute(
+    `INSERT INTO onboarding_requests
+       (id, company_name, workspace_slug, contact_name, contact_email, contact_phone, country, team_size,
+        plan_id, plan_code, agents_needed, use_case, needs_toll_free, needs_auto_dialer, needs_numbers,
+        extra_notes, ip)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [
+      id, companyName, workspaceSlug, contactName, contactEmail,
+      str(b.contactPhone, 40) || null, str(b.country, 80) || null, str(b.teamSize, 40) || null,
+      planId, planCode,
+      Number.isFinite(Number(b.agentsNeeded)) ? Math.max(0, Math.trunc(Number(b.agentsNeeded))) : null,
+      str(b.useCase, 4000) || null,
+      b.needsTollFree ? 1 : 0, b.needsAutoDialer ? 1 : 0, b.needsNumbers ? 1 : 0,
+      str(b.extraNotes, 4000) || null,
+      req.ip || null
+    ]
+  );
+  res.status(201).json({ ok: true, id });
+}));
+
 app.use("/api/campaigns", createCampaignRoutes(authenticate));
 app.use("/api/dids/commio", createCommioRoutes(authenticate));
 app.use("/api/super-admin/commio-numbers", createSuperAdminCommioRoutes(authenticateSuperAdmin));
@@ -846,6 +920,96 @@ app.get("/api/super-admin/overview", authenticateSuperAdmin, asyncRoute(async (_
 app.get("/api/super-admin/plans", authenticateSuperAdmin, asyncRoute(async (_req, res) => {
   const [plans] = await db.execute("SELECT * FROM pricing_plans ORDER BY active DESC, name ASC");
   res.json({ plans: plans.map((plan) => ({ ...plan, features: parseJson(plan.features_json, {}) })) });
+}));
+
+// ---------------------------
+// Super Admin — onboarding request review
+// ---------------------------
+const ONBOARDING_COLS =
+  "o.id,o.status,o.company_name,o.workspace_slug,o.contact_name,o.contact_email,o.contact_phone," +
+  "o.country,o.team_size,o.plan_id,o.plan_code,o.agents_needed,o.use_case,o.needs_toll_free," +
+  "o.needs_auto_dialer,o.needs_numbers,o.extra_notes,o.super_admin_remark,o.reviewed_at," +
+  "o.provisioned_tenant_id,o.created_at,p.name AS plan_name";
+
+function shapeOnboarding(r) {
+  return {
+    id: r.id, status: r.status,
+    companyName: r.company_name, workspaceSlug: r.workspace_slug,
+    contactName: r.contact_name, contactEmail: r.contact_email, contactPhone: r.contact_phone,
+    country: r.country, teamSize: r.team_size,
+    planId: r.plan_id, planCode: r.plan_code, planName: r.plan_name,
+    agentsNeeded: r.agents_needed, useCase: r.use_case,
+    needsTollFree: !!r.needs_toll_free, needsAutoDialer: !!r.needs_auto_dialer, needsNumbers: !!r.needs_numbers,
+    extraNotes: r.extra_notes, remark: r.super_admin_remark, reviewedAt: r.reviewed_at,
+    provisionedTenantId: r.provisioned_tenant_id, createdAt: r.created_at
+  };
+}
+
+app.get("/api/super-admin/onboarding", authenticateSuperAdmin, asyncRoute(async (req, res) => {
+  const status = String(req.query.status || "").toUpperCase();
+  const where = ["PENDING", "APPROVED", "REJECTED", "PROVISIONED"].includes(status) ? "WHERE o.status=?" : "";
+  const params = where ? [status] : [];
+  const [rows] = await db.execute(
+    `SELECT ${ONBOARDING_COLS} FROM onboarding_requests o
+       LEFT JOIN pricing_plans p ON p.id=o.plan_id ${where}
+      ORDER BY o.created_at DESC LIMIT 500`,
+    params
+  );
+  const [[counts]] = await db.execute(
+    `SELECT SUM(status='PENDING') AS pending, SUM(status='APPROVED') AS approved,
+            SUM(status='REJECTED') AS rejected, SUM(status='PROVISIONED') AS provisioned
+       FROM onboarding_requests`
+  );
+  res.json({
+    requests: rows.map(shapeOnboarding),
+    counts: {
+      pending: Number(counts.pending || 0), approved: Number(counts.approved || 0),
+      rejected: Number(counts.rejected || 0), provisioned: Number(counts.provisioned || 0)
+    }
+  });
+}));
+
+app.get("/api/super-admin/onboarding/:id", authenticateSuperAdmin, asyncRoute(async (req, res) => {
+  const [[row]] = await db.execute(
+    `SELECT ${ONBOARDING_COLS} FROM onboarding_requests o
+       LEFT JOIN pricing_plans p ON p.id=o.plan_id WHERE o.id=? LIMIT 1`,
+    [req.params.id]
+  );
+  if (!row) return res.status(404).json({ error: "Onboarding request not found" });
+  res.json({ request: shapeOnboarding(row) });
+}));
+
+app.patch("/api/super-admin/onboarding/:id", authenticateSuperAdmin, asyncRoute(async (req, res) => {
+  const [[row]] = await db.execute("SELECT id,status FROM onboarding_requests WHERE id=? LIMIT 1", [req.params.id]);
+  if (!row) return res.status(404).json({ error: "Onboarding request not found" });
+
+  const sets = [];
+  const params = [];
+  if (req.body.remark !== undefined) { sets.push("super_admin_remark=?"); params.push(String(req.body.remark || "").slice(0, 4000) || null); }
+  if (req.body.status !== undefined) {
+    const s = String(req.body.status || "").toUpperCase();
+    if (!["PENDING", "APPROVED", "REJECTED", "PROVISIONED"].includes(s)) {
+      return res.status(400).json({ error: "Invalid status" });
+    }
+    sets.push("status=?"); params.push(s);
+  }
+  if (req.body.provisionedTenantId !== undefined) {
+    sets.push("provisioned_tenant_id=?"); params.push(String(req.body.provisionedTenantId || "") || null);
+  }
+  if (!sets.length) return res.status(400).json({ error: "Nothing to update" });
+
+  sets.push("reviewed_at=UTC_TIMESTAMP()");
+  params.push(req.params.id);
+  await db.execute(`UPDATE onboarding_requests SET ${sets.join(",")} WHERE id=?`, params);
+  await audit(null, "SA_ONBOARDING_UPDATE", "onboarding", req.params.id,
+    { superAdminId: req.superAdmin.id, status: req.body.status, hasRemark: req.body.remark !== undefined }, null);
+
+  const [[fresh]] = await db.execute(
+    `SELECT ${ONBOARDING_COLS} FROM onboarding_requests o
+       LEFT JOIN pricing_plans p ON p.id=o.plan_id WHERE o.id=? LIMIT 1`,
+    [req.params.id]
+  );
+  res.json({ request: shapeOnboarding(fresh) });
 }));
 
 app.post("/api/super-admin/plans", authenticateSuperAdmin, asyncRoute(async (req, res) => {

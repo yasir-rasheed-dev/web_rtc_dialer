@@ -193,7 +193,7 @@ const initialTenant = {
   routingProfileName: ""
 };
 
-export function CreateSetupModal({ open, onClose, plans, tenants = [], onCreated }) {
+export function CreateSetupModal({ open, onClose, plans, tenants = [], onCreated, prefill = null }) {
   const [form, setForm] = useState(initialTenant);
   const [step, setStep] = useState(0);
   const [wsTouched, setWsTouched] = useState(false);
@@ -219,7 +219,38 @@ export function CreateSetupModal({ open, onClose, plans, tenants = [], onCreated
     setStep(0);
     setError("");
     const highest = Math.max(0, ...tenants.map((t) => Number(t.extension_start) || 0));
-    setForm((current) => ({ ...current, extensionStart: String(highest ? highest + 1000 : 1001) }));
+    // Start from a clean form, then apply an onboarding-request prefill if
+    // one was passed (Super Admin → Onboarding → "Create setup").
+    const base = { ...initialTenant, extensionStart: String(highest ? highest + 1000 : 1001) };
+    if (prefill) {
+      const planByCode = prefill.planCode
+        ? plans.find((p) => p.code === prefill.planCode || p.id === prefill.planId)
+        : null;
+      Object.assign(base, {
+        name: prefill.companyName || "",
+        workspace: prefill.workspaceSlug || "",
+        ownerName: prefill.contactName || "",
+        ownerEmail: prefill.contactEmail || "",
+        country: prefill.country || "",
+        planId: planByCode ? planByCode.id : "",
+        canUseTollFree: !!prefill.needsTollFree,
+        canUseAutoDialer: !!prefill.needsAutoDialer,
+        canPurchaseNumbers: !!prefill.needsNumbers
+      });
+      if (planByCode) {
+        base.pricePerUser = String(planByCode.price_per_user ?? base.pricePerUser);
+        base.unlimitedUsers = planByCode.max_users == null;
+        base.maxUsers = planByCode.max_users == null ? base.maxUsers : String(planByCode.max_users);
+        base.unlimitedOutbound = planByCode.outbound_minutes == null;
+        base.outboundMinutes = planByCode.outbound_minutes == null ? base.outboundMinutes : String(planByCode.outbound_minutes);
+        base.unlimitedInbound = planByCode.inbound_minutes == null;
+        base.inboundMinutes = planByCode.inbound_minutes == null ? base.inboundMinutes : String(planByCode.inbound_minutes);
+        if (planByCode.features?.ALL) {
+          base.canUseTollFree = base.canUseAutoDialer = base.canPurchaseNumbers = true;
+        }
+      }
+    }
+    setForm(base);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -306,7 +337,7 @@ export function CreateSetupModal({ open, onClose, plans, tenants = [], onCreated
       setForm(initialTenant);
       setStep(0);
       setWsTouched(false);
-      onCreated();
+      onCreated(result || null);
       onClose();
     } catch (e) {
       setError(e.message);
