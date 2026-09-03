@@ -275,6 +275,66 @@
   .reveal.in{opacity:1;transform:none}
   .reveal.d1{transition-delay:.08s}.reveal.d2{transition-delay:.16s}.reveal.d3{transition-delay:.24s}
   @media(prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none;transition:none}.deck,.bgfx .mesh{transition:none!important;animation:none!important}}
+
+  /* ---------- day <-> night theme transition ---------- */
+  /* every colour token eases, so the whole page settles into the new
+     theme underneath the sweep instead of snapping */
+  .theme-anim,.theme-anim *{
+    transition:background-color .5s ease, color .5s ease, border-color .5s ease !important;
+  }
+  .theme-sweep{
+    position:fixed; inset:0; z-index:9998; pointer-events:none; opacity:0;
+    --sx:92%; --sy:5%; --r:60vmax;
+    clip-path:circle(0px at var(--sx) var(--sy));
+    overflow:hidden;
+  }
+  /* dusk: circle of night grows out of the toggle */
+  .theme-sweep.run{ opacity:1; animation:sweep-grow .62s cubic-bezier(.45,0,.2,1) both; }
+  /* dawn: it starts covering the screen and retracts back into the toggle */
+  .theme-sweep.run.to-light{ animation:sweep-shrink .62s cubic-bezier(.45,0,.2,1) both; }
+  /* after a dusk grow: hold full-screen and fade away, revealing the settled dark page */
+  .theme-sweep.done{ opacity:0; clip-path:circle(var(--r) at var(--sx) var(--sy)); transition:opacity .36s ease; }
+  @keyframes sweep-grow{ from{clip-path:circle(0px at var(--sx) var(--sy))} to{clip-path:circle(var(--r) at var(--sx) var(--sy))} }
+  @keyframes sweep-shrink{ from{clip-path:circle(var(--r) at var(--sx) var(--sy))} to{clip-path:circle(0px at var(--sx) var(--sy))} }
+
+  /* the sky the incoming theme lives under */
+  .theme-sweep .sky{position:absolute;inset:0;background:
+    radial-gradient(140% 120% at var(--sx) var(--sy), #10203a 0%, #0a0e13 55%, #05070b 100%);}
+  .theme-sweep.to-light .sky{background:
+    radial-gradient(140% 120% at var(--sx) var(--sy), #ffe6b8 0%, #cfe8ff 42%, #f4f8fa 100%);}
+
+  /* stars fade in on the way to dark */
+  .theme-sweep .stars{position:absolute;inset:0;opacity:0;background-repeat:no-repeat;background-image:
+    radial-gradient(1.6px 1.6px at 12% 22%, #fff, transparent),
+    radial-gradient(1.4px 1.4px at 78% 14%, #dfe9ff, transparent),
+    radial-gradient(1.2px 1.2px at 34% 42%, #fff, transparent),
+    radial-gradient(1.6px 1.6px at 62% 55%, #fff, transparent),
+    radial-gradient(1.2px 1.2px at 88% 66%, #cfe0ff, transparent),
+    radial-gradient(1.4px 1.4px at 22% 74%, #fff, transparent),
+    radial-gradient(1.1px 1.1px at 48% 86%, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 8% 58%, #eaf2ff, transparent),
+    radial-gradient(1.2px 1.2px at 70% 90%, #fff, transparent),
+    radial-gradient(1.3px 1.3px at 92% 34%, #fff, transparent);}
+  .theme-sweep.run:not(.to-light) .stars{ animation:stars-in .55s .1s ease forwards; }
+  @keyframes stars-in{ to{opacity:.9} }
+
+  /* the orb — sun dipping on the way to night, moon rising on the way to day */
+  .theme-sweep .orb{position:absolute;left:var(--sx);top:var(--sy);width:58px;height:58px;margin:-29px 0 0 -29px;border-radius:50%;}
+  .theme-sweep.run:not(.to-light) .orb{
+    background:radial-gradient(circle at 38% 36%,#ffdf9e,#ff8a3d 70%);
+    box-shadow:0 0 70px 24px rgba(255,138,61,.45);
+    animation:orb-set .62s cubic-bezier(.4,0,.3,1) forwards;}
+  .theme-sweep.run.to-light .orb{
+    background:radial-gradient(circle at 38% 36%,#ffffff,#dfe8f5 72%);
+    box-shadow:0 0 46px 16px rgba(255,255,255,.55);
+    animation:orb-rise .62s cubic-bezier(.4,0,.3,1) forwards;}
+  @keyframes orb-set{ 0%{transform:translateY(-38px) scale(1);opacity:1} 100%{transform:translateY(120px) scale(.55);opacity:0} }
+  @keyframes orb-rise{ 0%{transform:translateY(120px) scale(.55);opacity:0} 100%{transform:translateY(-34px) scale(1);opacity:1} }
+
+  @media(prefers-reduced-motion:reduce){
+    .theme-anim,.theme-anim *{transition:none!important}
+    .theme-sweep{display:none!important}
+  }
 </style>
 <script>
   /* apply theme before first paint — default light, remember the visitor's choice */
@@ -893,6 +953,12 @@
 </footer>
 </div>
 
+<div class="theme-sweep" id="themeSweep" aria-hidden="true">
+  <div class="sky"></div>
+  <div class="stars"></div>
+  <div class="orb"></div>
+</div>
+
 <script>
 (function(){
   var hdr=document.getElementById('hdr');
@@ -900,11 +966,60 @@
   onScroll(); addEventListener('scroll',onScroll,{passive:true});
   document.getElementById('yr').textContent=new Date().getFullYear();
 
+  var root=document.documentElement;
+  function setTheme(t){
+    root.setAttribute('data-theme',t);
+    try{localStorage.setItem('rnx-theme',t);}catch(e){}
+  }
+
   var tt=document.getElementById('themeToggle');
+  var sweep=document.getElementById('themeSweep');
+  var animating=false;
   if(tt){ tt.addEventListener('click',function(){
-    var next=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';
-    document.documentElement.setAttribute('data-theme',next);
-    try{localStorage.setItem('rnx-theme',next);}catch(e){}
+    if(animating) return;
+    var next=root.getAttribute('data-theme')==='dark'?'light':'dark';
+    var toLight=next==='light';
+    var reduce=matchMedia('(prefers-reduced-motion:reduce)').matches;
+
+    if(reduce || !sweep){ setTheme(next); return; }
+    animating=true;
+
+    // the sweep radiates from the centre of the toggle out past the far corner
+    var r=tt.getBoundingClientRect();
+    var x=r.left+r.width/2, y=r.top+r.height/2;
+    var far=Math.hypot(Math.max(x,innerWidth-x), Math.max(y,innerHeight-y))+40;
+    sweep.style.setProperty('--sx', x+'px');
+    sweep.style.setProperty('--sy', y+'px');
+    sweep.style.setProperty('--r', far+'px');
+
+    sweep.classList.remove('run','to-light','done');
+    sweep.classList.toggle('to-light', toLight);
+    void sweep.offsetWidth;                 // restart the keyframes
+    root.classList.add('theme-anim');       // every colour eases, not snaps
+    sweep.classList.add('run');
+
+    if(toLight){
+      // dawn: page is already light; the overlay peels back into the toggle
+      setTheme('light');
+      setTimeout(function(){
+        sweep.classList.remove('run','to-light');
+        root.classList.remove('theme-anim');
+        animating=false;
+      }, 680);
+    }else{
+      // dusk: night covers the screen, THEN the page settles dark and the
+      // overlay fades away
+      setTimeout(function(){
+        setTheme('dark');
+        sweep.classList.remove('run');
+        sweep.classList.add('done');       // hold full-screen, fade opacity to 0
+      }, 610);
+      setTimeout(function(){
+        sweep.classList.remove('done');
+        root.classList.remove('theme-anim');
+        animating=false;
+      }, 1010);
+    }
   }); }
 
   var io=new IntersectionObserver(function(entries){
