@@ -9,12 +9,10 @@ import PageHeader from "../../components/ui/PageHeader";
 import Select from "../../components/ui/Select";
 import StatusBadge from "../../components/ui/StatusBadge";
 import { notifySuccess } from "../../lib/toast";
+import { formatInWorkspaceTz } from "../../lib/tz";
 import { DIALER_OUTCOMES, getNextContact, listCampaigns, saveDisposition, startContactCall, suggestOutcome } from "../../lib/campaignApi";
 
-function formatDate(value) {
-  if (!value) return "—";
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
-}
+const formatDate = (value) => formatInWorkspaceTz(value);
 
 function formatDuration(totalSeconds = 0) {
   const seconds = Math.max(0, Number(totalSeconds) || 0);

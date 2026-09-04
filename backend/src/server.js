@@ -43,6 +43,7 @@ import {
 } from "./saas.js";
 import { PERMISSIONS } from "./permissions.js";
 import { writeSheetBuffer } from "./spreadsheet.js";
+import { isValidTimeZone, tzNumericOffset, zonedWallTimeToUtc, addDaysToDateStr } from "./timezone.js";
 import createCampaignRoutes from "./campaignRoutes.js";
 import createCommioRoutes, { createSuperAdminCommioRoutes } from "./commioRoutes.js";
 import * as commio from "./commio.js";
@@ -201,6 +202,18 @@ function isSupervisor(user) {
 function normalizeDateFilter(value) {
   const text = String(value || "").trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null;
+}
+
+// A from..to date range (inclusive, "YYYY-MM-DD", either bound optional) is
+// entered as wall-clock days in the tenant's timezone. Turn it into the
+// half-open [startUtc, endUtc) pair of "YYYY-MM-DD HH:MM:SS" strings to
+// compare against the UTC-stored started_at column.
+function tenantDateRangeUtc(req, from, to) {
+  const tz = req?.tenant?.timezone || "UTC";
+  return {
+    startUtc: from ? zonedWallTimeToUtc(`${from} 00:00:00`, tz) : null,
+    endUtc: to ? zonedWallTimeToUtc(`${addDaysToDateStr(to, 1)} 00:00:00`, tz) : null
+  };
 }
 
 // Resolves a "YYYY-MM" query param into UTC month boundaries, defaulting to
@@ -1103,6 +1116,10 @@ app.post("/api/super-admin/tenants", authenticateSuperAdmin, asyncRoute(async (r
   if (!Number.isInteger(extensionStart) || extensionStart < 100) {
     return res.status(400).json({ error: "Extension start number must be at least 100" });
   }
+  const timezone = String(req.body.timezone || "UTC").trim() || "UTC";
+  if (!isValidTimeZone(timezone)) {
+    return res.status(400).json({ error: `Unknown timezone: ${timezone}` });
+  }
 
   const routingProfileMode = req.body.routingProfileMode === "existing" ? "existing" : "new";
   let existingRoutingProfileId = null;
@@ -1158,7 +1175,7 @@ app.post("/api/super-admin/tenants", authenticateSuperAdmin, asyncRoute(async (r
         effective.featuresJson,
         extensionStart,
         extensionStart,
-        String(req.body.timezone || "UTC"),
+        timezone,
         String(req.body.country || "").trim() || null,
         req.body.billingCycle === "ANNIVERSARY" ? "ANNIVERSARY" : "CALENDAR_MONTH",
         existingRoutingProfileId,
@@ -1232,6 +1249,10 @@ app.patch("/api/super-admin/tenants/:id", authenticateSuperAdmin, asyncRoute(asy
   const status = req.body.status ?? tenant.status;
   const allowedStatuses = ["TRIAL", "ACTIVE", "INACTIVE", "SUSPENDED", "CANCELLED"];
   if (!allowedStatuses.includes(status)) return res.status(400).json({ error: "Invalid tenant status" });
+  const timezone = req.body.timezone ?? tenant.timezone;
+  if (req.body.timezone !== undefined && !isValidTimeZone(timezone)) {
+    return res.status(400).json({ error: `Unknown timezone: ${timezone}` });
+  }
   await db.execute(
     `UPDATE tenants SET name=?,status=?,plan_id=?,price_per_user=?,max_users=?,outbound_minutes=?,inbound_minutes=?,features_json=?,timezone=?,can_purchase_numbers=?,can_use_auto_dialer=?,can_use_toll_free=?,can_use_leads=? WHERE id=?`,
     [
@@ -1243,7 +1264,7 @@ app.patch("/api/super-admin/tenants/:id", authenticateSuperAdmin, asyncRoute(asy
       req.body.outboundMinutes === undefined && req.body.unlimitedOutbound === undefined ? tenant.outbound_minutes : nullableLimit(req.body.outboundMinutes, req.body.unlimitedOutbound),
       req.body.inboundMinutes === undefined && req.body.unlimitedInbound === undefined ? tenant.inbound_minutes : nullableLimit(req.body.inboundMinutes, req.body.unlimitedInbound),
       req.body.features === undefined ? tenant.features_json : JSON.stringify(req.body.features || {}),
-      req.body.timezone ?? tenant.timezone,
+      timezone,
       req.body.canPurchaseNumbers === undefined ? tenant.can_purchase_numbers : (req.body.canPurchaseNumbers ? 1 : 0),
       req.body.canUseAutoDialer === undefined ? tenant.can_use_auto_dialer : (req.body.canUseAutoDialer ? 1 : 0),
       req.body.canUseTollFree === undefined ? tenant.can_use_toll_free : (req.body.canUseTollFree ? 1 : 0),
@@ -2658,10 +2679,9 @@ async function buildCallsBaseFilter(req) {
   where = appendCallAgentScope(where, params, scope);
   where = appendRequestedAgent(where, params, scope, req.query.agentId);
 
-  const from = normalizeDateFilter(req.query.from);
-  const to = normalizeDateFilter(req.query.to);
-  if (from) { where += " AND c.started_at>=?"; params.push(`${from} 00:00:00`); }
-  if (to) { where += " AND c.started_at<DATE_ADD(?,INTERVAL 1 DAY)"; params.push(`${to} 00:00:00`); }
+  const { startUtc, endUtc } = tenantDateRangeUtc(req, normalizeDateFilter(req.query.from), normalizeDateFilter(req.query.to));
+  if (startUtc) { where += " AND c.started_at>=?"; params.push(startUtc); }
+  if (endUtc) { where += " AND c.started_at<?"; params.push(endUtc); }
 
   const durationMin = Number(req.query.durationMin);
   if (Number.isFinite(durationMin) && durationMin > 0) { where += " AND c.billable_sec>=?"; params.push(Math.trunc(durationMin)); }
@@ -2908,8 +2928,9 @@ async function buildPerformanceQuery(req) {
   let where = "WHERE c.tenant_id=?";
   where = appendCallAgentScope(where, params, scope);
   where = appendRequestedAgent(where, params, scope, req.query.agentId);
-  where += " AND c.started_at>=? AND c.started_at<DATE_ADD(?,INTERVAL 1 DAY)";
-  params.push(`${from} 00:00:00`, `${to} 00:00:00`);
+  const { startUtc, endUtc } = tenantDateRangeUtc(req, from, to);
+  where += " AND c.started_at>=? AND c.started_at<?";
+  params.push(startUtc, endUtc);
 
   const sql =
     `SELECT
@@ -3055,10 +3076,11 @@ app.get("/api/recordings", authenticate, requirePermission("VIEW_RECORDINGS"), a
   where = appendCallAgentScope(where, params, scope);
   where = appendRequestedAgent(where, params, scope, req.query.agentId);
 
-  const from = normalizeDateFilter(req.query.from);
-  const to = normalizeDateFilter(req.query.to);
-  if (from) { where += " AND c.started_at>=?"; params.push(`${from} 00:00:00`); }
-  if (to) { where += " AND c.started_at<DATE_ADD(?,INTERVAL 1 DAY)"; params.push(`${to} 00:00:00`); }
+  {
+    const { startUtc, endUtc } = tenantDateRangeUtc(req, normalizeDateFilter(req.query.from), normalizeDateFilter(req.query.to));
+    if (startUtc) { where += " AND c.started_at>=?"; params.push(startUtc); }
+    if (endUtc) { where += " AND c.started_at<?"; params.push(endUtc); }
+  }
   if (req.query.search) {
     where += " AND (c.from_number LIKE ? OR c.to_number LIKE ? OR c.agent_sip_username LIKE ? OR u.name LIKE ?)";
     const term = `%${String(req.query.search).slice(0, 64)}%`;
@@ -3168,8 +3190,11 @@ app.get("/api/dashboard/owner", authenticate, requirePermission("VIEW_REPORTS", 
   let metricWhere = "WHERE c.tenant_id=?";
   metricWhere = appendCallAgentScope(metricWhere, metricParams, scope);
   metricWhere = appendRequestedAgent(metricWhere, metricParams, scope, requestedAgentId);
-  metricWhere += " AND c.started_at>=? AND c.started_at<DATE_ADD(?,INTERVAL 1 DAY)";
-  metricParams.push(`${from} 00:00:00`, `${to} 00:00:00`);
+  {
+    const { startUtc, endUtc } = tenantDateRangeUtc(req, from, to);
+    metricWhere += " AND c.started_at>=? AND c.started_at<?";
+    metricParams.push(startUtc, endUtc);
+  }
 
   const [[metrics]] = await db.execute(
     `SELECT
@@ -3236,12 +3261,16 @@ app.get("/api/reports/kpis", authenticate, requirePermission("VIEW_DASHBOARD", "
       WHERE c.tenant_id=? AND c.started_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL ? DAY) ${accessFilter}`,
     params
   );
+  // Bucket by the tenant's local calendar day, not UTC's — a call at
+  // 01:00 UTC belongs to "yesterday" for a tenant in the Americas. A
+  // numeric offset keeps CONVERT_TZ working without the MySQL tz tables.
+  const tzOffset = tzNumericOffset(req.tenant?.timezone || "UTC");
   const [daily] = await db.execute(
-    `SELECT DATE(c.started_at) AS day,COUNT(*) AS calls,SUM(c.answered_at IS NOT NULL) AS completed,SUM(c.billable_sec) AS talk_sec
+    `SELECT DATE(CONVERT_TZ(c.started_at,'+00:00',?)) AS day,COUNT(*) AS calls,SUM(c.answered_at IS NOT NULL) AS completed,SUM(c.billable_sec) AS talk_sec
        FROM calls c LEFT JOIN users u ON u.id=c.agent_user_id
       WHERE c.tenant_id=? AND c.started_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL ? DAY) ${accessFilter}
-      GROUP BY DATE(c.started_at) ORDER BY day ASC`,
-    params
+      GROUP BY day ORDER BY day ASC`,
+    [tzOffset, ...params]
   );
   const [agents] = await db.execute(
     `SELECT COALESCE(u.name,c.agent_sip_username,'Unassigned') AS agent,COUNT(*) AS calls,

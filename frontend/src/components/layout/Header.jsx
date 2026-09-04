@@ -7,6 +7,7 @@ import ThemeToggle from "../ui/ThemeToggle";
 import { hasAny } from "../../lib/permissions";
 import { formatDuration } from "../../lib/phone";
 import { confirmModal } from "../../lib/modal";
+import { getWorkspaceTz } from "../../lib/tz";
 
 // Reload safely: on the web a mid-call reload tears down the SIP/WebRTC
 // session and drops the call, so confirm first. On the desktop app the
@@ -88,6 +89,41 @@ function DesktopCallPill() {
   );
 }
 
+// Live clock in the workspace's timezone (set from session.tenant.timezone
+// via lib/tz). Replaces the old AMI "Connected" pill in the header.
+function WorkspaceClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  const tz = getWorkspaceTz();
+  let time = "";
+  let zone = "";
+  try {
+    time = new Intl.DateTimeFormat(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+      timeZone: tz
+    }).format(now);
+    const parts = new Intl.DateTimeFormat("en-US", { timeZoneName: "short", timeZone: tz }).formatToParts(now);
+    zone = parts.find((p) => p.type === "timeZoneName")?.value || tz;
+  } catch {
+    time = now.toLocaleTimeString();
+  }
+  return (
+    <span
+      className="flex items-center gap-1.5 rounded-full bg-surface-2 px-2.5 py-1 font-mono text-xs font-semibold tabular-nums text-text"
+      title={`Workspace time — ${tz}`}
+    >
+      {time}
+      <span className="hidden font-sans text-[10px] font-medium text-muted md:inline">{zone}</span>
+    </span>
+  );
+}
+
 export default function Header({
   session,
   ownerAccount,
@@ -123,13 +159,7 @@ export default function Header({
       <div className="hidden text-sm font-semibold text-text sm:block">{activeLabel}</div>
 
       <div className="ml-auto flex items-center gap-3">
-        <span
-          className="flex items-center gap-1.5 rounded-full bg-surface-2 px-2.5 py-1 text-xs font-medium text-muted"
-          title={`Asterisk AMI: ${amiConnected ? "Connected" : "Offline"}`}
-        >
-          <span className={`h-1.5 w-1.5 rounded-full ${amiConnected ? "bg-success" : "bg-muted"}`} />
-          <span className="hidden md:inline">{amiConnected ? "Connected" : "Offline"}</span>
-        </span>
+        <WorkspaceClock />
         <DesktopCallPill />
         <Button
           variant="icon"

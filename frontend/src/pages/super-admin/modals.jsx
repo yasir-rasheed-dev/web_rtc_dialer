@@ -10,7 +10,10 @@ import Toggle from "../../components/ui/Toggle";
 import { confirmModal } from "../../lib/modal";
 import { notifyError, notifySuccess } from "../../lib/toast";
 import { superApi } from "../../lib/api";
+import { timeZoneOptions } from "../../lib/tz";
 import { fieldLabelClass } from "./shared";
+
+const TZ_OPTIONS = timeZoneOptions();
 
 const slugify = (s) =>
   String(s || "")
@@ -486,7 +489,15 @@ export function CreateSetupModal({ open, onClose, plans, tenants = [], onCreated
                 </label>
                 <label className={fieldLabelClass()}>
                   Timezone
-                  <Input value={form.timezone} onChange={(e) => setForm({ ...form, timezone: e.target.value })} />
+                  <Select
+                    options={TZ_OPTIONS}
+                    value={TZ_OPTIONS.find((o) => o.value === form.timezone) || null}
+                    onChange={(o) => setForm({ ...form, timezone: o?.value || "UTC" })}
+                    placeholder="Search a timezone…"
+                  />
+                  <span className="font-normal normal-case text-[11px] text-muted">
+                    Reports, call logs and the in-app clock use this zone.
+                  </span>
                 </label>
                 <label className={fieldLabelClass()}>
                   Country
@@ -807,7 +818,7 @@ export function PlanModal({ open, onClose, onSaved, plan = null }) {
 // modal's Max users / Outbound minutes / Inbound minutes block exactly,
 // just pre-filled from the tenant's current values instead of a plan.
 export function EditSetupModal({ open, onClose, tenant, onUpdated }) {
-  const [form, setForm] = useState({ maxUsers: "", outboundMinutes: "", inboundMinutes: "", unlimitedUsers: false, unlimitedOutbound: false, unlimitedInbound: false });
+  const [form, setForm] = useState({ maxUsers: "", outboundMinutes: "", inboundMinutes: "", unlimitedUsers: false, unlimitedOutbound: false, unlimitedInbound: false, timezone: "UTC" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -819,7 +830,8 @@ export function EditSetupModal({ open, onClose, tenant, onUpdated }) {
       inboundMinutes: tenant.inbound_minutes == null ? "" : String(tenant.inbound_minutes),
       unlimitedUsers: tenant.max_users == null,
       unlimitedOutbound: tenant.outbound_minutes == null,
-      unlimitedInbound: tenant.inbound_minutes == null
+      unlimitedInbound: tenant.inbound_minutes == null,
+      timezone: tenant.timezone || "UTC"
     });
     setError("");
   }, [open, tenant]);
@@ -830,7 +842,7 @@ export function EditSetupModal({ open, onClose, tenant, onUpdated }) {
     setError("");
     try {
       await superApi(`/super-admin/tenants/${tenant.id}`, { method: "PATCH", body: form });
-      notifySuccess("Setup limits updated");
+      notifySuccess("Setup updated");
       onUpdated();
       onClose();
     } catch (e) {
@@ -841,7 +853,7 @@ export function EditSetupModal({ open, onClose, tenant, onUpdated }) {
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Edit setup limits" width="max-w-lg">
+    <Modal open={open} onClose={onClose} title="Edit setup" width="max-w-lg">
       <form onSubmit={submit} className="flex flex-col gap-4">
         {error && <div className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>}
         <div className="flex items-end gap-3">
@@ -874,6 +886,18 @@ export function EditSetupModal({ open, onClose, tenant, onUpdated }) {
             Unlimited
           </label>
         </div>
+        <label className={fieldLabelClass()}>
+          Timezone
+          <Select
+            options={TZ_OPTIONS}
+            value={TZ_OPTIONS.find((o) => o.value === form.timezone) || null}
+            onChange={(o) => setForm({ ...form, timezone: o?.value || "UTC" })}
+            placeholder="Search a timezone…"
+          />
+          <span className="font-normal text-[11px] text-muted">
+            Reports, call logs and the in-app clock for this workspace use this zone.
+          </span>
+        </label>
         <div className="flex justify-end gap-2 pt-1">
           <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
             Cancel

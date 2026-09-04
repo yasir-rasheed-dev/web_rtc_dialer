@@ -10,11 +10,9 @@ import PageHeader from "../../components/ui/PageHeader";
 import StatusBadge from "../../components/ui/StatusBadge";
 import { notifyError, notifySuccess } from "../../lib/toast";
 import { api } from "../../lib/api";
+import { formatInWorkspaceTz } from "../../lib/tz";
 
-function formatDate(value) {
-  if (!value) return "—";
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
-}
+const formatDate = (value) => formatInWorkspaceTz(value);
 
 const AGENT_STATUS_TONE = {
   READY: "success",

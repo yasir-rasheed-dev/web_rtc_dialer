@@ -28,6 +28,7 @@ import { api, getToken, getRefreshToken, refreshSession, clearAuth } from "../li
 import { API_BASE } from "../lib/apiConfig";
 import { hasAny } from "../lib/permissions";
 import { confirmModal } from "../lib/modal";
+import { setWorkspaceTz } from "../lib/tz";
 import { useTeamChatUnreadCount } from "../lib/teamChatBadge";
 import { useFollowUpsBadge } from "../lib/followUpsBadge";
 import { useMissedCallsBadge } from "../lib/missedCallsBadge";
@@ -173,6 +174,13 @@ function TenantApp() {
       }
     })();
   }, []);
+
+  // Every date/time on screen (reports, call logs, the header clock)
+  // renders in the workspace's timezone, not the viewer's — keep the
+  // shared formatter in sync with whatever the session says.
+  useEffect(() => {
+    setWorkspaceTz(session?.tenant?.timezone || null);
+  }, [session?.tenant?.timezone]);
 
   // request() fires this when the access token expired AND a silent
   // refresh failed (refresh token gone / revoked / reused) — drop to the

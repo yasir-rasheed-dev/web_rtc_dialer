@@ -103,7 +103,9 @@ mode || "CLICK_TO_CALL",
 "DRAFT",
 startDate || null,
 endDate || null,
-timezone || "UTC",
+// Default a new campaign to the workspace's own timezone so its
+// calling window / schedule lines up with the tenant's clock.
+timezone || req.user.timezone || "UTC",
 maxAttempts || 3,
 retryDelayMinutes || 30,
 req.user.id

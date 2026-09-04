@@ -5,6 +5,7 @@ import Button from "../../components/ui/Button";
 import DatePicker from "../../components/ui/DatePicker";
 import Select from "../../components/ui/Select";
 import { api } from "../../lib/api";
+import { formatInWorkspaceTz } from "../../lib/tz";
 
 // Shared between CallLogsPage and RecordingsPage — both filter the same
 // underlying call data, just with a different column set / no call-status
@@ -18,9 +19,10 @@ export function formatSeconds(value = 0) {
   return hours ? `${hours}h ${minutes}m ${rest}s` : `${minutes}:${String(rest).padStart(2, "0")}`;
 }
 
+// Renders in the workspace timezone (see lib/tz) so every call-log /
+// recording timestamp matches the tenant's wall clock, not the viewer's.
 export function formatDate(value) {
-  if (!value) return "—";
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+  return formatInWorkspaceTz(value);
 }
 
 export function useAgentOptions() {

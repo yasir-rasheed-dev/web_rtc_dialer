@@ -27,15 +27,13 @@ import { SkeletonCards } from "../../components/ui/Skeleton";
 import StatusBadge from "../../components/ui/StatusBadge";
 import { useAgentOptions } from "../calls/shared";
 import { api } from "../../lib/api";
+import { formatInWorkspaceTz } from "../../lib/tz";
 
 function todayValue() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function formatDate(value) {
-  if (!value) return "—";
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
-}
+const formatDate = (value) => formatInWorkspaceTz(value);
 
 function liveDuration(startedAt, now) {
   if (!startedAt) return "0:00";

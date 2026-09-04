@@ -8,6 +8,7 @@ import { FIELD_CLASS } from "../../components/ui/Input";
 import Modal from "../../components/ui/Modal";
 import Select from "../../components/ui/Select";
 import { api } from "../../lib/api";
+import { formatInWorkspaceTz } from "../../lib/tz";
 
 // Building blocks shared by every direction-specific report in ReportsHub.jsx.
 
@@ -19,9 +20,10 @@ export function formatSeconds(value = 0) {
   return hours ? `${hours}h ${minutes}m ${rest}s` : `${minutes}:${String(rest).padStart(2, "0")}`;
 }
 
+// Workspace-timezone aware (see lib/tz) — reports read in the tenant's
+// wall clock regardless of where the viewer is.
 export function formatDate(value) {
-  if (!value) return "—";
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+  return formatInWorkspaceTz(value);
 }
 
 export function useAgentOptions() {

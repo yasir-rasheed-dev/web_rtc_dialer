@@ -9,6 +9,7 @@ import Select from "../../components/ui/Select";
 import { SkeletonTable } from "../../components/ui/Skeleton";
 import StatusBadge from "../../components/ui/StatusBadge";
 import { confirmModal } from "../../lib/modal";
+import { formatInWorkspaceTz } from "../../lib/tz";
 import { notifyError, notifySuccess } from "../../lib/toast";
 import { deleteCampaign, listCampaigns, updateCampaign } from "../../lib/campaignApi";
 import { CreateCampaignModal } from "./modals";
@@ -16,10 +17,7 @@ import CampaignDetailView from "./CampaignDetailView";
 
 const CAMPAIGN_STATUS_OPTIONS = ["DRAFT", "ACTIVE", "PAUSED", "COMPLETED"].map((value) => ({ value, label: value }));
 
-function formatDate(value) {
-  if (!value) return "—";
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
-}
+const formatDate = (value) => formatInWorkspaceTz(value);
 
 export default function CampaignsPanel({ permissions }) {
   const can = (key) => permissions.includes(key);
