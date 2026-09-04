@@ -4,6 +4,7 @@ import { CircleUserRound, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Phone, Ro
 import Button from "../ui/Button";
 import Select from "../ui/Select";
 import ThemeToggle from "../ui/ThemeToggle";
+import DesktopUpdater from "./DesktopUpdater";
 import { hasAny } from "../../lib/permissions";
 import { formatDuration } from "../../lib/phone";
 import { confirmModal } from "../../lib/modal";
@@ -159,6 +160,7 @@ export default function Header({
       <div className="hidden text-sm font-semibold text-text sm:block">{activeLabel}</div>
 
       <div className="ml-auto flex items-center gap-3">
+        <DesktopUpdater />
         <WorkspaceClock />
         <DesktopCallPill />
         <Button

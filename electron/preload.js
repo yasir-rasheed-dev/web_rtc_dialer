@@ -14,6 +14,25 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("ringnexDesktop", {
   version: process.versions.electron,
   platform: process.platform,
+  // Auto-update (GitHub Releases feed — see updater.js / package.json).
+  updates: {
+    // { supported, platform, currentVersion, releasesUrl, canSelfInstall }
+    state: () => ipcRenderer.invoke("updates:state"),
+    check: () => ipcRenderer.invoke("updates:check"),
+    download: () => ipcRenderer.invoke("updates:download"),
+    install: () => ipcRenderer.send("updates:install"),
+    openReleases: () => ipcRenderer.send("updates:open-releases"),
+    // Lightweight path: just reload the app's web content (fresh data /
+    // backend-driven changes), no reinstall.
+    reloadApp: () => ipcRenderer.send("app:reload"),
+    // Subscribe to updater events: { type: "checking" | "available" |
+    // "not-available" | "progress" | "downloaded" | "manual" | "error", ... }
+    onEvent: (callback) => {
+      const listener = (_event, payload) => callback(payload);
+      ipcRenderer.on("updates:event", listener);
+      return () => ipcRenderer.removeListener("updates:event", listener);
+    }
+  },
   callWindow: {
     show: () => ipcRenderer.send("call-window:show"),
     hide: () => ipcRenderer.send("call-window:hide"),

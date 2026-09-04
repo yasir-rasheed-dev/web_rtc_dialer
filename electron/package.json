@@ -13,7 +13,13 @@
     "predist": "npm run make-icon && npm run build:frontend && npm run prepare-frontend",
     "dist": "electron-builder",
     "dist:win": "npm run predist && electron-builder --win",
-    "dist:mac": "npm run predist && electron-builder --mac"
+    "dist:mac": "npm run predist && electron-builder --mac",
+    "release": "npm run predist && electron-builder --publish always",
+    "release:win": "npm run predist && electron-builder --win --publish always",
+    "release:mac": "npm run predist && electron-builder --mac --publish always"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
   },
   "devDependencies": {
     "electron": "^33.0.0",
@@ -29,12 +35,22 @@
     },
     "files": [
       "main.js",
-      "preload.js"
+      "preload.js",
+      "updater.js",
+      "package.json"
     ],
     "extraResources": [
       {
         "from": "app",
         "to": "frontend-dist"
+      }
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "yasir-rasheed-dev",
+        "repo": "web_rtc_dialer",
+        "releaseType": "release"
       }
     ],
     "win": {

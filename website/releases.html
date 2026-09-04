@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ringNex — Releases &amp; Downloads</title>
+<meta name="description" content="Every ringNex desktop release — download any version for Windows or macOS, with the release notes and known issues for each build." />
+<meta name="theme-color" content="#0684BC" />
+<link rel="icon" type="image/png" href="./ringnex.png" />
+<style>
+  :root{
+    --blue:#0684BC; --blue-600:#0571a3; --blue-300:#38a8d8;
+    --orange:#FF7A00; --orange-300:#ff9a3d;
+    --bg:#f5f8fa; --bg-2:#eaf0f4; --surface:#ffffff; --surface-2:#f3f7f9; --surface-3:#e9eff3;
+    --border:#e3e9ee; --border-strong:#cfdae2;
+    --text:#0c1a24; --muted:#566572; --muted-2:#8293a0;
+    --tint:rgba(10,30,45,.035); --header-bg:rgba(255,255,255,.82);
+    --ok:#16a34a; --ok-bg:rgba(22,163,74,.13);
+    --warn:#b45309; --warn-bg:rgba(217,119,6,.13); --warn-bd:rgba(217,119,6,.4);
+    --radius:12px; --radius-sm:8px; --maxw:900px;
+    --ease:cubic-bezier(.22,1,.36,1);
+    --font:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  :root[data-theme="dark"]{
+    --bg:#070a0f; --bg-2:#0b1017; --surface:#101922; --surface-2:#0d151d; --surface-3:#16212c;
+    --border:#1c2833; --border-strong:#293a48;
+    --text:#e9eff5; --muted:#93a7b8; --muted-2:#647a8c;
+    --tint:rgba(255,255,255,.02); --header-bg:rgba(7,10,15,.88);
+    --ok-bg:rgba(22,163,74,.18); --warn:#f59e0b; --warn-bg:rgba(245,158,11,.13); --warn-bd:rgba(245,158,11,.38);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:1.6;-webkit-font-smoothing:antialiased;min-height:100vh;display:flex;flex-direction:column}
+  a{color:inherit;text-decoration:none}
+  img{max-width:100%;display:block}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px;width:100%}
+  [hidden]{display:none!important}
+
+  .topbar{background:var(--tint);border-bottom:1px solid var(--border);font-size:12.5px}
+  .topbar .wrap{display:flex;align-items:center;justify-content:space-between;height:42px;color:var(--muted-2)}
+  .topbar a{color:var(--muted)} .topbar a:hover{color:var(--text)}
+  .topbar .partner b{color:var(--orange-300)}
+
+  header{position:sticky;top:0;z-index:50;background:var(--header-bg);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+  header .bar{display:flex;align-items:center;justify-content:space-between;height:74px;gap:20px}
+  .brand img{height:34px;width:auto}
+  nav.links{display:flex;gap:24px;align-items:center;margin-left:auto;margin-right:8px}
+  nav.links a{color:var(--muted);font-size:14px;font-weight:500}
+  nav.links a:hover{color:var(--text)}
+  .hgroup{display:flex;align-items:center;gap:12px;flex-shrink:0}
+  .theme-toggle{width:40px;height:40px;border-radius:var(--radius-sm);border:1px solid var(--border-strong);background:var(--tint);color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:color .2s,border-color .2s}
+  .theme-toggle:hover{color:var(--text);border-color:var(--blue-300)}
+  .theme-toggle svg{width:18px;height:18px}
+  .theme-toggle .t-sun{display:none}
+  :root[data-theme="dark"] .theme-toggle .t-sun{display:block}
+  :root[data-theme="dark"] .theme-toggle .t-moon{display:none}
+  .btn{display:inline-flex;align-items:center;gap:9px;font-weight:600;font-size:14px;border-radius:var(--radius-sm);padding:11px 20px;border:1px solid transparent;cursor:pointer;white-space:nowrap;transition:transform .2s var(--ease),box-shadow .3s,border-color .2s}
+  .btn svg{width:16px;height:16px}
+  .btn-primary{background:linear-gradient(135deg,var(--blue),var(--blue-600));color:#fff;box-shadow:0 10px 30px -12px rgba(6,132,188,.75)}
+  .btn-primary:hover{transform:translateY(-2px)}
+  .btn-ghost{border-color:var(--border-strong);color:var(--text);background:var(--tint)}
+  .btn-ghost:hover{border-color:var(--blue-300)}
+
+  main{flex:1;padding:46px 0 72px}
+  .head{max-width:60ch}
+  .head .eyebrow{font-size:12px;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;color:var(--orange-300)}
+  .head h1{font-size:clamp(1.7rem,4vw,2.4rem);letter-spacing:-.6px;margin-top:10px;font-weight:800}
+  .head p{color:var(--muted);margin-top:10px}
+
+  .hero-dl{margin-top:22px;display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+  .hero-dl .rec{font-size:12px;color:var(--muted-2)}
+
+  .rel{margin-top:30px;border:1px solid var(--border);border-radius:16px;background:var(--surface);overflow:hidden}
+  .rel + .rel{margin-top:18px}
+  .rel-h{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:18px 22px;border-bottom:1px solid var(--border);background:var(--surface-2)}
+  .rel-h .v{font-size:1.15rem;font-weight:800;letter-spacing:-.3px}
+  .rel-h .date{font-size:12.5px;color:var(--muted-2)}
+  .tag{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;padding:3px 9px;border-radius:999px}
+  .tag.latest{background:var(--ok-bg);color:var(--ok)}
+  .tag.pre{background:var(--warn-bg);color:var(--warn)}
+  .rel-b{padding:20px 22px}
+
+  .dls{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px}
+  .dl{display:inline-flex;align-items:center;gap:9px;border:1px solid var(--border-strong);border-radius:10px;padding:10px 14px;font-size:13px;font-weight:600;color:var(--text);background:var(--tint);transition:border-color .2s,transform .15s}
+  .dl:hover{border-color:var(--blue-300);transform:translateY(-1px)}
+  .dl.rec{border-color:var(--blue);box-shadow:0 0 0 3px rgba(6,132,188,.12)}
+  .dl svg{width:15px;height:15px;color:var(--blue-300)}
+  .dl .sz{color:var(--muted-2);font-weight:500;font-size:11.5px}
+  .dl-badge{font-size:10px;font-weight:800;text-transform:uppercase;color:var(--blue);margin-left:2px}
+
+  .known{margin:14px 0 4px;border:1px solid var(--warn-bd);background:var(--warn-bg);border-radius:12px;padding:14px 16px}
+  .known h4{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--warn);display:flex;align-items:center;gap:7px;margin-bottom:8px}
+  .known h4 svg{width:14px;height:14px}
+  .known .md{font-size:13px}
+
+  .md{color:var(--text);font-size:13.5px;line-height:1.65}
+  .md h1,.md h2,.md h3{font-size:14px;font-weight:800;margin:14px 0 6px;letter-spacing:-.2px}
+  .md h1:first-child,.md h2:first-child,.md h3:first-child{margin-top:0}
+  .md p{margin:6px 0}
+  .md ul{margin:6px 0 6px 20px}
+  .md li{margin:3px 0}
+  .md code{font-family:var(--mono);font-size:12px;background:var(--surface-3);padding:1px 5px;border-radius:5px}
+  .md a{color:var(--blue-300);text-decoration:underline}
+  .md strong{font-weight:700}
+
+  .note{margin-top:26px;font-size:12.5px;color:var(--muted-2)}
+  .err{margin-top:26px;border:1px solid var(--warn-bd);background:var(--warn-bg);color:var(--warn);border-radius:14px;padding:18px 22px;font-size:13.5px}
+  .err a{color:var(--blue-300);text-decoration:underline}
+  .loading{margin-top:30px;color:var(--muted-2);font-size:14px}
+
+  footer{border-top:1px solid var(--border);padding:32px 0;color:var(--muted-2);font-size:12.5px}
+  footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px}
+  footer .partner b{color:var(--orange-300)}
+  footer a:hover{color:var(--text)}
+
+  @media(max-width:640px){ nav.links{display:none} }
+</style>
+<script>
+  (function(){try{var t=localStorage.getItem('rnx-theme');document.documentElement.setAttribute('data-theme',(t==='dark'||t==='light')?t:'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();
+</script>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="wrap">
+    <a href="mailto:tech@unisoftwares.com">tech@unisoftwares.com</a>
+    <span class="partner">A <b>Unisoftwares</b> product</span>
+  </div>
+</div>
+
+<header>
+  <div class="wrap bar">
+    <a class="brand" href="./index.html" aria-label="ringNex"><img src="./ringnex.png" alt="ringNex" /></a>
+    <nav class="links">
+      <a href="./index.html#features">Features</a>
+      <a href="./index.html#pricing">Pricing</a>
+      <a href="./guide.html">User Guide</a>
+      <a href="./releases.html" aria-current="page">Releases</a>
+      <a href="./status.html">Status</a>
+    </nav>
+    <div class="hgroup">
+      <button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch between light and dark mode">
+        <svg class="t-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="t-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      </button>
+      <a class="btn btn-ghost" href="./index.html">Back to site</a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <div class="head">
+      <div class="eyebrow">Downloads</div>
+      <h1>ringNex Releases</h1>
+      <p>Every desktop build for Windows and macOS. Installed apps update themselves — this page is for a fresh install or to roll back to a specific version. Each release lists its notes and any known issues.</p>
+    </div>
+
+    <div class="hero-dl" id="heroDl" hidden>
+      <a class="btn btn-primary" id="heroBtn" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg><span id="heroLabel">Download</span></a>
+      <span class="rec" id="heroRec"></span>
+    </div>
+
+    <div class="loading" id="loading">Loading releases…</div>
+    <div id="list"></div>
+    <div class="err" id="err" hidden></div>
+
+    <p class="note">Looking for the source or older assets? See the
+      <a href="https://github.com/yasir-rasheed-dev/web_rtc_dialer/releases" target="_blank" rel="noopener" style="color:var(--blue-300);text-decoration:underline">full release history on GitHub</a>.</p>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© <span id="yr"></span> ringNex · Built &amp; supported by Unisoftwares</span>
+    <span class="partner">In partnership with <b>Unisoftwares</b></span>
+  </div>
+</footer>
+
+<script>
+  var REPO = "yasir-rasheed-dev/web_rtc_dialer";
+  var API = "https://api.github.com/repos/" + REPO + "/releases?per_page=30";
+  var root = document.documentElement;
+  document.getElementById('yr').textContent = new Date().getFullYear();
+
+  document.getElementById('themeToggle').addEventListener('click', function(){
+    var n = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', n);
+    try { localStorage.setItem('rnx-theme', n); } catch(e){}
+  });
+
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]);}); }
+  function bytes(n){ if(!n) return ''; var u=['B','KB','MB','GB'],i=0; while(n>=1024&&i<3){n/=1024;i++;} return n.toFixed(n<10&&i>0?1:0)+' '+u[i]; }
+
+  /* --- tiny, safe markdown -> html (headings, lists, bold, code, links, GH alerts) --- */
+  function md(src){
+    if(!src) return '';
+    var lines = String(src).replace(/\r/g,'').split('\n');
+    var out = [], inList = false;
+    function closeList(){ if(inList){ out.push('</ul>'); inList=false; } }
+    for (var i=0;i<lines.length;i++){
+      var ln = lines[i];
+      if (/^>\s*\[!(NOTE|WARNING|IMPORTANT|CAUTION)\]/i.test(ln)) { continue; } // handled as known-issues elsewhere
+      ln = ln.replace(/^>\s?/,'');
+      var h = ln.match(/^(#{1,6})\s+(.*)$/);
+      if (h){ closeList(); out.push('<h'+Math.min(3,h[1].length)+'>'+inline(h[2])+'</h'+Math.min(3,h[1].length)+'>'); continue; }
+      if (/^\s*[-*]\s+/.test(ln)){ if(!inList){ out.push('<ul>'); inList=true; } out.push('<li>'+inline(ln.replace(/^\s*[-*]\s+/,''))+'</li>'); continue; }
+      if (/^\s*$/.test(ln)){ closeList(); continue; }
+      closeList(); out.push('<p>'+inline(ln)+'</p>');
+    }
+    closeList();
+    return out.join('');
+  }
+  function inline(s){
+    s = esc(s);
+    s = s.replace(/`([^`]+)`/g,'<code>$1</code>');
+    s = s.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
+    s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
+    return s;
+  }
+
+  // Pull a "Known issues / limitations / not working" section (and any GH
+  // >[!WARNING] blocks) out of the release body.
+  function splitKnown(body){
+    if(!body) return { known:'', rest:'' };
+    var lines = body.replace(/\r/g,'').split('\n');
+    var known = [], rest = [], mode = 'rest', i;
+    var reHead = /^#{1,6}\s+(known issues|known limitations|limitations|not working|does ?n['’]?t work|caveats|breaking changes)\b/i;
+    for (i=0;i<lines.length;i++){
+      var ln = lines[i];
+      if (reHead.test(ln)) { mode = 'known'; continue; }
+      if (mode === 'known' && /^#{1,6}\s+/.test(ln)) { mode = 'rest'; rest.push(ln); continue; }
+      if (/^>\s*\[!(WARNING|CAUTION|IMPORTANT)\]/i.test(ln)) {
+        // consume the following quoted lines as a known-issue note
+        var j = i + 1;
+        while (j < lines.length && /^>\s?/.test(lines[j])) { known.push(lines[j].replace(/^>\s?/,'')); j++; }
+        i = j - 1; continue;
+      }
+      (mode === 'known' ? known : rest).push(ln);
+    }
+    return { known: known.join('\n').trim(), rest: rest.join('\n').trim() };
+  }
+
+  function assetKind(name){
+    var n = name.toLowerCase();
+    if (/\.exe$/.test(n)) return { os:'win', label: /portable/.test(n) ? 'Windows (portable)' : 'Windows installer', rank:1 };
+    if (/arm64\.dmg$/.test(n)) return { os:'mac-arm', label:'macOS · Apple Silicon (.dmg)', rank:2 };
+    if (/\.dmg$/.test(n)) return { os:'mac-x64', label:'macOS · Intel (.dmg)', rank:3 };
+    if (/arm64.*\.zip$/.test(n)) return { os:'mac-arm', label:'macOS · Apple Silicon (.zip)', rank:4 };
+    if (/\.zip$/.test(n)) return { os:'mac-x64', label:'macOS · Intel (.zip)', rank:5 };
+    return null; // .yml, .blockmap — internal
+  }
+
+  function detectOS(){
+    var ua = navigator.userAgent, p = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
+    if (/Win/i.test(p) || /Windows/i.test(ua)) return 'win';
+    if (/Mac/i.test(p) || /Mac OS X/i.test(ua)) {
+      // Apple Silicon hint
+      try {
+        var c = document.createElement('canvas').getContext('webgl');
+        var d = c && c.getExtension('WEBGL_debug_renderer_info');
+        var r = d ? c.getParameter(d.UNMASKED_RENDERER_WEBGL) : '';
+        if (/Apple/.test(r) && !/Intel/.test(r)) return 'mac-arm';
+      } catch(e){}
+      return 'mac-x64';
+    }
+    return '';
+  }
+
+  function render(releases){
+    document.getElementById('loading').hidden = true;
+    var os = detectOS();
+    var list = document.getElementById('list');
+    var latestPicked = false;
+    var heroAsset = null;
+
+    var html = releases.map(function(rel){
+      var assets = (rel.assets || [])
+        .map(function(a){ var k = assetKind(a.name); return k ? { url:a.browser_download_url, name:a.name, size:a.size, k:k } : null; })
+        .filter(Boolean)
+        .sort(function(a,b){ return a.k.rank - b.k.rank; });
+
+      var isLatest = !rel.prerelease && !rel.draft && !latestPicked;
+      if (isLatest) latestPicked = true;
+
+      if (isLatest && !heroAsset && os) {
+        heroAsset = assets.find(function(a){ return a.k.os === os; })
+          || (os.indexOf('mac')===0 && assets.find(function(a){ return a.k.os.indexOf('mac')===0; }))
+          || null;
+      }
+
+      var parts = splitKnown(rel.body || '');
+      var when = rel.published_at ? new Date(rel.published_at).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}) : '';
+
+      var dls = assets.length
+        ? '<div class="dls">' + assets.map(function(a){
+            var rec = isLatest && a.k.os === os;
+            return '<a class="dl'+(rec?' rec':'')+'" href="'+esc(a.url)+'">' +
+              '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' +
+              esc(a.k.label) + ' <span class="sz">'+bytes(a.size)+'</span>' +
+              (rec ? ' <span class="dl-badge">recommended</span>' : '') + '</a>';
+          }).join('') + '</div>'
+        : '<p class="md" style="color:var(--muted-2)">No downloadable assets on this release.</p>';
+
+      var known = parts.known
+        ? '<div class="known"><h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Known issues &amp; limitations</h4><div class="md">'+md(parts.known)+'</div></div>'
+        : '';
+
+      var notes = parts.rest ? '<div class="md">'+md(parts.rest)+'</div>' : '';
+
+      return '<div class="rel">' +
+        '<div class="rel-h">' +
+          '<span class="v">'+esc(rel.name || rel.tag_name)+'</span>' +
+          (isLatest ? '<span class="tag latest">Latest</span>' : '') +
+          (rel.prerelease ? '<span class="tag pre">Pre-release</span>' : '') +
+          '<span class="date">'+esc(when)+'</span>' +
+        '</div>' +
+        '<div class="rel-b">' + dls + known + notes + '</div>' +
+      '</div>';
+    }).join('');
+
+    list.innerHTML = html || '<p class="md" style="color:var(--muted-2)">No releases published yet.</p>';
+
+    if (heroAsset) {
+      var hero = document.getElementById('heroDl');
+      hero.hidden = false;
+      document.getElementById('heroBtn').href = heroAsset.url;
+      document.getElementById('heroLabel').textContent = 'Download ' + heroAsset.k.label.replace(/ \(.*\)$/,'');
+      document.getElementById('heroRec').textContent = 'Detected ' + (os === 'win' ? 'Windows' : os === 'mac-arm' ? 'macOS (Apple Silicon)' : 'macOS (Intel)') + ' · ' + bytes(heroAsset.size);
+    }
+  }
+
+  function showError(status){
+    document.getElementById('loading').hidden = true;
+    var el = document.getElementById('err');
+    el.hidden = false;
+    el.innerHTML = (status === 403
+      ? "GitHub's API is rate-limiting this page for now. "
+      : "Couldn't load the release list right now. ") +
+      'You can always get the latest build from the ' +
+      '<a href="https://github.com/' + REPO + '/releases/latest" target="_blank" rel="noopener">GitHub releases page</a>.';
+  }
+
+  fetch(API, { headers: { "Accept": "application/vnd.github+json" } })
+    .then(function(r){ if(!r.ok) throw r.status; return r.json(); })
+    .then(function(rels){ render((rels || []).filter(function(x){ return !x.draft; })); })
+    .catch(function(status){ showError(typeof status === 'number' ? status : 0); });
+</script>
+
+</body>
+</html>

@@ -70,6 +70,83 @@ builds also trigger a Gatekeeper warning on the user's machine, so a real
 release additionally needs an Apple Developer ID for signing + notarization
 — out of scope until you're actually ready to ship to Mac users.
 
+## Auto-update (GitHub Releases)
+
+Installed apps update themselves from this repo's **GitHub Releases**
+(`build.publish` in `package.json` → provider `github`,
+`yasir-rasheed-dev/web_rtc_dialer`). The app checks ~12s after launch and
+every 6h, and the header has a **"Check for updates"** button
+(`frontend/src/components/layout/DesktopUpdater.jsx` ⇄
+`electron/updater.js`).
+
+### Cutting a release
+
+1. Bump `version` in `electron/package.json` (and, if you like, keep it in
+   step with the marketing site's version).
+2. Build **and publish** the assets + update metadata to a GitHub Release:
+
+   ```
+   # from electron/ — needs a GH_TOKEN env var with repo access
+   npm run release:win      # Windows: NSIS .exe + latest.yml
+   npm run release:mac      # macOS (run on a Mac): .dmg + .zip + latest-mac.yml
+   ```
+
+   `--publish always` uploads to a **draft** release for the current
+   version (electron-builder creates/reuses it). Or build with
+   `npm run dist:win` / `dist:mac` and upload the contents of
+   `electron/release/` to a GitHub Release by hand — the important files
+   are the installers **and** `latest.yml` / `latest-mac.yml` (+ the
+   `*.blockmap` files for delta updates).
+3. **Publish** the GitHub Release (un-draft it). Mark it *pre-release* to
+   keep it off the auto-update channel while testing.
+
+The public **Releases page** (`website/releases.html`, linked from the
+site nav) reads the same GitHub Releases API and lists every version with
+its notes, downloads, and a **"Known issues & limitations"** callout.
+
+### Writing the known-issues note
+
+In the GitHub Release description, add a section the page will pull out and
+highlight — any of these headings works (case-insensitive):
+
+```
+## Known issues
+- Warm transfer to an external number is disabled in this build.
+- macOS: the call popup can lose "always on top" after a Space switch.
+```
+
+A GitHub alert block is also lifted out:
+
+```
+> [!WARNING]
+> Do not install on an agent mid-shift — it restarts the app.
+```
+
+Everything else in the description renders as the normal release notes.
+
+### What updates vs. what just reloads
+
+- **Native / shell changes** (anything in `electron/`, new permissions, a
+  dependency bump) → needs a real release; the button downloads + installs
+  it (Windows: in-app; macOS: see below).
+- **Frontend-only changes** that are already live on the hosted backend →
+  the same button, when there's no newer packaged build, just reloads the
+  app's web content (`app:reload`) so it picks up fresh data. No reinstall.
+
+### macOS caveat
+
+Squirrel.Mac only *installs* a **code-signed + notarised** build. Until the
+app has an Apple Developer ID, macOS users still get the update
+notification, but the button opens the Releases page for a manual `.dmg`
+instead of swapping the app in place. Windows (NSIS) auto-installs
+unsigned (with a one-time SmartScreen prompt).
+
+> If the repo's Releases are **private**, unauthenticated clients (the
+> website page, and the updater without a bundled token) can't read them.
+> Either publish Releases publicly, or switch `build.publish` to
+> `{ "provider": "generic", "url": "https://ringnex.co/downloads/desktop/" }`
+> and host `latest*.yml` + installers there.
+
 ## Call popup window
 
 Incoming/active calls pop into their own small always-on-top window instead

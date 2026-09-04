@@ -10,6 +10,7 @@
 const { app, BrowserWindow, Menu, protocol, net, session, shell, ipcMain, screen } = require("electron");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
+const { initUpdates } = require("./updater");
 
 // Must match one of the backend's allowed CORS origins — see
 // backend/src/config.js's EXTRA_FRONTEND_ORIGINS, which already whitelists
@@ -228,6 +229,7 @@ if (!gotLock) {
     registerAppProtocol();
     allowMicAndNotifications();
     registerCallWindowIpc();
+    initUpdates(() => mainWindow);
     Menu.setApplicationMenu(null);
     const win = createWindow();
 
