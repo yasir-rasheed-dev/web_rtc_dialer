@@ -799,7 +799,11 @@ let releasesCache = { at: 0, data: null };
 
 async function fetchDesktopReleases() {
   if (releasesCache.data && Date.now() - releasesCache.at < RELEASES_TTL_MS) return releasesCache.data;
-  const headers = { Accept: "application/vnd.github+json", "User-Agent": "ringnex-site" };
+  const headers = {
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+    "User-Agent": "ringnex-site"
+  };
   if (config.github.token) headers.Authorization = `Bearer ${config.github.token}`;
   const res = await fetch(`https://api.github.com/repos/${config.github.repo}/releases?per_page=30`, { headers });
   if (!res.ok) {
