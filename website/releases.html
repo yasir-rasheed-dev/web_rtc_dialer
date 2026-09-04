@@ -180,7 +180,10 @@
 
 <script>
   var REPO = "yasir-rasheed-dev/web_rtc_dialer";
-  var API = "https://api.github.com/repos/" + REPO + "/releases?per_page=30";
+  // Proxied by the backend (private repo + token stay server-side, no
+  // browser rate limit). Falls back to GitHub directly if that's down.
+  var API = "https://demoapi.ringnex.co/api/public/releases";
+  var API_FALLBACK = "https://api.github.com/repos/" + REPO + "/releases?per_page=30";
   var root = document.documentElement;
   document.getElementById('yr').textContent = new Date().getFullYear();
 
@@ -277,7 +280,7 @@
 
     var html = releases.map(function(rel){
       var assets = (rel.assets || [])
-        .map(function(a){ var k = assetKind(a.name); return k ? { url:a.browser_download_url, name:a.name, size:a.size, k:k } : null; })
+        .map(function(a){ var k = assetKind(a.name); return k ? { url:(a.url || a.browser_download_url), name:a.name, size:a.size, k:k } : null; })
         .filter(Boolean)
         .sort(function(a,b){ return a.k.rank - b.k.rank; });
 
@@ -291,7 +294,8 @@
       }
 
       var parts = splitKnown(rel.body || '');
-      var when = rel.published_at ? new Date(rel.published_at).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}) : '';
+      var pub = rel.publishedAt || rel.published_at;
+      var when = pub ? new Date(pub).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}) : '';
 
       var dls = assets.length
         ? '<div class="dls">' + assets.map(function(a){
@@ -311,7 +315,7 @@
 
       return '<div class="rel">' +
         '<div class="rel-h">' +
-          '<span class="v">'+esc(rel.name || rel.tag_name)+'</span>' +
+          '<span class="v">'+esc(rel.name || rel.tag || rel.tag_name)+'</span>' +
           (isLatest ? '<span class="tag latest">Latest</span>' : '') +
           (rel.prerelease ? '<span class="tag pre">Pre-release</span>' : '') +
           '<span class="date">'+esc(when)+'</span>' +
@@ -342,10 +346,23 @@
       '<a href="https://github.com/' + REPO + '/releases/latest" target="_blank" rel="noopener">GitHub releases page</a>.';
   }
 
-  fetch(API, { headers: { "Accept": "application/vnd.github+json" } })
+  // Backend returns { releases: [...] }; the GitHub fallback returns a bare
+  // array. normalise both, then render.
+  function pickList(payload){
+    var arr = Array.isArray(payload) ? payload : (payload && payload.releases) || [];
+    return arr.filter(function(x){ return !x.draft; });
+  }
+
+  fetch(API, { headers: { "Accept": "application/json" } })
     .then(function(r){ if(!r.ok) throw r.status; return r.json(); })
-    .then(function(rels){ render((rels || []).filter(function(x){ return !x.draft; })); })
-    .catch(function(status){ showError(typeof status === 'number' ? status : 0); });
+    .then(function(p){ render(pickList(p)); })
+    .catch(function(){
+      // backend proxy unavailable — try GitHub directly (works if the repo is public)
+      return fetch(API_FALLBACK, { headers: { "Accept": "application/vnd.github+json" } })
+        .then(function(r){ if(!r.ok) throw r.status; return r.json(); })
+        .then(function(p){ render(pickList(p)); })
+        .catch(function(status){ showError(typeof status === 'number' ? status : 0); });
+    });
 </script>
 
 </body>

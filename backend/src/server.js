@@ -789,6 +789,106 @@ app.get("/api/public/status", asyncRoute(async (_req, res) => {
 }));
 
 // ---------------------------
+// Public (no auth) — desktop releases (proxied from GitHub Releases)
+// ---------------------------
+// The marketing site's Releases page + the download buttons read these,
+// so the repo can stay private (token server-side) and browsers aren't
+// hit by GitHub's 60/hr unauth rate limit. Cached in-memory for 10 min.
+const RELEASES_TTL_MS = 10 * 60 * 1000;
+let releasesCache = { at: 0, data: null };
+
+async function fetchDesktopReleases() {
+  if (releasesCache.data && Date.now() - releasesCache.at < RELEASES_TTL_MS) return releasesCache.data;
+  const headers = { Accept: "application/vnd.github+json", "User-Agent": "ringnex-site" };
+  if (config.github.token) headers.Authorization = `Bearer ${config.github.token}`;
+  const res = await fetch(`https://api.github.com/repos/${config.github.repo}/releases?per_page=30`, { headers });
+  if (!res.ok) {
+    const err = new Error(`GitHub API ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+  const raw = await res.json();
+  const shaped = (Array.isArray(raw) ? raw : [])
+    .filter((r) => !r.draft)
+    .map((r) => ({
+      tag: r.tag_name,
+      name: r.name || r.tag_name,
+      prerelease: Boolean(r.prerelease),
+      publishedAt: r.published_at,
+      url: r.html_url,
+      body: typeof r.body === "string" ? r.body.slice(0, 20000) : "",
+      assets: (r.assets || [])
+        .filter((a) => /\.(exe|dmg|zip)$/i.test(a.name))
+        .map((a) => ({ name: a.name, size: a.size, url: a.browser_download_url }))
+    }));
+  releasesCache = { at: Date.now(), data: shaped };
+  return shaped;
+}
+
+// filename -> platform key
+function classifyReleaseAsset(name) {
+  const n = String(name).toLowerCase();
+  if (n.endsWith(".exe")) return n.includes("portable") ? "win-portable" : "win";
+  if (n.endsWith("arm64.dmg")) return "mac-arm";
+  if (n.endsWith(".dmg")) return "mac-x64";
+  if (/arm64.*\.zip$/.test(n)) return "mac-arm-zip";
+  if (n.endsWith(".zip")) return "mac-x64-zip";
+  return null;
+}
+
+function latestStableRelease(all) {
+  return all.find((r) => !r.prerelease) || all[0] || null;
+}
+
+app.get("/api/public/releases", asyncRoute(async (_req, res) => {
+  res.set("Cache-Control", "public, max-age=300");
+  try {
+    res.json({ releases: await fetchDesktopReleases() });
+  } catch (error) {
+    res.status(502).json({ error: "releases_unavailable", status: error.status || 0 });
+  }
+}));
+
+app.get("/api/public/releases/latest", asyncRoute(async (_req, res) => {
+  res.set("Cache-Control", "public, max-age=300");
+  try {
+    const latest = latestStableRelease(await fetchDesktopReleases());
+    if (!latest) return res.json({ latest: null });
+    const downloads = {};
+    for (const a of latest.assets) {
+      const key = classifyReleaseAsset(a.name);
+      if (key && !downloads[key]) downloads[key] = { name: a.name, size: a.size, url: a.url };
+    }
+    res.json({
+      latest: { tag: latest.tag, name: latest.name, publishedAt: latest.publishedAt, url: latest.url, downloads }
+    });
+  } catch (error) {
+    res.status(502).json({ error: "releases_unavailable", status: error.status || 0 });
+  }
+}));
+
+// 302 to the current installer for a platform — lets the site's download
+// buttons be plain links that always resolve to the newest build.
+app.get("/api/public/download/:key", asyncRoute(async (req, res) => {
+  const key = String(req.params.key || "").toLowerCase();
+  try {
+    const latest = latestStableRelease(await fetchDesktopReleases());
+    if (!latest) return res.status(404).send("No release is available yet.");
+    let asset = latest.assets.find((a) => classifyReleaseAsset(a.name) === key);
+    if (!asset && key === "mac-arm") asset = latest.assets.find((a) => classifyReleaseAsset(a.name) === "mac-arm-zip");
+    if (!asset && key === "mac-x64") asset = latest.assets.find((a) => classifyReleaseAsset(a.name) === "mac-x64-zip");
+    if (!asset && key === "mac") {
+      asset = latest.assets.find((a) => classifyReleaseAsset(a.name) === "mac-arm")
+        || latest.assets.find((a) => classifyReleaseAsset(a.name) === "mac-x64");
+    }
+    if (!asset) return res.status(404).send("No download for this platform in the latest release.");
+    res.redirect(302, asset.url);
+  } catch {
+    res.status(502).send("Downloads are temporarily unavailable — see ringnex.co/releases.html");
+  }
+}));
+
+// ---------------------------
 // Public (no auth) — pricing + onboarding intake
 // ---------------------------
 // Powers the ringnex.co pricing section and the onboarding form. Only the

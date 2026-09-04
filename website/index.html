@@ -883,9 +883,9 @@
         </div>
 
         <div class="os-panel" data-os="windows">
-          <div class="fname">Ringnex-Setup-1.0.0.exe</div>
-          <div class="fsize">Windows installer · 64-bit</div>
-          <a class="btn btn-accent dl-btn" href="./downloads/Ringnex-Setup-1.0.0.exe" download>
+          <div class="fname" id="dlWinName">Latest Windows build</div>
+          <div class="fsize" id="dlWinMeta">Windows 10 / 11 · 64-bit installer</div>
+          <a class="btn btn-accent dl-btn" id="dlWin" href="https://demoapi.ringnex.co/api/public/download/win">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Download for Windows
           </a>
@@ -893,13 +893,13 @@
         </div>
 
         <div class="os-panel" data-os="mac" hidden>
-          <div class="fname">Choose your Mac</div>
+          <div class="fname" id="dlMacName">Latest macOS build</div>
           <div class="fsize">Same app, built for each chip</div>
-          <a class="btn btn-accent dl-btn" href="./downloads/Ringnex-1.0.0-arm64.dmg" download data-arch="arm">
+          <a class="btn btn-accent dl-btn" id="dlMacArm" href="https://demoapi.ringnex.co/api/public/download/mac-arm" data-arch="arm">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Apple Silicon <span class="rec" hidden>Recommended</span>
           </a>
-          <a class="btn btn-ghost dl-btn" href="./downloads/Ringnex-1.0.0.dmg" download data-arch="intel">
+          <a class="btn btn-ghost dl-btn" id="dlMacIntel" href="https://demoapi.ringnex.co/api/public/download/mac-x64" data-arch="intel">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Intel <span class="rec" hidden>Recommended</span>
           </a>
@@ -1149,6 +1149,33 @@
       if (recBtn) recBtn.hidden = false;
     }
   }
+
+  // ---- desktop downloads: point at the latest published release ----
+  // The href on each button is already the backend's redirect endpoint
+  // (always resolves to the newest asset), so downloads work with JS off.
+  // This just fills in the real filename / size / version.
+  (function(){
+    var win = document.getElementById('dlWin');
+    if (!win) return;
+    fetch('https://demoapi.ringnex.co/api/public/releases/latest')
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(d){
+        var L = d && d.latest;
+        if (!L || !L.downloads) return;
+        var mb = function(n){ return n ? (n/1048576).toFixed(0) + ' MB' : ''; };
+        var dd = L.downloads;
+        var setName = function(id, txt){ var e = document.getElementById(id); if (e && txt) e.textContent = txt; };
+        if (dd.win) {
+          setName('dlWinName', dd.win.name);
+          setName('dlWinMeta', 'Windows 10 / 11 · 64-bit · ' + mb(dd.win.size));
+          document.getElementById('dlWin').href = dd.win.url;
+        }
+        setName('dlMacName', 'ringNex ' + (L.tag || L.name || '') + ' for macOS');
+        if (dd['mac-arm']) document.getElementById('dlMacArm').href = dd['mac-arm'].url;
+        if (dd['mac-x64']) document.getElementById('dlMacIntel').href = dd['mac-x64'].url;
+      })
+      .catch(function(){ /* keep the redirect-endpoint hrefs */ });
+  })();
 
   // ---- pricing: pulled live from the backend's published plans ----
   (function(){

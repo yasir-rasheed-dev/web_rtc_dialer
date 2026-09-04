@@ -86,5 +86,13 @@ export const config = Object.freeze({
     // pointing at this same trunk, instead of everyone sharing one profile.
     trunkHost: process.env.COMMIO_TRUNK_HOST || "5.78.77.240",
     trunkPort: process.env.COMMIO_TRUNK_PORT || "5071"
+  },
+  // Desktop releases are published as GitHub Releases. The backend proxies
+  // them (GET /api/public/releases*) so a private repo + token stay
+  // server-side and the marketing site isn't rate-limited. A token is only
+  // needed if the repo is private.
+  github: {
+    repo: process.env.GITHUB_REPO || "yasir-rasheed-dev/web_rtc_dialer",
+    token: process.env.GITHUB_TOKEN || ""
   }
 });
