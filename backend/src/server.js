@@ -53,6 +53,7 @@ import createDncRoutes from "./dncRoutes.js";
 import createVoicemailRoutes from "./voicemailRoutes.js";
 import createLeadsRoutes, { createDispositionsRoutes } from "./leadsRoutes.js";
 import { fileURLToPath } from "node:url";
+import { Readable } from "node:stream";
 import {
   DEFAULT_TEAM_PRIVILEGES,
   TEAM_PRIVILEGES,
@@ -823,10 +824,59 @@ async function fetchDesktopReleases() {
       body: typeof r.body === "string" ? r.body.slice(0, 20000) : "",
       assets: (r.assets || [])
         .filter((a) => /\.(exe|dmg|zip)$/i.test(a.name))
-        .map((a) => ({ name: a.name, size: a.size, url: a.browser_download_url }))
+        // no browser_download_url here: for a private repo it 404s without
+        // auth, so every download goes THROUGH this backend (see
+        // streamGithubAsset) — the source repo can stay private while only
+        // the installers are publicly reachable.
+        .map((a) => ({ id: a.id, name: a.name, size: a.size }))
     }));
   releasesCache = { at: Date.now(), data: shaped };
   return shaped;
+}
+
+function apiBase(req) {
+  return `${req.protocol}://${req.get("host")}`;
+}
+
+// Pull one release asset's bytes from GitHub (authenticated for a private
+// repo) and pipe them straight to the client — the browser downloads from
+// this backend and never sees the repo.
+async function streamGithubAsset(req, res, assetId, filename) {
+  const gh = await fetch(`https://api.github.com/repos/${config.github.repo}/releases/assets/${assetId}`, {
+    headers: {
+      Accept: "application/octet-stream",
+      "X-GitHub-Api-Version": "2022-11-28",
+      "User-Agent": "ringnex-site",
+      ...(config.github.token ? { Authorization: `Bearer ${config.github.token}` } : {})
+    }
+    // default redirect:"follow" — GitHub 302s to a signed URL, undici
+    // follows it and gh.body is the file stream.
+  });
+  if (!gh.ok || !gh.body) {
+    return res.status(gh.status === 404 ? 404 : 502).send("That download is not available right now.");
+  }
+  const safeName = String(filename || `ringnex-${assetId}`).replace(/[^\w.\-]+/g, "_");
+  res.setHeader("Content-Type", "application/octet-stream");
+  res.setHeader("Content-Disposition", `attachment; filename="${safeName}"`);
+  res.setHeader("Cache-Control", "no-store");
+  const len = gh.headers.get("content-length");
+  if (len) res.setHeader("Content-Length", len);
+  const nodeStream = Readable.fromWeb(gh.body);
+  nodeStream.on("error", () => {
+    if (!res.headersSent) res.status(502).end();
+    else res.destroy();
+  });
+  res.on("close", () => nodeStream.destroy());
+  nodeStream.pipe(res);
+}
+
+// Find an asset (across all cached releases) by its numeric id.
+function findCachedAsset(all, assetId) {
+  for (const r of all) {
+    const a = (r.assets || []).find((x) => String(x.id) === String(assetId));
+    if (a) return a;
+  }
+  return null;
 }
 
 // filename -> platform key
@@ -844,24 +894,32 @@ function latestStableRelease(all) {
   return all.find((r) => !r.prerelease) || all[0] || null;
 }
 
-app.get("/api/public/releases", asyncRoute(async (_req, res) => {
+app.get("/api/public/releases", asyncRoute(async (req, res) => {
   res.set("Cache-Control", "public, max-age=300");
   try {
-    res.json({ releases: await fetchDesktopReleases() });
+    const base = apiBase(req);
+    const releases = (await fetchDesktopReleases()).map((r) => ({
+      ...r,
+      assets: r.assets.map((a) => ({ ...a, dl: `${base}/api/public/download/asset/${a.id}` }))
+    }));
+    res.json({ releases });
   } catch (error) {
     res.status(502).json({ error: "releases_unavailable", status: error.status || 0 });
   }
 }));
 
-app.get("/api/public/releases/latest", asyncRoute(async (_req, res) => {
+app.get("/api/public/releases/latest", asyncRoute(async (req, res) => {
   res.set("Cache-Control", "public, max-age=300");
   try {
     const latest = latestStableRelease(await fetchDesktopReleases());
     if (!latest) return res.json({ latest: null });
+    const base = apiBase(req);
     const downloads = {};
     for (const a of latest.assets) {
       const key = classifyReleaseAsset(a.name);
-      if (key && !downloads[key]) downloads[key] = { name: a.name, size: a.size, url: a.url };
+      if (key && !downloads[key]) {
+        downloads[key] = { name: a.name, size: a.size, url: `${base}/api/public/download/${key}` };
+      }
     }
     res.json({
       latest: { tag: latest.tag, name: latest.name, publishedAt: latest.publishedAt, url: latest.url, downloads }
@@ -871,8 +929,21 @@ app.get("/api/public/releases/latest", asyncRoute(async (_req, res) => {
   }
 }));
 
-// 302 to the current installer for a platform — lets the site's download
-// buttons be plain links that always resolve to the newest build.
+// Stream a specific asset by id — used by the per-release download buttons
+// on ringnex.co/releases.html.
+app.get("/api/public/download/asset/:id", asyncRoute(async (req, res) => {
+  const id = String(req.params.id || "");
+  if (!/^\d+$/.test(id)) return res.status(400).send("Bad asset id.");
+  try {
+    const asset = findCachedAsset(await fetchDesktopReleases(), id);
+    await streamGithubAsset(req, res, id, asset ? asset.name : null);
+  } catch {
+    if (!res.headersSent) res.status(502).send("Downloads are temporarily unavailable — see ringnex.co/releases.html");
+  }
+}));
+
+// Stream the CURRENT installer for a platform — the site's download
+// buttons are plain links to this, always resolving to the newest build.
 app.get("/api/public/download/:key", asyncRoute(async (req, res) => {
   const key = String(req.params.key || "").toLowerCase();
   try {
@@ -886,9 +957,9 @@ app.get("/api/public/download/:key", asyncRoute(async (req, res) => {
         || latest.assets.find((a) => classifyReleaseAsset(a.name) === "mac-x64");
     }
     if (!asset) return res.status(404).send("No download for this platform in the latest release.");
-    res.redirect(302, asset.url);
+    await streamGithubAsset(req, res, asset.id, asset.name);
   } catch {
-    res.status(502).send("Downloads are temporarily unavailable — see ringnex.co/releases.html");
+    if (!res.headersSent) res.status(502).send("Downloads are temporarily unavailable — see ringnex.co/releases.html");
   }
 }));
 

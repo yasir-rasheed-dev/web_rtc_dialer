@@ -280,7 +280,7 @@
 
     var html = releases.map(function(rel){
       var assets = (rel.assets || [])
-        .map(function(a){ var k = assetKind(a.name); return k ? { url:(a.url || a.browser_download_url), name:a.name, size:a.size, k:k } : null; })
+        .map(function(a){ var k = assetKind(a.name); return k ? { url:(a.dl || a.url || a.browser_download_url), name:a.name, size:a.size, k:k } : null; })
         .filter(Boolean)
         .sort(function(a,b){ return a.k.rank - b.k.rank; });
 
