@@ -6,7 +6,7 @@
 <title>ringNex — Get started</title>
 <meta name="description" content="Tell us about your team and pick a plan — we'll set your ringNex workspace up for you." />
 <link rel="icon" type="image/png" href="./ringnex.png" />
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/18.2.1/css/intlTelInput.min.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intl-tel-input@18.2.1/build/css/intlTelInput.css" />
 <style>
   :root{
     --blue:#0684BC; --blue-600:#0571a3; --blue-300:#38a8d8; --blue-100:#8fd2ee;
@@ -127,10 +127,14 @@
   .rs-btn .val.ph{color:var(--muted-2)}
   .rs-btn .caret{width:16px;height:16px;color:var(--muted-2);flex:none;transition:transform .2s}
   .rs.open .rs-btn .caret{transform:rotate(180deg)}
-  .rs-pop{position:absolute;z-index:40;left:0;right:0;top:calc(100% + 6px);background:var(--surface);border:1px solid var(--border-strong);border-radius:12px;box-shadow:0 24px 60px -20px rgba(6,25,40,.5);overflow:hidden}
+  /* fixed-positioned (JS sets top/left/width) so it's never clipped by the card's overflow */
+  .rs-pop{position:fixed;z-index:9999;background:var(--surface);border:1px solid var(--border-strong);border-radius:12px;box-shadow:0 24px 60px -20px rgba(6,25,40,.55);overflow:hidden}
   .rs-search{padding:8px;border-bottom:1px solid var(--border)}
   .rs-search input{height:38px}
-  .rs-list{list-style:none;max-height:240px;overflow:auto;padding:6px}
+  .rs-list{list-style:none;max-height:260px;overflow-y:auto;padding:6px;scrollbar-width:thin;scrollbar-color:var(--border-strong) transparent}
+  .rs-list::-webkit-scrollbar{width:8px}
+  .rs-list::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:8px;border:2px solid var(--surface)}
+  .rs-list::-webkit-scrollbar-track{background:transparent}
   .rs-opt{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;cursor:pointer;font-size:13.5px;color:var(--text)}
   .rs-opt .fl{font-size:16px;line-height:1;width:22px;text-align:center}
   .rs-opt:hover,.rs-opt.hi{background:var(--surface-2)}
@@ -138,6 +142,9 @@
   .rs-empty{padding:14px 12px;color:var(--muted-2);font-size:13px;text-align:center}
 
   /* ---------- intl-tel-input theming ---------- */
+  /* safety net: if the plugin CSS is slow/blocked, still keep the country list collapsed */
+  .iti__hide{display:none!important}
+  .iti__country-list{position:absolute;z-index:9999;max-height:260px;overflow-y:auto;list-style:none;padding:4px;margin:4px 0;white-space:nowrap}
   .iti{width:100%}
   .iti__flag-container{padding:0}
   .iti--separate-dial-code .iti__selected-flag{background:var(--surface-2);border-radius:10px 0 0 10px;padding:0 8px}
@@ -374,7 +381,7 @@
   </div>
 </footer>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/18.2.1/js/intlTelInput.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/intl-tel-input@18.2.1/build/js/intlTelInput.min.js"></script>
 <script>
 (function(){
   var API = "https://demoapi.ringnex.co";
@@ -437,21 +444,45 @@
           '<span>'+esc(o.label)+'</span></li>';
       }).join('');
     }
+    function reposition(){
+      var r = btn.getBoundingClientRect();
+      pop.style.width = r.width + 'px';
+      pop.style.left = Math.round(r.left) + 'px';
+      var below = window.innerHeight - r.bottom - 10;
+      var above = r.top - 10;
+      if (below < 300 && above > below){
+        pop.style.top = 'auto';
+        pop.style.bottom = Math.round(window.innerHeight - r.top + 6) + 'px';
+        list.style.maxHeight = Math.max(150, Math.min(280, above - 64)) + 'px';
+      } else {
+        pop.style.bottom = 'auto';
+        pop.style.top = Math.round(r.bottom + 6) + 'px';
+        list.style.maxHeight = Math.max(150, Math.min(280, below - 64)) + 'px';
+      }
+    }
     function open(){
-      root.classList.add('open'); pop.hidden = false; btn.setAttribute('aria-expanded','true');
+      root.classList.add('open');
+      document.body.appendChild(pop);          /* escape the card's overflow:hidden */
+      pop.hidden = false; btn.setAttribute('aria-expanded','true');
       filtered = options.slice(); hiIndex = filtered.findIndex(function(o){return o.value===value;});
       renderList();
+      reposition();
       if(search){ search.value=''; setTimeout(function(){ search.focus(); },10); }
       var sel = list.querySelector('.rs-opt.sel'); if(sel) sel.scrollIntoView({block:'nearest'});
       document.addEventListener('mousedown', outside, true);
       document.addEventListener('keydown', onKey, true);
+      window.addEventListener('scroll', reposition, true);
+      window.addEventListener('resize', reposition);
     }
     function close(){
       root.classList.remove('open'); pop.hidden = true; btn.setAttribute('aria-expanded','false');
+      if(pop.parentNode !== root) root.appendChild(pop);
       document.removeEventListener('mousedown', outside, true);
       document.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('scroll', reposition, true);
+      window.removeEventListener('resize', reposition);
     }
-    function outside(e){ if(!root.contains(e.target)) close(); }
+    function outside(e){ if(!root.contains(e.target) && !pop.contains(e.target)) close(); }
     function choose(v){ value = v; paint(); close(); if(opts.onChange) opts.onChange(v); }
     function onKey(e){
       if(e.key==='Escape'){ close(); btn.focus(); return; }
@@ -534,7 +565,8 @@
         initialCountry: "pk",
         separateDialCode: true,
         preferredCountries: ["pk","us","gb","ae","sa","in","ca","au"],
-        utilsScript: "https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/18.2.1/js/utils.js"
+        dropdownContainer: document.body,
+        utilsScript: "https://cdn.jsdelivr.net/npm/intl-tel-input@18.2.1/build/js/utils.js"
       });
     } catch(e){ iti = null; }
   }
