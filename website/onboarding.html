@@ -6,6 +6,7 @@
 <title>ringNex — Get started</title>
 <meta name="description" content="Tell us about your team and pick a plan — we'll set your ringNex workspace up for you." />
 <link rel="icon" type="image/png" href="./ringnex.png" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/18.2.1/css/intlTelInput.min.css" />
 <style>
   :root{
     --blue:#0684BC; --blue-600:#0571a3; --blue-300:#38a8d8; --blue-100:#8fd2ee;
@@ -14,6 +15,7 @@
     --border:#e3e9ee; --border-strong:#cfdae2;
     --text:#0c1a24; --muted:#566572; --muted-2:#8293a0;
     --tint:rgba(10,30,45,.035); --header-bg:rgba(255,255,255,.82);
+    --ok:#16a34a; --ok-bg:rgba(22,163,74,.13);
     --radius:12px; --radius-sm:8px; --maxw:1180px;
     --ease:cubic-bezier(.22,1,.36,1);
     --font:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
@@ -23,6 +25,7 @@
     --border:#1c2833; --border-strong:#293a48;
     --text:#e9eff5; --muted:#93a7b8; --muted-2:#647a8c;
     --tint:rgba(255,255,255,.02); --header-bg:rgba(7,10,15,.88);
+    --ok-bg:rgba(22,163,74,.18);
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html{scroll-behavior:smooth}
@@ -30,6 +33,7 @@
   a{color:inherit;text-decoration:none}
   img{max-width:100%;display:block}
   .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
+  [hidden]{display:none!important}
 
   .topbar{background:var(--tint);border-bottom:1px solid var(--border);font-size:12.5px}
   .topbar .wrap{display:flex;align-items:center;justify-content:space-between;height:42px;color:var(--muted-2)}
@@ -38,7 +42,7 @@
   .topbar .partner b{color:var(--orange-300)}
   @media(max-width:640px){.topbar .l a:nth-child(2){display:none}}
 
-  header{position:sticky;top:0;z-index:50;background:var(--header-bg);backdrop-filter:blur(14px);border-bottom:1px solid var(--border)}
+  header{position:sticky;top:0;z-index:60;background:var(--header-bg);backdrop-filter:blur(14px);border-bottom:1px solid var(--border)}
   header .bar{display:flex;align-items:center;justify-content:space-between;height:70px;gap:16px}
   .brand img{height:32px;width:auto}
   header .r{display:flex;align-items:center;gap:12px}
@@ -57,62 +61,155 @@
   .btn:disabled{opacity:.5;pointer-events:none}
 
   /* form shell */
-  main{padding:48px 0 80px}
-  .head{text-align:center;max-width:52ch;margin:0 auto 34px}
+  main{padding:44px 0 80px}
+  .head{text-align:center;max-width:52ch;margin:0 auto 30px}
   .head .eyebrow{font-size:12px;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;color:var(--orange-300)}
   .head h1{font-size:clamp(1.8rem,4vw,2.6rem);letter-spacing:-.7px;margin-top:10px;font-weight:800}
   .head p{color:var(--muted);margin-top:12px}
 
-  .card{max-width:660px;margin:0 auto;border:1px solid var(--border-strong);border-radius:16px;background:var(--surface);padding:0;overflow:hidden}
-  .steps{display:flex;border-bottom:1px solid var(--border);background:var(--surface-2)}
-  .stepdot{flex:1;padding:12px 6px;text-align:center;font-size:11px;font-weight:700;color:var(--muted-2);position:relative}
-  .stepdot .n{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--surface-3);color:var(--muted);font-size:11px;margin-bottom:4px}
-  .stepdot.active{color:var(--text)} .stepdot.active .n{background:var(--blue);color:#fff}
-  .stepdot.done .n{background:var(--blue-300);color:#fff}
-  @media(max-width:560px){.stepdot .lbl{display:none}}
+  .card{max-width:680px;margin:0 auto;border:1px solid var(--border-strong);border-radius:18px;background:var(--surface);overflow:hidden;box-shadow:0 40px 80px -50px rgba(6,25,40,.5)}
 
-  .pane{padding:28px}
-  .pane h2{font-size:1.15rem;font-weight:800;letter-spacing:-.3px}
-  .pane .sub{color:var(--muted);font-size:.9rem;margin-top:4px;margin-bottom:20px}
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  /* ---------- stepper ---------- */
+  .stepper{--pad:48px;position:relative;display:flex;justify-content:space-between;padding:26px 30px 22px;background:linear-gradient(180deg,var(--surface-2),transparent)}
+  .stepper .track{position:absolute;left:var(--pad);right:var(--pad);top:44px;height:2px;background:var(--border-strong);border-radius:2px}
+  .stepper .fill{position:absolute;left:var(--pad);top:44px;height:2px;background:linear-gradient(90deg,var(--blue),var(--blue-300));border-radius:2px;width:0;transition:width .4s var(--ease)}
+  .step{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:8px;background:none;border:0;padding:0;font-family:inherit;cursor:default;flex:1}
+  .step .ic{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:var(--surface);border:2px solid var(--border-strong);color:var(--muted-2);transition:all .25s var(--ease)}
+  .step .ic svg{width:17px;height:17px}
+  .step .ic .num{font-size:13px;font-weight:800}
+  .step .ic .ck{display:none}
+  .step .lb{font-size:11.5px;font-weight:700;letter-spacing:.02em;color:var(--muted-2);transition:color .2s}
+  .step.active .ic{border-color:var(--blue);color:var(--blue);box-shadow:0 0 0 5px rgba(6,132,188,.14)}
+  .step.active .lb{color:var(--text)}
+  .step.done{cursor:pointer}
+  .step.done .ic{background:var(--blue);border-color:var(--blue);color:#fff}
+  .step.done .ic .num{display:none}
+  .step.done .ic .ck{display:block;animation:pop .3s var(--ease)}
+  .step.done .lb{color:var(--text)}
+  .step.clickable{cursor:pointer}
+  .step.clickable:hover .ic{border-color:var(--blue-300)}
+  @keyframes pop{0%{transform:scale(.4);opacity:0}60%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
+  @media(max-width:560px){
+    .stepper{--pad:34px;padding:22px 16px 18px}
+    .stepper .track,.stepper .fill{top:40px}
+    .step .lb{display:none}
+    .step.active .lb{display:block;position:absolute;top:44px;white-space:nowrap;font-size:11px}
+  }
+
+  .pane{padding:30px;animation:paneIn .32s var(--ease)}
+  @keyframes paneIn{from{opacity:0;transform:translateY(8px)}}
+  .pane h2{font-size:1.2rem;font-weight:800;letter-spacing:-.3px}
+  .pane .sub{color:var(--muted);font-size:.9rem;margin-top:4px;margin-bottom:22px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
   @media(max-width:520px){.grid2{grid-template-columns:1fr}}
-  label{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:14px}
-  label .req{color:var(--orange-300)}
-  input,select,textarea{width:100%;height:42px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);border-radius:9px;padding:0 12px;font-size:14px;font-family:inherit;outline:none;transition:border-color .15s,box-shadow .15s}
-  textarea{height:auto;min-height:88px;padding:10px 12px;resize:vertical}
-  input:focus,select:focus,textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(6,132,188,.14)}
-  .check{flex-direction:row;align-items:center;gap:10px;font-size:13.5px;font-weight:500;color:var(--text);cursor:pointer}
-  .check input{width:18px;height:18px;flex:none}
 
+  /* ---------- fields ---------- */
+  .field{display:block;margin-bottom:16px}
+  .field:last-child{margin-bottom:0}
+  .field .lb{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:var(--muted);margin-bottom:7px;letter-spacing:.01em}
+  .field .req{color:var(--orange-300);font-weight:800}
+  .field .opt{margin-left:auto;font-weight:600;color:var(--muted-2);text-transform:none;letter-spacing:0}
+  input,textarea{width:100%;height:44px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);border-radius:10px;padding:0 13px;font-size:14px;font-family:inherit;outline:none;transition:border-color .15s,box-shadow .15s;-webkit-appearance:none}
+  input::placeholder,textarea::placeholder{color:var(--muted-2)}
+  textarea{height:auto;min-height:92px;padding:11px 13px;resize:vertical;line-height:1.55}
+  input:focus,textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(6,132,188,.15)}
+  input[type=number]{-moz-appearance:textfield}
+  .slugfield{position:relative}
+  .slugfield input{padding-right:96px}
+  .slugfield .suffix{position:absolute;right:12px;top:0;height:44px;display:flex;align-items:center;font-size:12.5px;color:var(--muted-2);font-weight:600;pointer-events:none}
+
+  /* ---------- custom select (react-select style) ---------- */
+  .rs{position:relative;font-size:14px}
+  .rs-btn{width:100%;height:44px;display:flex;align-items:center;gap:8px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);border-radius:10px;padding:0 13px;cursor:pointer;font-family:inherit;font-size:14px;text-align:left;transition:border-color .15s,box-shadow .15s}
+  .rs-btn:focus-visible{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(6,132,188,.15)}
+  .rs.open .rs-btn{border-color:var(--blue);box-shadow:0 0 0 3px rgba(6,132,188,.15)}
+  .rs-btn .val{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rs-btn .val.ph{color:var(--muted-2)}
+  .rs-btn .caret{width:16px;height:16px;color:var(--muted-2);flex:none;transition:transform .2s}
+  .rs.open .rs-btn .caret{transform:rotate(180deg)}
+  .rs-pop{position:absolute;z-index:40;left:0;right:0;top:calc(100% + 6px);background:var(--surface);border:1px solid var(--border-strong);border-radius:12px;box-shadow:0 24px 60px -20px rgba(6,25,40,.5);overflow:hidden}
+  .rs-search{padding:8px;border-bottom:1px solid var(--border)}
+  .rs-search input{height:38px}
+  .rs-list{list-style:none;max-height:240px;overflow:auto;padding:6px}
+  .rs-opt{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;cursor:pointer;font-size:13.5px;color:var(--text)}
+  .rs-opt .fl{font-size:16px;line-height:1;width:22px;text-align:center}
+  .rs-opt:hover,.rs-opt.hi{background:var(--surface-2)}
+  .rs-opt.sel{background:rgba(6,132,188,.1);color:var(--blue);font-weight:600}
+  .rs-empty{padding:14px 12px;color:var(--muted-2);font-size:13px;text-align:center}
+
+  /* ---------- intl-tel-input theming ---------- */
+  .iti{width:100%}
+  .iti__flag-container{padding:0}
+  .iti--separate-dial-code .iti__selected-flag{background:var(--surface-2);border-radius:10px 0 0 10px;padding:0 8px}
+  .iti__selected-dial-code{color:var(--text);font-size:14px}
+  .iti input{padding-left:96px!important}
+  .iti__country-list{background:var(--surface);border:1px solid var(--border-strong);border-radius:12px;box-shadow:0 24px 60px -20px rgba(6,25,40,.5);color:var(--text)}
+  .iti__country{padding:9px 12px}
+  .iti__country.iti__highlight{background:var(--surface-2)}
+  .iti__country .iti__dial-code{color:var(--muted-2)}
+  .iti__divider{border-color:var(--border)}
+
+  /* ---------- plans ---------- */
   .plans{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
   @media(max-width:560px){.plans{grid-template-columns:1fr}}
-  .plan{border:1px solid var(--border-strong);border-radius:12px;padding:16px;cursor:pointer;transition:border-color .15s,background .15s;position:relative}
-  .plan:hover{border-color:var(--blue-300)}
+  .plan{border:1px solid var(--border-strong);border-radius:14px;padding:18px 16px;cursor:pointer;transition:border-color .15s,background .15s,transform .15s;position:relative}
+  .plan:hover{border-color:var(--blue-300);transform:translateY(-2px)}
   .plan.sel{border-color:var(--blue);background:rgba(6,132,188,.06);box-shadow:0 0 0 3px rgba(6,132,188,.12)}
-  .plan .pn{font-weight:800}
-  .plan .pp{margin-top:6px;font-size:1.35rem;font-weight:800;letter-spacing:-.5px}
-  .plan .pp span{font-size:.72rem;color:var(--muted);font-weight:600}
-  .plan .pd{color:var(--muted);font-size:.8rem;margin-top:8px}
-  .plan ul{list-style:none;margin-top:10px;display:flex;flex-direction:column;gap:5px}
-  .plan li{font-size:.78rem;color:var(--muted);padding-left:16px;position:relative}
+  .plan .pn{font-weight:800;font-size:.98rem}
+  .plan .pp{margin-top:6px;font-size:1.4rem;font-weight:800;letter-spacing:-.5px}
+  .plan .pp span{font-size:.7rem;color:var(--muted);font-weight:600}
+  .plan .pd{color:var(--muted);font-size:.78rem;margin-top:8px}
+  .plan ul{list-style:none;margin-top:12px;display:flex;flex-direction:column;gap:6px}
+  .plan li{font-size:.77rem;color:var(--muted);padding-left:18px;position:relative}
   .plan li::before{content:"✓";position:absolute;left:0;color:var(--blue-300);font-weight:800}
-  .plan .tick{position:absolute;top:12px;right:12px;width:18px;height:18px;border-radius:50%;border:2px solid var(--border-strong)}
+  .plan .tick{position:absolute;top:14px;right:14px;width:20px;height:20px;border-radius:50%;border:2px solid var(--border-strong);display:grid;place-items:center;transition:all .18s var(--ease)}
+  .plan .tick svg{width:12px;height:12px;color:#fff;opacity:0;transform:scale(.3);transition:all .18s var(--ease)}
   .plan.sel .tick{border-color:var(--blue);background:var(--blue)}
+  .plan.sel .tick svg{opacity:1;transform:scale(1)}
 
-  .review dl{display:grid;grid-template-columns:130px 1fr;gap:8px 14px;font-size:13px}
-  .review dt{color:var(--muted-2);font-weight:600}
-  .review dd{color:var(--text)}
+  /* ---------- animated checkboxes ---------- */
+  .check{display:flex;align-items:flex-start;gap:12px;padding:13px 14px;border:1px solid var(--border-strong);border-radius:11px;cursor:pointer;font-size:13.5px;font-weight:500;color:var(--text);transition:border-color .15s,background .15s;margin-bottom:10px;user-select:none}
+  .check:hover{border-color:var(--blue-300)}
+  .check.on{border-color:var(--blue);background:rgba(6,132,188,.05)}
+  .check input{position:absolute;opacity:0;width:0;height:0}
+  .check .ck{flex:none;width:22px;height:22px;border-radius:50%;border:2px solid var(--border-strong);display:grid;place-items:center;transition:background .2s var(--ease),border-color .2s var(--ease),transform .2s var(--ease)}
+  .check .ck svg{width:13px;height:13px;color:#fff}
+  .check .ck svg path{stroke-dasharray:18;stroke-dashoffset:18;transition:stroke-dashoffset .28s var(--ease) .04s}
+  .check.on .ck{background:var(--blue);border-color:var(--blue);transform:scale(1.08)}
+  .check.on .ck svg path{stroke-dashoffset:0}
+  .check .ct{line-height:1.45;padding-top:1px}
+  .check .ct small{display:block;color:var(--muted-2);font-weight:400;font-size:12px}
 
-  .foot{display:flex;justify-content:space-between;gap:10px;padding:18px 28px;border-top:1px solid var(--border);background:var(--surface-2)}
-  .err{color:#e5484d;font-size:12.5px;margin:0 28px 14px;background:rgba(229,72,77,.1);border:1px solid rgba(229,72,77,.3);border-radius:8px;padding:8px 10px}
+  /* ---------- review ---------- */
+  .rev{display:flex;flex-direction:column;gap:14px}
+  .rev-sec{border:1px solid var(--border-strong);border-radius:13px;overflow:hidden}
+  .rev-h{display:flex;align-items:center;gap:9px;padding:12px 15px;background:var(--surface-2);font-weight:800;font-size:.82rem;letter-spacing:.02em;text-transform:uppercase;color:var(--muted)}
+  .rev-h svg{width:15px;height:15px;color:var(--blue-300)}
+  .rev-h .edit{margin-left:auto;font-size:11px;font-weight:700;color:var(--blue);text-transform:none;letter-spacing:0;background:none;border:0;cursor:pointer;padding:4px 8px;border-radius:6px}
+  .rev-h .edit:hover{background:rgba(6,132,188,.1)}
+  .rev-b{padding:14px 15px;display:grid;grid-template-columns:120px 1fr;gap:9px 14px;font-size:13px}
+  .rev-b dt{color:var(--muted-2);font-weight:600}
+  .rev-b dd{color:var(--text);word-break:break-word}
+  .rev-plan{display:flex;align-items:center;gap:12px;padding:14px 15px}
+  .rev-plan .rp-badge{width:40px;height:40px;border-radius:10px;background:rgba(6,132,188,.12);color:var(--blue);display:grid;place-items:center;flex:none}
+  .rev-plan .rp-badge svg{width:20px;height:20px}
+  .rev-plan .rp-name{font-weight:800}
+  .rev-plan .rp-price{font-size:12.5px;color:var(--muted)}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;padding:0 15px 14px}
+  .chip{font-size:12px;font-weight:600;padding:5px 11px;border-radius:999px;background:rgba(6,132,188,.1);color:var(--blue);display:inline-flex;align-items:center;gap:6px}
+  .chip svg{width:12px;height:12px}
+  .chip.none{background:var(--surface-3);color:var(--muted-2)}
 
-  .done{text-align:center;padding:48px 28px}
-  .done .ok{width:60px;height:60px;border-radius:50%;background:rgba(22,163,74,.14);color:#22c55e;display:flex;align-items:center;justify-content:center;margin:0 auto 16px}
-  .done .ok svg{width:30px;height:30px}
-  .done h2{font-size:1.4rem;font-weight:800}
+  .foot{display:flex;justify-content:space-between;gap:10px;padding:18px 30px;border-top:1px solid var(--border);background:var(--surface-2)}
+  .err{color:#e5484d;font-size:12.5px;margin:16px 30px -4px;background:rgba(229,72,77,.1);border:1px solid rgba(229,72,77,.3);border-radius:9px;padding:9px 12px}
+
+  .done{text-align:center;padding:52px 30px}
+  .done .ok{width:64px;height:64px;border-radius:50%;background:var(--ok-bg);color:var(--ok);display:flex;align-items:center;justify-content:center;margin:0 auto 18px;animation:pop .4s var(--ease)}
+  .done .ok svg{width:32px;height:32px}
+  .done h2{font-size:1.45rem;font-weight:800}
   .done p{color:var(--muted);margin-top:10px;max-width:44ch;margin-inline:auto}
 
-  footer{border-top:1px solid var(--border);padding:40px 0}
+  footer{border-top:1px solid var(--border);padding:40px 0;margin-top:20px}
   footer .wrap{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;color:var(--muted-2);font-size:12.5px}
   footer .brand img{height:24px}
   footer .partner b{color:var(--orange-300)}
@@ -150,16 +247,12 @@
   <div class="head">
     <div class="eyebrow">Get started</div>
     <h1>Set up your ringNex workspace</h1>
-    <p>Four quick steps. We review it, get in touch, and provision your workspace.</p>
+    <p>A few quick steps. We review it, get in touch, and provision your workspace.</p>
   </div>
 
   <form class="card" id="ob" autocomplete="on">
-    <div class="steps" id="steps">
-      <div class="stepdot" data-s="0"><span class="n">1</span><span class="lbl">Company</span></div>
-      <div class="stepdot" data-s="1"><span class="n">2</span><span class="lbl">Contact</span></div>
-      <div class="stepdot" data-s="2"><span class="n">3</span><span class="lbl">Plan</span></div>
-      <div class="stepdot" data-s="3"><span class="n">4</span><span class="lbl">Needs</span></div>
-      <div class="stepdot" data-s="4"><span class="n">5</span><span class="lbl">Review</span></div>
+    <div class="stepper" id="steps">
+      <div class="track"></div><div class="fill" id="stepFill"></div>
     </div>
 
     <div class="err" id="err" hidden></div>
@@ -168,22 +261,26 @@
     <div class="pane" data-pane="0">
       <h2>Your company</h2>
       <p class="sub">This becomes your workspace.</p>
-      <label>Company name <span class="req">*</span>
-        <input id="companyName" name="organization" required maxlength="190" />
+      <label class="field">
+        <span class="lb">Company name <b class="req">*</b></span>
+        <input id="companyName" name="organization" required maxlength="190" placeholder="Acme Inc." />
       </label>
-      <label>Workspace URL <span class="req">*</span>
-        <input id="workspaceSlug" name="workspace" required maxlength="80" pattern="[a-z0-9-]+" />
+      <label class="field">
+        <span class="lb">Workspace URL <b class="req">*</b></span>
+        <span class="slugfield">
+          <input id="workspaceSlug" name="workspace" required maxlength="80" pattern="[a-z0-9-]+" placeholder="acme" />
+          <span class="suffix">.ringnex.co</span>
+        </span>
       </label>
       <div class="grid2">
-        <label>Country
-          <input id="country" name="country" maxlength="80" />
-        </label>
-        <label>Team size
-          <select id="teamSize">
-            <option value="">Select…</option>
-            <option>1–5</option><option>6–15</option><option>16–50</option><option>51–150</option><option>150+</option>
-          </select>
-        </label>
+        <div class="field">
+          <span class="lb">Country</span>
+          <div class="rs" id="rsCountry"></div>
+        </div>
+        <div class="field">
+          <span class="lb">Team size</span>
+          <div class="rs" id="rsTeam"></div>
+        </div>
       </div>
     </div>
 
@@ -191,16 +288,17 @@
     <div class="pane" data-pane="1" hidden>
       <h2>Who should we contact?</h2>
       <p class="sub">We'll reach out to confirm and finish setup.</p>
-      <label>Your name <span class="req">*</span>
-        <input id="contactName" name="name" required maxlength="120" />
+      <label class="field">
+        <span class="lb">Your name <b class="req">*</b></span>
+        <input id="contactName" name="name" required maxlength="120" placeholder="Jane Cooper" />
       </label>
-      <div class="grid2">
-        <label>Work email <span class="req">*</span>
-          <input id="contactEmail" name="email" type="email" required maxlength="190" />
-        </label>
-        <label>Phone
-          <input id="contactPhone" name="tel" type="tel" maxlength="40" />
-        </label>
+      <label class="field">
+        <span class="lb">Work email <b class="req">*</b></span>
+        <input id="contactEmail" name="email" type="email" required maxlength="190" placeholder="jane@acme.com" />
+      </label>
+      <div class="field">
+        <span class="lb">Phone <span class="opt">optional</span></span>
+        <input id="contactPhone" name="tel" type="tel" maxlength="40" />
       </div>
     </div>
 
@@ -215,27 +313,42 @@
     <div class="pane" data-pane="3" hidden>
       <h2>What do you need?</h2>
       <p class="sub">Helps us provision the right things from day one.</p>
-      <div class="grid2">
-        <label>Agents to start with
-          <input id="agentsNeeded" type="number" min="1" max="1000" />
-        </label>
-      </div>
-      <label>What will you use ringNex for?
+      <label class="field">
+        <span class="lb">Agents to start with</span>
+        <input id="agentsNeeded" type="number" min="1" max="1000" placeholder="e.g. 12" />
+      </label>
+      <label class="field">
+        <span class="lb">What will you use ringNex for?</span>
         <textarea id="useCase" maxlength="4000" placeholder="e.g. outbound sales for 12 agents, inbound support line, collections campaigns…"></textarea>
       </label>
-      <label class="check"><input type="checkbox" id="needsTollFree" /> I need a toll-free number / inbound queues</label>
-      <label class="check"><input type="checkbox" id="needsAutoDialer" /> I need the auto dialer for campaigns</label>
-      <label class="check"><input type="checkbox" id="needsNumbers" /> I want to buy phone numbers through ringNex</label>
-      <label>Anything else?
+
+      <label class="check" data-cb="needsTollFree">
+        <input type="checkbox" id="needsTollFree" />
+        <span class="ck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+        <span class="ct">Toll-free number / inbound queues<small>IVR menus, hold music, queue routing</small></span>
+      </label>
+      <label class="check" data-cb="needsAutoDialer">
+        <input type="checkbox" id="needsAutoDialer" />
+        <span class="ck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+        <span class="ct">Auto dialer for campaigns<small>Power through call lists with dispositions</small></span>
+      </label>
+      <label class="check" data-cb="needsNumbers">
+        <input type="checkbox" id="needsNumbers" />
+        <span class="ck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+        <span class="ct">Buy phone numbers through ringNex<small>Local &amp; toll-free DIDs in many countries</small></span>
+      </label>
+
+      <label class="field">
+        <span class="lb">Anything else?</span>
         <textarea id="extraNotes" maxlength="4000" placeholder="Timeline, existing carrier, number porting, questions…"></textarea>
       </label>
     </div>
 
     <!-- 4: review -->
-    <div class="pane review" data-pane="4" hidden>
+    <div class="pane" data-pane="4" hidden>
       <h2>Review &amp; submit</h2>
       <p class="sub">Check it over — then send it to our team.</p>
-      <dl id="reviewList"></dl>
+      <div class="rev" id="rev"></div>
     </div>
 
     <!-- done -->
@@ -261,13 +374,13 @@
   </div>
 </footer>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/18.2.1/js/intlTelInput.min.js"></script>
 <script>
 (function(){
   var API = "https://demoapi.ringnex.co";
   var root = document.documentElement;
   document.getElementById('yr').textContent = new Date().getFullYear();
 
-  // theme toggle
   var tt = document.getElementById('themeToggle');
   tt.addEventListener('click', function(){
     var n = root.getAttribute('data-theme')==='dark'?'light':'dark';
@@ -275,26 +388,218 @@
     try{ localStorage.setItem('rnx-theme', n); }catch(e){}
   });
 
-  var LAST = 4;
-  var step = 0;
-  var data = { planCode: "" };
-  var panes = [].slice.call(document.querySelectorAll('.pane[data-pane]'));
-  var dots  = [].slice.call(document.querySelectorAll('.stepdot'));
-  var errEl = document.getElementById('err');
+  function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]);}); }
+  function flag(iso2){
+    if(!iso2 || iso2.length!==2) return '🌐';
+    try{ return String.fromCodePoint(0x1F1E6 + iso2.toUpperCase().charCodeAt(0)-65) + String.fromCodePoint(0x1F1E6 + iso2.toUpperCase().charCodeAt(1)-65); }
+    catch(e){ return '🌐'; }
+  }
 
-  function showErr(m){ errEl.textContent = m; errEl.hidden = !m; }
+  /* =========================================================
+     Custom select (react-select style: button + search + list)
+     ========================================================= */
+  function makeSelect(root, opts){
+    opts = opts || {};
+    var options = opts.options || [];
+    var searchable = opts.searchable !== false;
+    var ph = opts.placeholder || 'Select…';
+    var value = opts.value || '';
+    var hiIndex = -1;
+    var filtered = options.slice();
+
+    root.innerHTML =
+      '<button type="button" class="rs-btn" aria-haspopup="listbox" aria-expanded="false">' +
+        '<span class="val ph">'+esc(ph)+'</span>' +
+        '<svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>' +
+      '</button>' +
+      '<div class="rs-pop" hidden>' +
+        (searchable ? '<div class="rs-search"><input type="text" placeholder="Search…" autocomplete="off" /></div>' : '') +
+        '<ul class="rs-list" role="listbox"></ul>' +
+      '</div>';
+
+    var btn = root.querySelector('.rs-btn');
+    var val = root.querySelector('.val');
+    var pop = root.querySelector('.rs-pop');
+    var search = root.querySelector('.rs-search input');
+    var list = root.querySelector('.rs-list');
+
+    function labelFor(v){ var o = options.find(function(x){return x.value===v;}); return o ? o.label : ''; }
+    function paint(){
+      var has = !!value;
+      val.textContent = has ? labelFor(value) : ph;
+      val.classList.toggle('ph', !has);
+    }
+    function renderList(){
+      if(!filtered.length){ list.innerHTML = '<li class="rs-empty">No matches</li>'; return; }
+      list.innerHTML = filtered.map(function(o,i){
+        return '<li class="rs-opt'+(o.value===value?' sel':'')+(i===hiIndex?' hi':'')+'" data-v="'+esc(o.value)+'" role="option">' +
+          (o.iso2 ? '<span class="fl">'+flag(o.iso2)+'</span>' : '') +
+          '<span>'+esc(o.label)+'</span></li>';
+      }).join('');
+    }
+    function open(){
+      root.classList.add('open'); pop.hidden = false; btn.setAttribute('aria-expanded','true');
+      filtered = options.slice(); hiIndex = filtered.findIndex(function(o){return o.value===value;});
+      renderList();
+      if(search){ search.value=''; setTimeout(function(){ search.focus(); },10); }
+      var sel = list.querySelector('.rs-opt.sel'); if(sel) sel.scrollIntoView({block:'nearest'});
+      document.addEventListener('mousedown', outside, true);
+      document.addEventListener('keydown', onKey, true);
+    }
+    function close(){
+      root.classList.remove('open'); pop.hidden = true; btn.setAttribute('aria-expanded','false');
+      document.removeEventListener('mousedown', outside, true);
+      document.removeEventListener('keydown', onKey, true);
+    }
+    function outside(e){ if(!root.contains(e.target)) close(); }
+    function choose(v){ value = v; paint(); close(); if(opts.onChange) opts.onChange(v); }
+    function onKey(e){
+      if(e.key==='Escape'){ close(); btn.focus(); return; }
+      if(e.key==='ArrowDown' || e.key==='ArrowUp'){
+        e.preventDefault();
+        if(!filtered.length) return;
+        hiIndex += e.key==='ArrowDown' ? 1 : -1;
+        if(hiIndex<0) hiIndex = filtered.length-1;
+        if(hiIndex>=filtered.length) hiIndex = 0;
+        renderList();
+        var el = list.children[hiIndex]; if(el) el.scrollIntoView({block:'nearest'});
+      } else if(e.key==='Enter'){
+        e.preventDefault();
+        if(filtered[hiIndex]) choose(filtered[hiIndex].value);
+      }
+    }
+
+    btn.addEventListener('click', function(){ root.classList.contains('open') ? close() : open(); });
+    list.addEventListener('click', function(e){ var li = e.target.closest('.rs-opt'); if(li) choose(li.dataset.v); });
+    if(search) search.addEventListener('input', function(){
+      var q = search.value.trim().toLowerCase();
+      filtered = q ? options.filter(function(o){ return o.label.toLowerCase().indexOf(q) !== -1; }) : options.slice();
+      hiIndex = filtered.length ? 0 : -1;
+      renderList();
+    });
+
+    paint();
+    return {
+      get value(){ return value; },
+      set: function(v){ value = v; paint(); },
+      setOptions: function(o){ options = o; filtered = o.slice(); }
+    };
+  }
+
+  /* ---- country list (ISO 3166, searchable) ---- */
+  var COUNTRIES = ("Afghanistan:af,Albania:al,Algeria:dz,Andorra:ad,Angola:ao,Antigua and Barbuda:ag,Argentina:ar,Armenia:am,Australia:au,Austria:at,Azerbaijan:az,"+
+  "Bahamas:bs,Bahrain:bh,Bangladesh:bd,Barbados:bb,Belarus:by,Belgium:be,Belize:bz,Benin:bj,Bhutan:bt,Bolivia:bo,Bosnia and Herzegovina:ba,Botswana:bw,Brazil:br,Brunei:bn,Bulgaria:bg,Burkina Faso:bf,Burundi:bi,"+
+  "Cambodia:kh,Cameroon:cm,Canada:ca,Cape Verde:cv,Central African Republic:cf,Chad:td,Chile:cl,China:cn,Colombia:co,Comoros:km,Congo:cg,Congo (DRC):cd,Costa Rica:cr,Côte d'Ivoire:ci,Croatia:hr,Cuba:cu,Cyprus:cy,Czechia:cz,"+
+  "Denmark:dk,Djibouti:dj,Dominica:dm,Dominican Republic:do,"+
+  "Ecuador:ec,Egypt:eg,El Salvador:sv,Equatorial Guinea:gq,Eritrea:er,Estonia:ee,Eswatini:sz,Ethiopia:et,"+
+  "Fiji:fj,Finland:fi,France:fr,"+
+  "Gabon:ga,Gambia:gm,Georgia:ge,Germany:de,Ghana:gh,Greece:gr,Grenada:gd,Guatemala:gt,Guinea:gn,Guinea-Bissau:gw,Guyana:gy,"+
+  "Haiti:ht,Honduras:hn,Hong Kong:hk,Hungary:hu,"+
+  "Iceland:is,India:in,Indonesia:id,Iran:ir,Iraq:iq,Ireland:ie,Israel:il,Italy:it,"+
+  "Jamaica:jm,Japan:jp,Jordan:jo,"+
+  "Kazakhstan:kz,Kenya:ke,Kiribati:ki,Kosovo:xk,Kuwait:kw,Kyrgyzstan:kg,"+
+  "Laos:la,Latvia:lv,Lebanon:lb,Lesotho:ls,Liberia:lr,Libya:ly,Liechtenstein:li,Lithuania:lt,Luxembourg:lu,"+
+  "Macau:mo,Madagascar:mg,Malawi:mw,Malaysia:my,Maldives:mv,Mali:ml,Malta:mt,Marshall Islands:mh,Mauritania:mr,Mauritius:mu,Mexico:mx,Micronesia:fm,Moldova:md,Monaco:mc,Mongolia:mn,Montenegro:me,Morocco:ma,Mozambique:mz,Myanmar:mm,"+
+  "Namibia:na,Nauru:nr,Nepal:np,Netherlands:nl,New Zealand:nz,Nicaragua:ni,Niger:ne,Nigeria:ng,North Korea:kp,North Macedonia:mk,Norway:no,"+
+  "Oman:om,"+
+  "Pakistan:pk,Palau:pw,Palestine:ps,Panama:pa,Papua New Guinea:pg,Paraguay:py,Peru:pe,Philippines:ph,Poland:pl,Portugal:pt,Puerto Rico:pr,"+
+  "Qatar:qa,"+
+  "Romania:ro,Russia:ru,Rwanda:rw,"+
+  "Saint Kitts and Nevis:kn,Saint Lucia:lc,Saint Vincent and the Grenadines:vc,Samoa:ws,San Marino:sm,Sao Tome and Principe:st,Saudi Arabia:sa,Senegal:sn,Serbia:rs,Seychelles:sc,Sierra Leone:sl,Singapore:sg,Slovakia:sk,Slovenia:si,Solomon Islands:sb,Somalia:so,South Africa:za,South Korea:kr,South Sudan:ss,Spain:es,Sri Lanka:lk,Sudan:sd,Suriname:sr,Sweden:se,Switzerland:ch,Syria:sy,"+
+  "Taiwan:tw,Tajikistan:tj,Tanzania:tz,Thailand:th,Timor-Leste:tl,Togo:tg,Tonga:to,Trinidad and Tobago:tt,Tunisia:tn,Turkey:tr,Turkmenistan:tm,Tuvalu:tv,"+
+  "Uganda:ug,Ukraine:ua,United Arab Emirates:ae,United Kingdom:gb,United States:us,Uruguay:uy,Uzbekistan:uz,"+
+  "Vanuatu:vu,Vatican City:va,Venezuela:ve,Vietnam:vn,"+
+  "Yemen:ye,Zambia:zm,Zimbabwe:zw")
+  .split(",").map(function(s){ var i = s.lastIndexOf(':'); return { value: s.slice(0,i), label: s.slice(0,i), iso2: s.slice(i+1) }; });
+
+  var countrySel = makeSelect(document.getElementById('rsCountry'), {
+    options: COUNTRIES, searchable: true, placeholder: 'Select country…',
+    onChange: function(){ showErr(''); }
+  });
+  var teamSel = makeSelect(document.getElementById('rsTeam'), {
+    options: [
+      { value:'1–5', label:'1–5 people' }, { value:'6–15', label:'6–15 people' },
+      { value:'16–50', label:'16–50 people' }, { value:'51–150', label:'51–150 people' },
+      { value:'150+', label:'150+ people' }
+    ],
+    searchable: false, placeholder: 'Select team size…'
+  });
+
+  /* ---- phone: intl-tel-input ---- */
+  var phoneInput = document.getElementById('contactPhone');
+  var iti = null;
+  if (window.intlTelInput) {
+    try {
+      iti = window.intlTelInput(phoneInput, {
+        initialCountry: "pk",
+        separateDialCode: true,
+        preferredCountries: ["pk","us","gb","ae","sa","in","ca","au"],
+        utilsScript: "https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/18.2.1/js/utils.js"
+      });
+    } catch(e){ iti = null; }
+  }
+  function phoneValue(){
+    if (iti) {
+      var n = "";
+      try { n = iti.getNumber(); } catch(e){}
+      if (n) return n;
+      var raw = phoneInput.value.trim();
+      if (!raw) return "";
+      try { return "+" + iti.getSelectedCountryData().dialCode + raw.replace(/[^\d]/g,''); } catch(e){ return raw; }
+    }
+    return phoneInput.value.trim();
+  }
+
+  /* =========================================================
+     Stepper + navigation
+     ========================================================= */
+  var LAST = 4;
+  var STEP_LABELS = ["Company","Contact","Plan","Needs","Review"];
+  var step = 0, maxVisited = 0;
+  var data = { planCode:"", planName:"" };
+  var panes = [].slice.call(document.querySelectorAll('.pane[data-pane]'));
+  var errEl = document.getElementById('err');
+  var stepsBar = document.getElementById('steps');
+  var stepFill = document.getElementById('stepFill');
+
+  // build step buttons
+  STEP_LABELS.forEach(function(lbl,i){
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'step'; b.dataset.s = i;
+    b.innerHTML =
+      '<span class="ic"><span class="num">'+(i+1)+'</span>' +
+      '<svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>' +
+      '<span class="lb">'+lbl+'</span>';
+    b.addEventListener('click', function(){ if (i <= maxVisited) goStep(i); });
+    stepsBar.appendChild(b);
+  });
+  var dots = [].slice.call(stepsBar.querySelectorAll('.step'));
+
+  function showErr(m){ errEl.textContent = m || ''; errEl.hidden = !m; }
   function paneEl(k){ return document.querySelector('.pane[data-pane="'+k+'"]'); }
 
+  function goStep(i){ step = i; render(); }
+
   function render(){
-    panes.forEach(function(p){ p.hidden = p.dataset.pane !== String(step); });
-    dots.forEach(function(d,i){ d.classList.toggle('active', i===step); d.classList.toggle('done', i<step); });
+    panes.forEach(function(p){
+      var show = p.dataset.pane === String(step);
+      if (show && p.hidden) { p.hidden = false; p.style.animation = 'none'; void p.offsetWidth; p.style.animation = ''; }
+      else p.hidden = !show;
+    });
+    dots.forEach(function(d,i){
+      d.classList.toggle('active', i===step);
+      d.classList.toggle('done', i<step || (i<=maxVisited && i!==step));
+      d.classList.toggle('clickable', i<=maxVisited && i!==step);
+    });
+    stepFill.style.width = 'calc((100% - var(--pad) * 2) * ' + (step / LAST) + ')';
     document.getElementById('back').style.visibility = step===0 ? 'hidden' : 'visible';
     document.getElementById('next').textContent = step===LAST ? 'Submit request' : 'Continue';
     showErr('');
     if (step===LAST) buildReview();
+    document.querySelector('.card').scrollIntoView({ behavior:'smooth', block:'start' });
   }
 
-  // auto-slug from company name (until the user edits the slug directly)
+  /* auto-slug from company name */
   var slugTouched = false;
   var slugEl = document.getElementById('workspaceSlug');
   slugEl.addEventListener('input', function(){ slugTouched = true; slugEl.value = slugify(slugEl.value); });
@@ -305,14 +610,22 @@
     return String(v||"").toLowerCase().replace(/[^a-z0-9-]+/g,'-').replace(/^-+|-+$/g,'').replace(/-{2,}/g,'-').slice(0,80);
   }
 
+  /* animated checkboxes — toggle .on for the styling hook */
+  [].slice.call(document.querySelectorAll('.check')).forEach(function(l){
+    var cb = l.querySelector('input');
+    var sync = function(){ l.classList.toggle('on', cb.checked); };
+    cb.addEventListener('change', sync); sync();
+  });
+
+  function val(id){ var e = document.getElementById(id); return e ? (e.value||"").trim() : ""; }
   function collect(){
     data.companyName   = val('companyName');
     data.workspaceSlug = val('workspaceSlug');
-    data.country       = val('country');
-    data.teamSize      = val('teamSize');
+    data.country       = countrySel.value;
+    data.teamSize      = teamSel.value;
     data.contactName   = val('contactName');
     data.contactEmail  = val('contactEmail');
-    data.contactPhone  = val('contactPhone');
+    data.contactPhone  = phoneValue();
     data.agentsNeeded  = val('agentsNeeded');
     data.useCase       = val('useCase');
     data.extraNotes    = val('extraNotes');
@@ -320,7 +633,6 @@
     data.needsAutoDialer = document.getElementById('needsAutoDialer').checked;
     data.needsNumbers    = document.getElementById('needsNumbers').checked;
   }
-  function val(id){ return (document.getElementById(id).value||"").trim(); }
 
   function validate(){
     collect();
@@ -331,6 +643,8 @@
     if (step===1){
       if (!data.contactName) return "Your name is required.";
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(data.contactEmail)) return "Enter a valid work email.";
+      if (phoneInput.value.trim() && iti && window.intlTelInputUtils && !iti.isValidNumber())
+        return "That phone number doesn't look valid for the selected country.";
     }
     if (step===2 && !data.planCode) return "Choose a plan to continue.";
     return "";
@@ -339,7 +653,7 @@
   document.getElementById('next').addEventListener('click', function(){
     var e = validate();
     if (e) return showErr(e);
-    if (step < LAST){ step++; render(); return; }
+    if (step < LAST){ step++; maxVisited = Math.max(maxVisited, step); render(); return; }
     submit();
   });
   document.getElementById('back').addEventListener('click', function(){ if (step>0){ step--; render(); } });
@@ -363,19 +677,18 @@
         if (p.features && p.features.can_purchase_numbers) feats.push('Buy numbers');
       }
       el.innerHTML =
-        '<div class="tick"></div>'+
+        '<div class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>'+
         '<div class="pn">'+esc(p.name)+'</div>'+
         '<div class="pp">$'+p.pricePerUser+'<span> / user / mo</span></div>'+
         '<div class="pd">'+esc(p.description||"")+'</div>'+
         '<ul>'+feats.map(function(f){return '<li>'+esc(f)+'</li>';}).join('')+'</ul>';
       el.addEventListener('click', function(){
-        data.planCode = p.code; data.planName = p.name;
+        data.planCode = p.code; data.planName = p.name; data.planPrice = p.pricePerUser;
         [].slice.call(box.children).forEach(function(c){ c.classList.toggle('sel', c===el); });
         showErr('');
       });
       box.appendChild(el);
     });
-    // preselect from ?plan=
     var pre = new URLSearchParams(location.search).get('plan');
     if (pre){ var m = box.querySelector('.plan[data-code="'+pre.toLowerCase()+'"]'); if (m) m.click(); }
   }).catch(function(){
@@ -383,25 +696,45 @@
   });
 
   /* ---- review ---- */
+  function sec(title, iconPath, goto, bodyHtml){
+    return '<div class="rev-sec"><div class="rev-h">'+
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+iconPath+'</svg>'+
+      esc(title)+'<button type="button" class="edit" data-goto="'+goto+'">Edit</button></div>'+bodyHtml+'</div>';
+  }
+  function dl(rows){
+    return '<dl class="rev-b">'+rows.map(function(r){
+      return '<dt>'+esc(r[0])+'</dt><dd>'+esc(String(r[1]||'—'))+'</dd>';
+    }).join('')+'</dl>';
+  }
   function buildReview(){
     collect();
-    var rows = [
-      ['Company', data.companyName],
-      ['Workspace', data.workspaceSlug + ' .ringnex.co'],
-      ['Country', data.country || '—'],
-      ['Team size', data.teamSize || '—'],
-      ['Contact', data.contactName + ' · ' + data.contactEmail + (data.contactPhone ? ' · ' + data.contactPhone : '')],
-      ['Plan', data.planName || data.planCode || '—'],
-      ['Agents to start', data.agentsNeeded || '—'],
-      ['Use case', data.useCase || '—'],
-      ['Toll-free / IVR', data.needsTollFree ? 'Yes' : 'No'],
-      ['Auto dialer', data.needsAutoDialer ? 'Yes' : 'No'],
-      ['Buy numbers', data.needsNumbers ? 'Yes' : 'No'],
-      ['Notes', data.extraNotes || '—']
-    ];
-    document.getElementById('reviewList').innerHTML = rows.map(function(r){
-      return '<dt>'+esc(r[0])+'</dt><dd>'+esc(String(r[1]))+'</dd>';
-    }).join('');
+    var revEl = document.getElementById('rev');
+    var needChips = [];
+    if (data.needsTollFree)   needChips.push('Toll-free / IVR');
+    if (data.needsAutoDialer) needChips.push('Auto dialer');
+    if (data.needsNumbers)    needChips.push('Buy numbers');
+    var chipsHtml = '<div class="chips">' + (needChips.length
+      ? needChips.map(function(c){ return '<span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>'+esc(c)+'</span>'; }).join('')
+      : '<span class="chip none">No add-ons selected</span>') + '</div>';
+
+    var planBody = data.planName
+      ? '<div class="rev-plan"><span class="rp-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12V8H6a2 2 0 0 1 0-4h12v4"/><path d="M4 6v12a2 2 0 0 0 2 2h14v-4"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg></span>'+
+        '<div><div class="rp-name">'+esc(data.planName)+'</div>'+
+        '<div class="rp-price">'+(data.planPrice!=null ? '$'+data.planPrice+' / user / mo' : 'Pricing to be confirmed')+'</div></div></div>'
+      : '<dl class="rev-b"><dt>Plan</dt><dd>Not selected</dd></dl>';
+
+    revEl.innerHTML =
+      sec('Company', '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h.01M15 9h.01M9 13h.01M15 13h.01M9 17h6"/>', 0,
+        dl([['Company', data.companyName], ['Workspace', data.workspaceSlug + '.ringnex.co'], ['Country', data.country], ['Team size', data.teamSize]])) +
+      sec('Contact', '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>', 1,
+        dl([['Name', data.contactName], ['Email', data.contactEmail], ['Phone', data.contactPhone]])) +
+      sec('Plan', '<path d="M12 2v20M2 12h20"/>', 2, planBody) +
+      sec('Needs', '<path d="m9 11 3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>', 3,
+        dl([['Agents to start', data.agentsNeeded], ['Use case', data.useCase], ['Notes', data.extraNotes]]) + chipsHtml);
+
+    [].slice.call(revEl.querySelectorAll('.edit')).forEach(function(b){
+      b.addEventListener('click', function(){ goStep(Number(b.dataset.goto)); });
+    });
   }
 
   /* ---- submit ---- */
@@ -420,14 +753,13 @@
         panes.forEach(function(p){ p.hidden = true; });
         document.getElementById('doneEmail').textContent = data.contactEmail;
         paneEl('done').hidden = false;
+        document.querySelector('.card').scrollIntoView({ behavior:'smooth', block:'start' });
       })
       .catch(function(e){
         btn.disabled = false; btn.textContent = 'Submit request';
         showErr(e.message || "Could not submit — please try again.");
       });
   }
-
-  function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]); }); }
 
   render();
 })();
