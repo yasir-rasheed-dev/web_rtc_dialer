@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ChevronDown,
@@ -9,6 +10,7 @@ import {
   PhoneOutgoing,
   PlayCircle,
   RefreshCw,
+  Users,
   Voicemail,
   X
 } from "lucide-react";
@@ -39,35 +41,67 @@ const TABS = [
   { id: "missed", label: "Missed", countKey: "missed", params: { outcome: "missed" } }
 ];
 
-// Everyone who was actually on the call — the attributed agent plus any
-// warm-transfer targets / added PSTN parties. Supervisor listen/whisper/
-// barge legs are never recorded here (the backend drops them entirely).
-function ParticipantCells({ participants }) {
+// A call with more than one party (the attributed agent plus any
+// warm-transfer targets / added PSTN parties) is shown as a "Conference"
+// tag under the direction. Hovering the tag reveals who was on the call.
+// Supervisor listen/whisper/barge legs are never recorded in participants
+// (the backend drops them entirely), so they never show here.
+// The tooltip is portalled to <body> with fixed positioning so the
+// table's overflow containers can't clip it.
+function ConferenceTag({ participants }) {
   const list = Array.isArray(participants) ? participants : [];
-  if (list.length <= 1) return <span className="text-muted/60">—</span>;
+  const anchorRef = useRef(null);
+  const [tip, setTip] = useState(null); // { top, left } | null
+
+  if (list.length <= 1) return null;
   const label = (p) => p.name || p.number || p.extension || "Unknown";
-  const shown = list.slice(0, 3);
-  const extra = list.length - shown.length;
+
+  const show = () => {
+    const rect = anchorRef.current?.getBoundingClientRect();
+    if (rect) setTip({ top: rect.bottom + 6, left: rect.left });
+  };
+
   return (
-    <span className="flex flex-wrap items-center gap-1.5" title={list.map(label).join(", ")}>
-      {shown.map((p, i) => (
-        <span
-          key={i}
-          className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-text"
-        >
-          <span
-            className={
-              "flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold " +
-              (p.type === "pstn" ? "bg-accent/15 text-accent" : "bg-brand/10 text-brand")
-            }
+    <>
+      <span
+        ref={anchorRef}
+        onMouseEnter={show}
+        onMouseLeave={() => setTip(null)}
+        className="inline-flex cursor-default items-center gap-1 rounded-full border border-brand/30 bg-brand/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand"
+      >
+        <Users size={11} /> Conference
+      </span>
+      {tip &&
+        createPortal(
+          <div
+            style={{ position: "fixed", top: tip.top, left: tip.left, zIndex: 60 }}
+            className="w-60 rounded-lg border border-border bg-surface p-2.5 text-left shadow-card"
           >
-            {label(p).slice(0, 1).toUpperCase()}
-          </span>
-          <span className="max-w-[120px] truncate">{label(p)}</span>
-        </span>
-      ))}
-      {extra > 0 && <span className="text-[11px] font-medium text-muted">+{extra}</span>}
-    </span>
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">
+              On this call · {list.length}
+            </p>
+            <ul className="flex flex-col gap-1">
+              {list.map((p, i) => (
+                <li key={i} className="flex items-center gap-2 text-xs text-text">
+                  <span
+                    className={
+                      "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold " +
+                      (p.type === "pstn" ? "bg-accent/15 text-accent" : "bg-brand/10 text-brand")
+                    }
+                  >
+                    {label(p).slice(0, 1).toUpperCase()}
+                  </span>
+                  <span className="truncate">{label(p)}</span>
+                  <span className="ml-auto shrink-0 text-[10px] uppercase text-muted">
+                    {p.type === "pstn" ? "External" : "Agent"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>,
+          document.body
+        )}
+    </>
   );
 }
 
@@ -374,7 +408,7 @@ export default function CallLogsPage({ permissions = [], onVoicemailHeard }) {
       ) : (
         <Card compact title="Call records" description={`${result.total} matching records`}>
           {loading ? (
-            <SkeletonTable rows={6} cols={7} />
+            <SkeletonTable rows={6} cols={6} />
           ) : sortedRows.length ? (
             <div className="overflow-hidden rounded-lg border border-border">
               <div className="overflow-x-auto">
@@ -388,7 +422,6 @@ export default function CallLogsPage({ permissions = [], onVoicemailHeard }) {
                         ["status", "Status"],
                         ["duration", "Duration"],
                         ["started", "Date & time"],
-                        [null, "Participants"],
                         [null, "Recording"]
                       ].map(([key, label]) => {
                         const active = callSort?.key === key;
@@ -439,9 +472,16 @@ export default function CallLogsPage({ permissions = [], onVoicemailHeard }) {
                             </span>
                           </td>
                           <td className="px-4 py-3">
-                            <span className={"inline-flex items-center gap-1.5 font-medium " + (outbound ? "text-brand" : "text-accent")}>
-                              {outbound ? <PhoneOutgoing size={14} /> : <PhoneIncoming size={14} />}
-                              {outbound ? "Outbound" : "Inbound"}
+                            <span className="flex flex-col items-start gap-1">
+                              <span
+                                className={
+                                  "inline-flex items-center gap-1.5 font-medium " + (outbound ? "text-brand" : "text-accent")
+                                }
+                              >
+                                {outbound ? <PhoneOutgoing size={14} /> : <PhoneIncoming size={14} />}
+                                {outbound ? "Outbound" : "Inbound"}
+                              </span>
+                              <ConferenceTag participants={call.participants} />
                             </span>
                           </td>
                           <td className="px-4 py-3">
@@ -459,9 +499,6 @@ export default function CallLogsPage({ permissions = [], onVoicemailHeard }) {
                             {connected ? formatSeconds(call.billable_sec) : "—"}
                           </td>
                           <td className="whitespace-nowrap px-4 py-3 text-muted">{formatDate(call.started_at)}</td>
-                          <td className="px-4 py-3">
-                            <ParticipantCells participants={call.participants} />
-                          </td>
                           <td className="px-4 py-3">
                             {call.recording_name && canPlayRecordings ? (
                               <Button
