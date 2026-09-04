@@ -62,6 +62,26 @@ import {
   supervisorTeamAccess,
   supervisorTeamIdsForPrivilege
 } from "./teamAccess.js";
+import {
+  installConsoleCapture,
+  readLogs as readDevLogs,
+  readAmiEvents as readDevAmiEvents,
+  pushAmiEvent as pushDevAmiEvent
+} from "./devConsole.js";
+
+// Mirror every console.* line into an in-memory ring buffer for the Super
+// Admin Developer dashboard (stdout / pm2 logs are untouched). Installed
+// before anything else logs so startup output is captured too.
+installConsoleCapture();
+
+const APP_STARTED_AT = Date.now();
+const APP_VERSION = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8")).version || "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+})();
 
 const app = express();
 app.set("trust proxy", config.trustProxy);
@@ -705,6 +725,70 @@ app.get("/api/health", asyncRoute(async (_req, res) => {
 }));
 
 // ---------------------------
+// Public service status (ringnex.co/status) + Super Admin overrides
+// ---------------------------
+const STATUS_RANK = { operational: 0, maintenance: 1, degraded: 2, down: 3 };
+
+// Merge each component's live health check with any Super Admin override.
+async function computeServiceStatus() {
+  let rows = [];
+  try {
+    [rows] = await db.execute(
+      `SELECT component_key, name, sort_order, override_state, override_message, eta_at, updated_at
+         FROM service_status ORDER BY sort_order ASC, name ASC`
+    );
+  } catch {
+    rows = []; // table not migrated yet — fall back to the built-ins below
+  }
+  if (!rows.length) {
+    rows = [
+      { component_key: "api", name: "API & Application service", sort_order: 10 },
+      { component_key: "database", name: "Database", sort_order: 20 },
+      { component_key: "telephony", name: "Voice / Telephony", sort_order: 30 },
+      { component_key: "realtime", name: "Realtime updates", sort_order: 40 }
+    ];
+  }
+
+  let dbOk = false;
+  try {
+    dbOk = await healthcheck();
+  } catch {
+    dbOk = false;
+  }
+  const liveState = {
+    api: "operational",
+    database: dbOk ? "operational" : "down",
+    telephony: amiConnected ? "operational" : "down",
+    realtime: "operational",
+    dialer: "operational",
+    web: "operational"
+  };
+
+  const components = rows.map((r) => {
+    const auto = liveState[r.component_key] || "operational";
+    const state = r.override_state || auto;
+    return {
+      key: r.component_key,
+      name: r.name,
+      state,
+      overridden: Boolean(r.override_state),
+      message: r.override_message || null,
+      etaAt: r.eta_at ? new Date(r.eta_at).toISOString() : null,
+      updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : null
+    };
+  });
+
+  const worst = components.reduce((acc, c) => Math.max(acc, STATUS_RANK[c.state] ?? 0), 0);
+  const overall = Object.keys(STATUS_RANK).find((k) => STATUS_RANK[k] === worst) || "operational";
+  return { overall, components, checkedAt: new Date().toISOString() };
+}
+
+app.get("/api/public/status", asyncRoute(async (_req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json(await computeServiceStatus());
+}));
+
+// ---------------------------
 // Public (no auth) — pricing + onboarding intake
 // ---------------------------
 // Powers the ringnex.co pricing section and the onboarding form. Only the
@@ -1040,6 +1124,164 @@ app.patch("/api/super-admin/onboarding/:id", authenticateSuperAdmin, asyncRoute(
     [req.params.id]
   );
   res.json({ request: shapeOnboarding(fresh) });
+}));
+
+// ---------------------------
+// Super Admin — Developer dashboard (metrics, live logs, status control)
+// ---------------------------
+app.get("/api/super-admin/dev/overview", authenticateSuperAdmin, asyncRoute(async (_req, res) => {
+  const [[tenants]] = await db.execute(
+    `SELECT COUNT(*) AS total,
+            COALESCE(SUM(status='ACTIVE'),0) AS active,
+            COALESCE(SUM(status='TRIAL'),0) AS trial,
+            COALESCE(SUM(status IN ('SUSPENDED','INACTIVE','CANCELLED')),0) AS suspended
+       FROM tenants`
+  );
+  const [[users]] = await db.execute(
+    `SELECT COUNT(*) AS total,
+            COALESCE(SUM(u.active=1),0) AS active,
+            COALESCE(SUM(u.sip_username IS NOT NULL AND u.sip_username<>''),0) AS sip,
+            COALESCE(SUM(u.sip_username IS NOT NULL AND u.sip_username<>'' AND u.active=1),0) AS sipActive,
+            COALESCE(SUM(COALESCE(r.name,'')='Tenant Owner'),0) AS owners
+       FROM users u LEFT JOIN roles r ON r.id=u.role_id AND r.tenant_id=u.tenant_id`
+  );
+  const [[calls24]] = await db.execute(
+    `SELECT COUNT(*) AS total FROM calls WHERE started_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 DAY)`
+  );
+
+  const liveCalls = tracker.list();
+  const presence = tracker.listPresence();
+  const agentsOnline = presence.filter((p) => p.status === "ONLINE").length;
+  const agentsOnCall = new Set(liveCalls.map((c) => c.agent).filter(Boolean)).size;
+
+  let dbOk = false;
+  try {
+    dbOk = await healthcheck();
+  } catch {
+    dbOk = false;
+  }
+  const mem = process.memoryUsage();
+
+  res.json({
+    tenants: {
+      total: Number(tenants.total || 0),
+      active: Number(tenants.active || 0),
+      trial: Number(tenants.trial || 0),
+      suspended: Number(tenants.suspended || 0)
+    },
+    users: {
+      total: Number(users.total || 0),
+      active: Number(users.active || 0),
+      owners: Number(users.owners || 0),
+      sip: Number(users.sip || 0),
+      sipActive: Number(users.sipActive || 0)
+    },
+    live: {
+      calls: liveCalls.length,
+      agentsOnline,
+      agentsOnCall,
+      presenceTracked: presence.length
+    },
+    calls24h: Number(calls24.total || 0),
+    services: {
+      database: dbOk,
+      ami: amiConnected,
+      amiHost: config.ami?.host || null,
+      amiPort: config.ami?.port || null
+    },
+    process: {
+      version: APP_VERSION,
+      node: process.version,
+      pid: process.pid,
+      uptimeSec: Math.floor((Date.now() - APP_STARTED_AT) / 1000),
+      rssMb: Math.round(mem.rss / 1048576),
+      heapUsedMb: Math.round(mem.heapUsed / 1048576),
+      heapTotalMb: Math.round(mem.heapTotal / 1048576),
+      startedAt: new Date(APP_STARTED_AT).toISOString(),
+      env: config.env || process.env.NODE_ENV || "production"
+    }
+  });
+}));
+
+app.get("/api/super-admin/dev/logs", authenticateSuperAdmin, (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json(readDevLogs(req.query.after, 600));
+});
+
+app.get("/api/super-admin/dev/ami", authenticateSuperAdmin, (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json({ ...readDevAmiEvents(req.query.after, 400), amiConnected });
+});
+
+// AMI live core info — the closest thing to "peeking at Asterisk" without
+// an SSH session. Best-effort: if AMI is down or the action errors we just
+// report that, never 500.
+app.get("/api/super-admin/dev/asterisk", authenticateSuperAdmin, asyncRoute(async (_req, res) => {
+  if (!amiConnected) return res.json({ connected: false, liveCalls: tracker.list().length });
+  let status = {};
+  try {
+    status = await ami.action({ Action: "CoreStatus" });
+  } catch (error) {
+    status = { error: error.message };
+  }
+  res.json({
+    connected: true,
+    liveCalls: tracker.list().length,
+    coreStartupDate: status?.CoreStartupDate || null,
+    coreStartupTime: status?.CoreStartupTime || null,
+    coreReloadDate: status?.CoreReloadDate || null,
+    coreReloadTime: status?.CoreReloadTime || null,
+    coreCurrentCalls: status?.CoreCurrentCalls ?? null,
+    error: status?.error || null
+  });
+}));
+
+app.get("/api/super-admin/status", authenticateSuperAdmin, asyncRoute(async (_req, res) => {
+  const [rows] = await db.execute(
+    `SELECT component_key, name, sort_order, override_state, override_message, eta_at, updated_at
+       FROM service_status ORDER BY sort_order ASC, name ASC`
+  );
+  res.json({
+    components: rows.map((r) => ({
+      key: r.component_key,
+      name: r.name,
+      sortOrder: r.sort_order,
+      overrideState: r.override_state,
+      overrideMessage: r.override_message,
+      etaAt: r.eta_at ? new Date(r.eta_at).toISOString() : null,
+      updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : null
+    }))
+  });
+}));
+
+app.put("/api/super-admin/status/:key", authenticateSuperAdmin, asyncRoute(async (req, res) => {
+  const key = String(req.params.key || "").trim();
+  const [[row]] = await db.execute("SELECT component_key FROM service_status WHERE component_key=? LIMIT 1", [key]);
+  if (!row) return res.status(404).json({ error: "Unknown component" });
+
+  const allowed = ["operational", "degraded", "maintenance", "down"];
+  const raw = req.body.overrideState;
+  // "" / null / "auto" clears the override and reverts to the live check.
+  const overrideState = raw && raw !== "auto" ? String(raw) : null;
+  if (overrideState && !allowed.includes(overrideState)) {
+    return res.status(400).json({ error: "Invalid status" });
+  }
+  const message = req.body.overrideMessage ? String(req.body.overrideMessage).slice(0, 500) : null;
+  let etaAt = null;
+  if (req.body.etaAt) {
+    const d = new Date(req.body.etaAt);
+    if (!Number.isNaN(d.getTime())) etaAt = d.toISOString().slice(0, 19).replace("T", " ");
+  }
+
+  await db.execute(
+    `UPDATE service_status
+        SET override_state=?, override_message=?, eta_at=?, updated_by=?
+      WHERE component_key=?`,
+    [overrideState, overrideState ? message : null, overrideState ? etaAt : null, req.superAdmin.id, key]
+  );
+  await audit(null, "SA_STATUS_UPDATE", "service_status", key,
+    { superAdminId: req.superAdmin.id, overrideState, hasEta: Boolean(etaAt) }, null);
+  res.json(await computeServiceStatus());
 }));
 
 app.post("/api/super-admin/plans", authenticateSuperAdmin, asyncRoute(async (req, res) => {
@@ -3680,6 +3922,8 @@ ami.on("connection", (connected) => {
   }
 });
 ami.on("event", (event) => tracker.handle(event).catch((error) => console.error("AMI event persistence failed", error)));
+// Feed the Developer dashboard's live Asterisk view.
+ami.on("event", (event) => pushDevAmiEvent(event));
 
 ami.on("event", async (event) => {
   if (event.Event !== "Hold" || !event.Channel) return;

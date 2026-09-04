@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ringNex — System Status</title>
+<meta name="description" content="Live operational status of the ringNex platform — application, database, voice/telephony and realtime services, with estimated recovery times for any active incident." />
+<meta name="theme-color" content="#0684BC" />
+<link rel="icon" type="image/png" href="./ringnex.png" />
+<style>
+  :root{
+    --blue:#0684BC; --blue-600:#0571a3; --blue-300:#38a8d8;
+    --orange:#FF7A00; --orange-300:#ff9a3d;
+    --bg:#f5f8fa; --bg-2:#eaf0f4; --surface:#ffffff; --surface-2:#f3f7f9; --surface-3:#e9eff3;
+    --border:#e3e9ee; --border-strong:#cfdae2;
+    --text:#0c1a24; --muted:#566572; --muted-2:#8293a0;
+    --tint:rgba(10,30,45,.035);
+    --header-bg:rgba(255,255,255,.82);
+    --ok:#16a34a; --ok-bg:rgba(22,163,74,.12);
+    --warn:#d97706; --warn-bg:rgba(217,119,6,.14);
+    --info:#0684BC; --info-bg:rgba(6,132,188,.12);
+    --down:#dc2626; --down-bg:rgba(220,38,38,.12);
+    --radius:12px; --radius-sm:8px; --maxw:960px;
+    --ease:cubic-bezier(.22,1,.36,1);
+    --font:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  :root[data-theme="dark"]{
+    --bg:#070a0f; --bg-2:#0b1017; --surface:#101922; --surface-2:#0d151d; --surface-3:#16212c;
+    --border:#1c2833; --border-strong:#293a48;
+    --text:#e9eff5; --muted:#93a7b8; --muted-2:#647a8c;
+    --tint:rgba(255,255,255,.02);
+    --header-bg:rgba(7,10,15,.88);
+    --ok-bg:rgba(22,163,74,.16); --warn-bg:rgba(217,119,6,.18);
+    --info-bg:rgba(6,132,188,.16); --down-bg:rgba(220,38,38,.18);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:1.6;-webkit-font-smoothing:antialiased;min-height:100vh;display:flex;flex-direction:column}
+  a{color:inherit;text-decoration:none}
+  img{max-width:100%;display:block}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px;width:100%}
+
+  .topbar{background:var(--tint);border-bottom:1px solid var(--border);font-size:12.5px}
+  .topbar .wrap{display:flex;align-items:center;justify-content:space-between;height:42px;color:var(--muted-2)}
+  .topbar a{color:var(--muted)}
+  .topbar a:hover{color:var(--text)}
+  .topbar .partner b{color:var(--orange-300)}
+
+  header{position:sticky;top:0;z-index:50;background:var(--header-bg);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+  header .bar{display:flex;align-items:center;justify-content:space-between;height:74px;gap:20px}
+  .brand img{height:34px;width:auto}
+  nav.links{display:flex;gap:26px;align-items:center;margin-left:auto;margin-right:8px}
+  nav.links a{color:var(--muted);font-size:14px;font-weight:500}
+  nav.links a:hover{color:var(--text)}
+  .hgroup{display:flex;align-items:center;gap:12px;flex-shrink:0}
+  .theme-toggle{width:40px;height:40px;border-radius:var(--radius-sm);border:1px solid var(--border-strong);background:var(--tint);color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:color .2s,border-color .2s}
+  .theme-toggle:hover{color:var(--text);border-color:var(--blue-300)}
+  .theme-toggle svg{width:18px;height:18px}
+  .theme-toggle .t-sun{display:none}
+  :root[data-theme="dark"] .theme-toggle .t-sun{display:block}
+  :root[data-theme="dark"] .theme-toggle .t-moon{display:none}
+  .btn{display:inline-flex;align-items:center;gap:9px;font-weight:600;font-size:14px;border-radius:var(--radius-sm);padding:11px 20px;border:1px solid transparent;cursor:pointer;white-space:nowrap;transition:transform .2s var(--ease),box-shadow .3s}
+  .btn svg{width:16px;height:16px}
+  .btn-primary{background:linear-gradient(135deg,var(--blue),var(--blue-600));color:#fff;box-shadow:0 10px 30px -12px rgba(6,132,188,.75)}
+  .btn-primary:hover{transform:translateY(-2px)}
+
+  main{flex:1;padding:48px 0 72px}
+  .banner{border-radius:var(--radius);border:1px solid var(--border);padding:26px 28px;display:flex;align-items:center;gap:20px;background:var(--surface)}
+  .banner .dot{width:46px;height:46px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+  .banner .dot svg{width:24px;height:24px;color:#fff}
+  .banner h1{font-size:22px;font-weight:700;letter-spacing:-.01em}
+  .banner p{color:var(--muted);font-size:13.5px;margin-top:2px}
+  .banner.ok .dot{background:var(--ok)} .banner.ok{border-color:var(--ok)}
+  .banner.warn .dot{background:var(--warn)} .banner.warn{border-color:var(--warn)}
+  .banner.info .dot{background:var(--info)} .banner.info{border-color:var(--info)}
+  .banner.down .dot{background:var(--down)} .banner.down{border-color:var(--down)}
+
+  .updated{margin-top:14px;font-size:12.5px;color:var(--muted-2);display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+  .updated button{background:var(--tint);border:1px solid var(--border-strong);color:var(--muted);border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer}
+  .updated button:hover{color:var(--text)}
+
+  .list{margin-top:26px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--surface)}
+  .row{display:flex;align-items:center;gap:16px;padding:18px 24px;border-top:1px solid var(--border)}
+  .row:first-child{border-top:none}
+  .row .name{font-weight:600;font-size:14.5px}
+  .row .msg{font-size:12.5px;color:var(--muted);margin-top:2px}
+  .row .eta{font-size:12px;color:var(--warn);margin-top:3px;font-weight:600}
+  .row .right{margin-left:auto;flex-shrink:0}
+  .pill{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:700;padding:6px 12px;border-radius:999px;text-transform:uppercase;letter-spacing:.04em}
+  .pill i{width:8px;height:8px;border-radius:50%;background:currentColor}
+  .pill.operational{color:var(--ok);background:var(--ok-bg)}
+  .pill.degraded{color:var(--warn);background:var(--warn-bg)}
+  .pill.maintenance{color:var(--info);background:var(--info-bg)}
+  .pill.down{color:var(--down);background:var(--down-bg)}
+
+  .note{margin-top:22px;font-size:12.5px;color:var(--muted-2);text-align:center}
+  .err{margin-top:26px;border:1px solid var(--down);background:var(--down-bg);color:var(--down);border-radius:var(--radius);padding:18px 22px;font-size:13.5px}
+
+  footer{border-top:1px solid var(--border);padding:32px 0;color:var(--muted-2);font-size:12.5px}
+  footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px}
+  footer .partner b{color:var(--orange-300)}
+  footer a:hover{color:var(--text)}
+
+  @media(max-width:640px){
+    nav.links{display:none}
+    .banner{flex-direction:column;text-align:center;align-items:center}
+    .row{flex-wrap:wrap}
+  }
+</style>
+<script>
+  (function(){try{var t=localStorage.getItem('rnx-theme');document.documentElement.setAttribute('data-theme',(t==='dark'||t==='light')?t:'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();
+</script>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="wrap">
+    <a href="mailto:tech@unisoftwares.com">tech@unisoftwares.com</a>
+    <span class="partner">A <b>Unisoftwares</b> product</span>
+  </div>
+</div>
+
+<header>
+  <div class="wrap bar">
+    <a class="brand" href="./index.html" aria-label="ringNex"><img src="./ringnex.png" alt="ringNex" /></a>
+    <nav class="links">
+      <a href="./index.html#features">Features</a>
+      <a href="./index.html#pricing">Pricing</a>
+      <a href="./guide.html">User Guide</a>
+      <a href="./status.html" aria-current="page">Status</a>
+    </nav>
+    <div class="hgroup">
+      <button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch between light and dark mode">
+        <svg class="t-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="t-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      </button>
+      <a class="btn btn-primary" href="./index.html#download">Download</a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <div id="banner" class="banner info">
+      <div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6v6l4 2"/><circle cx="12" cy="12" r="9"/></svg></div>
+      <div>
+        <h1 id="banner-title">Checking system status…</h1>
+        <p id="banner-sub">Fetching the latest health of every ringNex service.</p>
+      </div>
+    </div>
+
+    <div class="updated">
+      <span id="updated-at">—</span>
+      <button type="button" id="refresh">Refresh now</button>
+      <span>Auto-refreshes every 30s</span>
+    </div>
+
+    <div id="list" class="list" hidden></div>
+    <div id="err" class="err" hidden></div>
+
+    <p class="note">Estimated recovery times are best-effort and may change. For urgent help, email
+      <a href="mailto:tech@unisoftwares.com" style="color:var(--blue-300)">tech@unisoftwares.com</a>.</p>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© <span id="yr"></span> ringNex · Built &amp; supported by Unisoftwares</span>
+    <span class="partner">In partnership with <b>Unisoftwares</b></span>
+  </div>
+</footer>
+
+<script>
+  var API = "https://demoapi.ringnex.co/api/public/status";
+  var root = document.documentElement;
+  document.getElementById('yr').textContent = new Date().getFullYear();
+
+  var tt = document.getElementById('themeToggle');
+  tt.addEventListener('click', function(){
+    var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('rnx-theme', next); } catch(e){}
+  });
+
+  var STATE_LABEL = { operational:"Operational", degraded:"Degraded", maintenance:"Maintenance", down:"Down" };
+  var BANNER = {
+    operational: { cls:"ok",   title:"All systems operational",       sub:"Every ringNex service is running normally." },
+    degraded:    { cls:"warn", title:"Degraded performance",          sub:"Some services are slower or partially affected." },
+    maintenance: { cls:"info", title:"Maintenance in progress",       sub:"Planned work is underway on part of the platform." },
+    down:        { cls:"down", title:"Service disruption",            sub:"One or more services are currently unavailable." }
+  };
+
+  function fmtEta(iso){
+    if(!iso) return "";
+    var d = new Date(iso);
+    if(isNaN(d)) return "";
+    var now = new Date();
+    var mins = Math.round((d - now) / 60000);
+    var when = d.toLocaleString(undefined, { dateStyle:"medium", timeStyle:"short" });
+    if(mins > 1) return "Estimated back by " + when + " (~" + (mins < 90 ? mins + " min" : Math.round(mins/60) + " hr") + ")";
+    if(mins > -60) return "Estimated back by " + when + " (any moment now)";
+    return "Estimated back by " + when;
+  }
+
+  function render(data){
+    document.getElementById('err').hidden = true;
+    var overall = data.overall || "operational";
+    var b = BANNER[overall] || BANNER.operational;
+    var banner = document.getElementById('banner');
+    banner.className = "banner " + b.cls;
+    document.getElementById('banner-title').textContent = b.title;
+    document.getElementById('banner-sub').textContent = b.sub;
+
+    var list = document.getElementById('list');
+    list.hidden = false;
+    list.innerHTML = "";
+    (data.components || []).forEach(function(c){
+      var row = document.createElement('div');
+      row.className = "row";
+      var left = document.createElement('div');
+      left.innerHTML = '<div class="name"></div>';
+      left.querySelector('.name').textContent = c.name;
+      if(c.message){ var m = document.createElement('div'); m.className = "msg"; m.textContent = c.message; left.appendChild(m); }
+      var eta = fmtEta(c.etaAt);
+      if(eta && (c.state === "down" || c.state === "maintenance" || c.state === "degraded")){
+        var e = document.createElement('div'); e.className = "eta"; e.textContent = eta; left.appendChild(e);
+      }
+      var right = document.createElement('div');
+      right.className = "right";
+      right.innerHTML = '<span class="pill ' + c.state + '"><i></i>' + (STATE_LABEL[c.state] || c.state) + '</span>';
+      row.appendChild(left); row.appendChild(right);
+      list.appendChild(row);
+    });
+
+    document.getElementById('updated-at').textContent =
+      "Last checked " + new Date(data.checkedAt || Date.now()).toLocaleTimeString(undefined, { hour:"2-digit", minute:"2-digit", second:"2-digit" });
+  }
+
+  function showError(){
+    document.getElementById('list').hidden = true;
+    var el = document.getElementById('err');
+    el.hidden = false;
+    el.textContent = "Unable to reach the status service right now. If ringNex itself is unreachable for you, this page may be affected too — try again shortly.";
+    var banner = document.getElementById('banner');
+    banner.className = "banner warn";
+    document.getElementById('banner-title').textContent = "Status unavailable";
+    document.getElementById('banner-sub').textContent = "Could not load live status.";
+  }
+
+  function load(){
+    fetch(API, { cache:"no-store" })
+      .then(function(r){ if(!r.ok) throw new Error(r.status); return r.json(); })
+      .then(render)
+      .catch(showError);
+  }
+
+  document.getElementById('refresh').addEventListener('click', load);
+  load();
+  setInterval(load, 30000);
+</script>
+
+</body>
+</html>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Building2, CircleDollarSign, ClipboardList, LayoutDashboard, LogOut, RefreshCw } from "lucide-react";
+import { Building2, CircleDollarSign, ClipboardList, LayoutDashboard, LogOut, RefreshCw, TerminalSquare } from "lucide-react";
 
 import Button from "../../components/ui/Button";
 import Logo from "../../components/ui/Logo";
@@ -10,12 +10,14 @@ import OverviewPage from "./OverviewPage";
 import SetupsPage from "./SetupsPage";
 import PlansPage from "./PlansPage";
 import OnboardingPage from "./OnboardingPage";
+import DeveloperPage from "./DeveloperPage";
 
 const NAV_ITEMS = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "onboarding", label: "Onboarding", icon: ClipboardList },
   { id: "setups", label: "Setups", icon: Building2 },
-  { id: "plans", label: "Plans", icon: CircleDollarSign }
+  { id: "plans", label: "Plans", icon: CircleDollarSign },
+  { id: "developer", label: "Developer", icon: TerminalSquare }
 ];
 
 export default function SuperAdminApp() {
@@ -124,6 +126,7 @@ export default function SuperAdminApp() {
           <SetupsPage plans={plans} tenants={overview.tenants || []} summary={overview.summary || {}} loading={dataLoading} onReload={load} />
         )}
         {tab === "plans" && <PlansPage plans={plans} loading={dataLoading} onReload={load} />}
+        {tab === "developer" && <DeveloperPage />}
       </main>
     </div>
   );
