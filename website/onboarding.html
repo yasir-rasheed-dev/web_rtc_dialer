@@ -69,19 +69,32 @@
 
   .card{max-width:680px;margin:0 auto;border:1px solid var(--border-strong);border-radius:18px;background:var(--surface);overflow:hidden;box-shadow:0 40px 80px -50px rgba(6,25,40,.5)}
 
-  /* ---------- stepper ---------- */
-  .stepper{--pad:48px;position:relative;display:flex;justify-content:space-between;padding:26px 30px 22px;background:linear-gradient(180deg,var(--surface-2),transparent)}
-  .stepper .track{position:absolute;left:var(--pad);right:var(--pad);top:44px;height:2px;background:var(--border-strong);border-radius:2px}
-  .stepper .fill{position:absolute;left:var(--pad);top:44px;height:2px;background:linear-gradient(90deg,var(--blue),var(--blue-300));border-radius:2px;width:0;transition:width .4s var(--ease)}
-  .step{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:8px;background:none;border:0;padding:0;font-family:inherit;cursor:default;flex:1}
-  .step .ic{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:var(--surface);border:2px solid var(--border-strong);color:var(--muted-2);transition:all .25s var(--ease)}
-  .step .ic svg{width:17px;height:17px}
-  .step .ic .num{font-size:13px;font-weight:800}
+  /* ---------- stepper ----------
+     Layout contract: the connecting line runs from the centre of the first
+     icon to the centre of the last. Steps are fixed-width and spread with
+     space-between, so the first/last icon centres land exactly at
+     (side-padding + half a step). --pad = that distance; the JS progress
+     fill uses the same value so it can never drift from the icons. */
+  .stepper{--sw:96px;--sp:30px;--pad:calc(var(--sp) + var(--sw) / 2);--line-y:44px;
+    position:relative;display:flex;align-items:flex-start;justify-content:space-between;
+    padding:26px var(--sp) 22px;background:linear-gradient(180deg,var(--surface-2),transparent)}
+  .stepper .track,.stepper .fill{position:absolute;left:var(--pad);top:var(--line-y);height:2px;border-radius:2px}
+  .stepper .track{right:var(--pad);background:var(--border-strong)}
+  .stepper .fill{width:0;background:linear-gradient(90deg,var(--blue),var(--blue-300));transition:width .4s var(--ease)}
+  /* the <button> is only a fixed-width slot; .si is the real icon-over-label column */
+  .step{appearance:none;-webkit-appearance:none;background:none;border:0;margin:0;padding:0;font:inherit;color:inherit;
+    flex:0 0 var(--sw);width:var(--sw);display:flex;justify-content:center;cursor:default}
+  .step .si{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:9px;text-align:center}
+  .step .ic{flex:none;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;
+    background:var(--surface);border:2px solid var(--border-strong);color:var(--muted-2);
+    transition:background .25s var(--ease),border-color .25s var(--ease),color .25s var(--ease),box-shadow .25s var(--ease)}
+  .step .ic svg{width:16px;height:16px}
+  .step .ic .num{font-size:13px;font-weight:800;line-height:1}
   .step .ic .ck{display:none}
-  .step .lb{font-size:11.5px;font-weight:700;letter-spacing:.02em;color:var(--muted-2);transition:color .2s}
+  .step .lb{font-size:11.5px;font-weight:700;letter-spacing:.02em;line-height:1.15;color:var(--muted-2);
+    white-space:nowrap;transition:color .2s}
   .step.active .ic{border-color:var(--blue);color:var(--blue);box-shadow:0 0 0 5px rgba(6,132,188,.14)}
   .step.active .lb{color:var(--text)}
-  .step.done{cursor:pointer}
   .step.done .ic{background:var(--blue);border-color:var(--blue);color:#fff}
   .step.done .ic .num{display:none}
   .step.done .ic .ck{display:block;animation:pop .3s var(--ease)}
@@ -90,10 +103,8 @@
   .step.clickable:hover .ic{border-color:var(--blue-300)}
   @keyframes pop{0%{transform:scale(.4);opacity:0}60%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
   @media(max-width:560px){
-    .stepper{--pad:34px;padding:22px 16px 18px}
-    .stepper .track,.stepper .fill{top:40px}
-    .step .lb{display:none}
-    .step.active .lb{display:block;position:absolute;top:44px;white-space:nowrap;font-size:11px}
+    .stepper{--sw:58px;--sp:14px;--line-y:40px;padding:22px var(--sp) 16px}
+    .step .lb{font-size:10px;letter-spacing:0}
   }
 
   .pane{padding:30px;animation:paneIn .32s var(--ease)}
@@ -599,9 +610,11 @@
     var b = document.createElement('button');
     b.type = 'button'; b.className = 'step'; b.dataset.s = i;
     b.innerHTML =
-      '<span class="ic"><span class="num">'+(i+1)+'</span>' +
-      '<svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>' +
-      '<span class="lb">'+lbl+'</span>';
+      '<span class="si">' +
+        '<span class="ic"><span class="num">'+(i+1)+'</span>' +
+        '<svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>' +
+        '<span class="lb">'+lbl+'</span>' +
+      '</span>';
     b.addEventListener('click', function(){ if (i <= maxVisited) goStep(i); });
     stepsBar.appendChild(b);
   });
