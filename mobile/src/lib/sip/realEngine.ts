@@ -141,10 +141,13 @@ export function createRealEngine(): CallEngine {
         });
 
         ua.on("newRTCSession", ({ session: s, originator }: any) => {
+          console.log(`[sip] newRTCSession originator=${originator}`);
           if (originator === "remote") {
             // incoming
             wireSession(s);
-            set({ status: "incoming", direction: "in", party: partyOf(s), endedReason: null });
+            const p = partyOf(s);
+            console.log(`[sip] INCOMING from ${p.name} <${p.number}> → status=incoming`);
+            set({ status: "incoming", direction: "in", party: p, endedReason: null });
           } else {
             // outgoing — wireSession already called in startCall(); nothing to do
           }

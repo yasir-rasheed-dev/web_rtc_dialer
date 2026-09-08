@@ -1,4 +1,4 @@
-import { Alert, Linking, Platform } from "react-native";
+import { Alert, Linking, NativeModules, Platform } from "react-native";
 import Constants from "expo-constants";
 import * as Crypto from "expo-crypto";
 
@@ -7,8 +7,14 @@ import * as Crypto from "expo-crypto";
 // overlay is used instead.
 export const callkeepAvailable = Constants.executionEnvironment !== "storeClient";
 
+// The JS package resolves in Metro whether or not the native module is in
+// the app binary, and on Android importing it never throws even when the
+// native side is missing. The only reliable "is it really there" signal is
+// the native module object itself.
+const nativeModulePresent = !!(NativeModules as any).RNCallKeep;
+
 let RNCallKeep: any = null;
-if (callkeepAvailable) {
+if (callkeepAvailable && nativeModulePresent) {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     RNCallKeep = require("react-native-callkeep").default;
@@ -17,9 +23,10 @@ if (callkeepAvailable) {
   }
 }
 
-// True once react-native-callkeep's native module actually loaded. If this
-// is false on a dev build the module didn't link — a rebuild is needed.
-export const callkeepNativeLoaded = !!RNCallKeep;
+// True only when react-native-callkeep's native module is in this build.
+// If false on a dev build the module didn't link — a rebuild is needed and
+// IncomingCall.tsx handles the ring in-app instead.
+export const callkeepNativeLoaded = callkeepAvailable && nativeModulePresent && !!RNCallKeep;
 
 const ANDROID_OPTS = {
   alertTitle: "Allow ringNex to show calls",
