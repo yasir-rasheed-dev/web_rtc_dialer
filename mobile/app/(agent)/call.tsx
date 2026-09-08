@@ -15,8 +15,7 @@ import Animated, {
 
 import { useCall } from "@/store/call";
 import { useElapsed, mmss } from "@/components/useElapsed";
-
-const DTMF = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
+import Keypad from "@/components/Keypad";
 
 function initials(name: string) {
   return name
@@ -140,18 +139,8 @@ export default function CallScreen() {
       <View className="px-6">
         {pad ? (
           <Animated.View entering={FadeIn} className="items-center">
-            <View className="w-full max-w-[300px] flex-row flex-wrap justify-between">
-              {DTMF.map((d) => (
-                <Pressable
-                  key={d}
-                  onPress={() => tap(d)}
-                  className="mb-3 h-[62px] w-[62px] items-center justify-center rounded-full bg-white/12 active:bg-white/25"
-                >
-                  <Text className="text-2xl font-light text-white">{d}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <Pressable onPress={() => setPad(false)} className="mt-1 px-4 py-2">
+            <Keypad variant="dtmf" size={64} onPress={tap} />
+            <Pressable onPress={() => setPad(false)} className="mt-3 px-4 py-2">
               <Text className="text-[14px] font-semibold text-white/70">Hide</Text>
             </Pressable>
           </Animated.View>
