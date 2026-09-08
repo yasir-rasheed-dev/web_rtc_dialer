@@ -67,10 +67,7 @@
     "extra": {
       "apiBase": "https://demoapi.ringnex.co",
       "sipDomain": "asterisk.ringnex.co",
-      "wssUrl": "wss://asterisk.ringnex.co/webrtc-ws",
-      "eas": {
-        "projectId": "REPLACE_WITH_EAS_PROJECT_ID"
-      }
+      "wssUrl": "wss://asterisk.ringnex.co/webrtc-ws"
     }
   }
 }
