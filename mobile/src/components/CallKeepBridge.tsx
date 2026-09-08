@@ -1,9 +1,12 @@
 import { useEffect, useRef } from "react";
 import { useRouter } from "expo-router";
+import * as SecureStore from "expo-secure-store";
 
 import { useCall } from "@/store/call";
-import { CK, callkeepAvailable, initCallKeep, newUuid } from "@/lib/callkeep";
+import { CK, callkeepAvailable, initCallKeep, newUuid, promptCallAccount } from "@/lib/callkeep";
 import type { CallStatus } from "@/lib/sip";
+
+const ACCOUNT_NUDGE_KEY = "ck.accountNudge.v1";
 
 // Bridges the JsSIP call engine to the OS call UI (CallKit /
 // ConnectionService). Mount once, renders nothing. No-op in Expo Go.
@@ -14,7 +17,21 @@ export default function CallKeepBridge() {
   const lastStatus = useRef<CallStatus>("idle");
 
   useEffect(() => {
-    if (callkeepAvailable) initCallKeep();
+    if (!callkeepAvailable) return;
+    (async () => {
+      await initCallKeep();
+      // First run only: if the OS won't show calls natively yet, nudge
+      // the user to the Calling accounts screen. Never nag twice.
+      try {
+        const seen = await SecureStore.getItemAsync(ACCOUNT_NUDGE_KEY);
+        if (!seen) {
+          await SecureStore.setItemAsync(ACCOUNT_NUDGE_KEY, "1");
+          setTimeout(() => promptCallAccount(), 1200);
+        }
+      } catch {
+        /* secure-store unavailable — skip the nudge */
+      }
+    })();
   }, []);
 
   // OS UI actions → engine

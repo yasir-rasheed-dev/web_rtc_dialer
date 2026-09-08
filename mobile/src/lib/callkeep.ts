@@ -1,3 +1,4 @@
+import { Alert, Linking, Platform } from "react-native";
 import Constants from "expo-constants";
 import * as Crypto from "expo-crypto";
 
@@ -16,6 +17,25 @@ if (callkeepAvailable) {
   }
 }
 
+// True once react-native-callkeep's native module actually loaded. If this
+// is false on a dev build the module didn't link — a rebuild is needed.
+export const callkeepNativeLoaded = !!RNCallKeep;
+
+const ANDROID_OPTS = {
+  alertTitle: "Allow ringNex to show calls",
+  alertDescription:
+    "Enable ringNex as a calling account so incoming calls appear full-screen like a normal phone call.",
+  cancelButton: "Later",
+  okButton: "Open settings",
+  additionalPermissions: [],
+  selfManaged: false,
+  foregroundService: {
+    channelId: "co.ringnex.mobile.calls",
+    channelName: "Ringnex calls",
+    notificationTitle: "Ringnex call in progress"
+  }
+};
+
 let didSetup = false;
 export async function initCallKeep() {
   if (!RNCallKeep || didSetup) return;
@@ -27,25 +47,87 @@ export async function initCallKeep() {
         maximumCallGroups: "1",
         maximumCallsPerCallGroup: "1"
       },
-      android: {
-        alertTitle: "Phone account permission",
-        alertDescription: "ringNex needs a phone account to show calls on your lock screen.",
-        cancelButton: "Cancel",
-        okButton: "OK",
-        additionalPermissions: [],
-        selfManaged: false,
-        foregroundService: {
-          channelId: "co.ringnex.mobile.calls",
-          channelName: "Ringnex calls",
-          notificationTitle: "Ringnex call in progress"
-        }
-      }
+      android: ANDROID_OPTS
     });
     RNCallKeep.setAvailable(true);
+    if (Platform.OS === "android") {
+      try {
+        RNCallKeep.registerPhoneAccount({ android: ANDROID_OPTS });
+        RNCallKeep.registerAndroidEvents();
+      } catch {
+        /* older RNCallKeep — setup already registered the account */
+      }
+    }
     didSetup = true;
   } catch (e) {
     console.warn("[callkeep] setup failed:", e);
   }
+}
+
+export type CallAccountStatus = {
+  supported: boolean; // ConnectionService available on this device
+  registered: boolean; // ringNex phone account exists
+  enabled: boolean; // user has toggled it on in system settings
+};
+
+export async function callAccountStatus(): Promise<CallAccountStatus> {
+  if (!RNCallKeep || Platform.OS !== "android") {
+    return { supported: !!RNCallKeep, registered: !!RNCallKeep, enabled: !!RNCallKeep };
+  }
+  try {
+    const [supported, registered, enabled] = await Promise.all([
+      RNCallKeep.isConnectionServiceAvailable().catch(() => false),
+      RNCallKeep.hasPhoneAccount().catch(() => false),
+      RNCallKeep.checkPhoneAccountEnabled().catch(() => false)
+    ]);
+    return { supported: !!supported, registered: !!registered, enabled: !!enabled };
+  } catch {
+    return { supported: false, registered: false, enabled: false };
+  }
+}
+
+/** Open the OS screen where the user enables ringNex as a calling account.
+ *  Falls back through a few intents that vary by Android OEM. */
+export async function openCallAccountSettings() {
+  if (!RNCallKeep || Platform.OS !== "android") return;
+  try {
+    RNCallKeep.registerPhoneAccount({ android: ANDROID_OPTS });
+  } catch {
+    /* noop */
+  }
+  try {
+    RNCallKeep.openPhoneAccounts();
+    return;
+  } catch {
+    /* try next */
+  }
+  try {
+    RNCallKeep.openPhoneAccountSettings();
+    return;
+  } catch {
+    /* try next */
+  }
+  Linking.openSettings().catch(() => {});
+}
+
+/** One-shot: if calls can't be shown natively yet, explain and offer to
+ *  open settings. `onlyIfNeeded` skips the prompt when already enabled. */
+export async function promptCallAccount(opts?: { force?: boolean }) {
+  if (!RNCallKeep || Platform.OS !== "android") return;
+  const st = await callAccountStatus();
+  if (st.enabled && !opts?.force) return;
+  Alert.alert(
+    "Show calls like a phone",
+    st.supported
+      ? "Turn on ringNex under Calling accounts so incoming calls open full-screen even when the app is in the background."
+      : "This device limits third-party calling accounts. Incoming calls will still ring inside the app.",
+    st.supported
+      ? [
+          { text: "Later", style: "cancel" },
+          { text: "Open settings", onPress: () => openCallAccountSettings() }
+        ]
+      : [{ text: "OK" }]
+  );
 }
 
 export function newUuid(): string {

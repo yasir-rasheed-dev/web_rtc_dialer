@@ -1,11 +1,75 @@
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import { AppState, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { useSession } from "@/store/session";
 import { useChat } from "@/store/chat";
 import { useTheme } from "@/theme/ThemeProvider";
+import {
+  callAccountStatus,
+  callkeepAvailable,
+  callkeepNativeLoaded,
+  openCallAccountSettings,
+  type CallAccountStatus
+} from "@/lib/callkeep";
+
+function CallAccountRow() {
+  const [st, setSt] = useState<CallAccountStatus | null>(null);
+
+  const refresh = useCallback(() => {
+    callAccountStatus().then(setSt);
+  }, []);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
+  );
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (s) => s === "active" && refresh());
+    return () => sub.remove();
+  }, [refresh]);
+
+  if (!callkeepAvailable) return null;
+
+  const enabled = !!st?.enabled;
+  const unsupported = st != null && !st.supported;
+  const label = !callkeepNativeLoaded
+    ? "Not available in this build"
+    : enabled
+      ? "On — calls show full-screen"
+      : unsupported
+        ? "Not supported on this device"
+        : "Off — tap to enable";
+
+  return (
+    <Pressable
+      onPress={() => {
+        openCallAccountSettings();
+      }}
+      disabled={!callkeepNativeLoaded || enabled || unsupported}
+      className="mx-4 mb-4 flex-row items-center gap-3 rounded-2xl border border-border bg-surface p-4 active:bg-surface-2"
+    >
+      <View
+        className={`h-9 w-9 items-center justify-center rounded-full ${enabled ? "bg-emerald-500/15" : "bg-amber-500/15"}`}
+      >
+        <Ionicons name="call" size={18} color={enabled ? "#10b981" : "#f59e0b"} />
+      </View>
+      <View className="flex-1">
+        <Text className="text-[15px] font-semibold text-text">Calling account</Text>
+        <Text className="mt-0.5 text-[12px] text-muted">{label}</Text>
+      </View>
+      {!enabled && callkeepNativeLoaded && !unsupported ? (
+        <Ionicons name="chevron-forward" size={18} color="#8293a0" />
+      ) : null}
+    </Pressable>
+  );
+}
 
 const THEME_OPTIONS: { key: "light" | "dark" | "system"; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { key: "light", label: "Light", icon: "sunny" },
@@ -50,6 +114,8 @@ export default function SettingsScreen() {
           <Ionicons name="chevron-forward" size={18} color="#8293a0" />
         </Pressable>
       ) : null}
+
+      {isAgent ? <CallAccountRow /> : null}
 
       <Text className="px-5 pb-2 pt-2 text-[12px] font-bold uppercase tracking-wide text-muted">Appearance</Text>
       <View className="mx-4 mb-4 flex-row gap-2 rounded-2xl border border-border bg-surface p-2">
