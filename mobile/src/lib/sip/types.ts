@@ -2,6 +2,8 @@ export type CallStatus = "idle" | "dialing" | "ringing" | "incoming" | "active" 
 
 export type Party = { name: string; number: string };
 
+export type TransferState = { phase: "consulting" | "completing"; target: string } | null;
+
 export type CallSnapshot = {
   status: CallStatus;
   direction: "in" | "out" | null;
@@ -11,6 +13,7 @@ export type CallSnapshot = {
   speaker: boolean;
   connectedAt: number | null; // epoch ms when the call went active
   endedReason: string | null;
+  transfer: TransferState; // warm (attended) transfer in progress
 };
 
 export type SipConfig = {
@@ -45,6 +48,12 @@ export interface CallEngine {
   setSpeaker(s: boolean): void;
   sendDtmf(digit: string): void;
 
+  // warm (attended) transfer: hold the current call, consult the target,
+  // then either complete (bridge them, drop yourself) or cancel.
+  startWarmTransfer(target: string): void;
+  completeTransfer(): void;
+  cancelWarmTransfer(): void;
+
   /** dev helper — only the simulated engine implements this */
   simulateIncoming?(party: Party): void;
 }
@@ -57,5 +66,6 @@ export const IDLE: CallSnapshot = {
   held: false,
   speaker: false,
   connectedAt: null,
-  endedReason: null
+  endedReason: null,
+  transfer: null
 };

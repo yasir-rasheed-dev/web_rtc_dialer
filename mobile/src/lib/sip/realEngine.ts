@@ -27,6 +27,7 @@ function partyOf(session: any): Party {
 export function createRealEngine(): CallEngine {
   let ua: any = null;
   let session: any = null;
+  let consultSession: any = null;
   let cfg: SipConfig | null = null;
   let snap: CallSnapshot = { ...IDLE };
   let reg: Registration = "offline";
@@ -259,6 +260,79 @@ export function createRealEngine(): CallEngine {
       } catch {
         /* noop */
       }
+    },
+
+    startWarmTransfer(target: string) {
+      if (!ua || !cfg || !session) return;
+      const to = `sip:${sipUser(target)}@${cfg.domain}`;
+      console.log(`[sip] warm transfer → consult ${to}`);
+      try {
+        session.hold();
+      } catch {
+        /* noop */
+      }
+      set({ held: true, status: "held", transfer: { phase: "consulting", target } });
+      try {
+        consultSession = ua.call(to, callOpts());
+        consultSession.on("ended", () => {
+          consultSession = null;
+          // consult dropped → resume the held call
+          if (snap.transfer) {
+            try {
+              session?.unhold();
+            } catch {
+              /* noop */
+            }
+            set({ held: false, status: "active", transfer: null });
+          }
+        });
+        consultSession.on("failed", (e: any) => {
+          console.warn("[sip] consult failed:", e?.cause);
+          consultSession = null;
+          try {
+            session?.unhold();
+          } catch {
+            /* noop */
+          }
+          set({ held: false, status: "active", transfer: null });
+        });
+      } catch (e) {
+        console.warn("[sip] consult call threw:", e);
+        try {
+          session?.unhold();
+        } catch {
+          /* noop */
+        }
+        set({ held: false, status: "active", transfer: null });
+      }
+    },
+    completeTransfer() {
+      if (!session || !consultSession) return;
+      console.log("[sip] completing attended transfer");
+      set({ transfer: { phase: "completing", target: snap.transfer?.target || "" } });
+      try {
+        // JsSIP attended transfer: REFER with Replaces pointing at the consult leg
+        session.refer(consultSession);
+      } catch (e) {
+        console.warn("[sip] refer threw:", e);
+      }
+      stopAudio();
+      set({ status: "ended", endedReason: "transferred", transfer: null });
+      scheduleReset();
+    },
+    cancelWarmTransfer() {
+      try {
+        consultSession?.terminate();
+      } catch {
+        /* noop */
+      }
+      consultSession = null;
+      try {
+        session?.unhold();
+      } catch {
+        /* noop */
+      }
+      set({ held: false, status: "active", transfer: null });
     }
   };
 }

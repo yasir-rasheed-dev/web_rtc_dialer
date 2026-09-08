@@ -93,6 +93,24 @@ export function createMockEngine(): CallEngine {
       /* no-op in the mock */
     },
 
+    startWarmTransfer(target: string) {
+      set({ held: true, status: "held", transfer: { phase: "consulting", target } });
+      // pretend the consult call connects
+      later(1400, () => {
+        if (snap.transfer?.phase === "consulting") emit();
+      });
+    },
+    completeTransfer() {
+      set({ transfer: { phase: "completing", target: snap.transfer?.target || "" } });
+      later(700, () => {
+        set({ status: "ended", endedReason: "transferred", transfer: null });
+        reset();
+      });
+    },
+    cancelWarmTransfer() {
+      set({ held: false, status: "active", transfer: null });
+    },
+
     simulateIncoming(party: Party) {
       clearTimers();
       set({ status: "incoming", direction: "in", party, endedReason: null });

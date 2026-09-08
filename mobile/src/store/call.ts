@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { getEngine } from "@/lib/sip";
 import type { CallSnapshot, Party, Registration, SipConfig } from "@/lib/sip";
 import { IDLE } from "@/lib/sip";
+import { lookupNumber } from "@/lib/contacts";
 
 type CallState = {
   snap: CallSnapshot;
@@ -19,11 +20,31 @@ type CallState = {
   toggleHold: () => void;
   toggleSpeaker: () => void;
   dtmf: (d: string) => void;
+  startWarmTransfer: (target: string) => void;
+  completeTransfer: () => void;
+  cancelWarmTransfer: () => void;
   simulateIncoming: (party: Party) => void;
   isReal: () => boolean;
 };
 
 let unsub: Array<() => void> = [];
+let resolvedFor = ""; // number we last ran a contact lookup for
+
+// When a call's party has only a number (no saved name), resolve it
+// against the tenant's contacts/agents and patch the snapshot.
+function resolveParty(party: Party | null) {
+  if (!party || !party.number) return;
+  if (party.name && party.name !== party.number) return;
+  if (resolvedFor === party.number) return;
+  resolvedFor = party.number;
+  lookupNumber(party.number).then((hit) => {
+    if (!hit?.name) return;
+    const cur = useCall.getState().snap.party;
+    if (cur && cur.number === party.number) {
+      useCall.setState((st) => ({ snap: { ...st.snap, party: { ...st.snap.party!, name: hit.name! } } }));
+    }
+  });
+}
 
 export const useCall = create<CallState>((set, get) => ({
   snap: { ...IDLE },
@@ -35,7 +56,11 @@ export const useCall = create<CallState>((set, get) => ({
     const e = getEngine();
     unsub.forEach((u) => u());
     unsub = [
-      e.onCall((snap) => set({ snap })),
+      e.onCall((snap) => {
+        set({ snap });
+        resolveParty(snap.party);
+        if (snap.status === "idle") resolvedFor = "";
+      }),
       e.onRegistration((registration) => set({ registration }))
     ];
     e.connect(cfg);
@@ -66,6 +91,9 @@ export const useCall = create<CallState>((set, get) => ({
     e.setSpeaker(!e.getSnapshot().speaker);
   },
   dtmf: (d) => getEngine().sendDtmf(d),
+  startWarmTransfer: (target) => getEngine().startWarmTransfer(target),
+  completeTransfer: () => getEngine().completeTransfer(),
+  cancelWarmTransfer: () => getEngine().cancelWarmTransfer(),
   simulateIncoming: (party) => getEngine().simulateIncoming?.(party),
   isReal: () => getEngine().isReal
 }));

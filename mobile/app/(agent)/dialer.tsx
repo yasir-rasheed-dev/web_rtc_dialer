@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -9,6 +9,7 @@ import Animated, { FadeIn, LinearTransition } from "react-native-reanimated";
 import { useSession } from "@/store/session";
 import { useCall } from "@/store/call";
 import { api } from "@/lib/api";
+import { lookupNumber, contactSubtitle, type ContactHit } from "@/lib/contacts";
 import Keypad, { KEYPAD_GAP_X } from "@/components/Keypad";
 
 const STATUS_CYCLE = ["READY", "PAUSED", "WRAP_UP"] as const;
@@ -37,6 +38,17 @@ export default function Dialer() {
   const { start, simulateIncoming, isReal, registration } = useCall();
 
   const [number, setNumber] = useState("");
+  const [hit, setHit] = useState<ContactHit | null>(null);
+
+  // resolve the typed number to a saved contact / agent (debounced)
+  useEffect(() => {
+    setHit(null);
+    if (number.replace(/\D/g, "").length < 3) return;
+    const id = setTimeout(() => {
+      lookupNumber(number).then((h) => setHit(h));
+    }, 350);
+    return () => clearTimeout(id);
+  }, [number]);
   const [agentStatus, setAgentStatus] = useState<(typeof STATUS_CYCLE)[number]>(
     STATUS_CYCLE.includes(session?.agentStatus as any) ? (session!.agentStatus as any) : "READY"
   );
@@ -84,7 +96,7 @@ export default function Dialer() {
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    start(number.trim());
+    start(number.trim(), hit?.name || undefined);
     router.push("/(agent)/call");
   };
 
@@ -142,16 +154,30 @@ export default function Dialer() {
         <View style={{ width: 40 }} />
         <View className="flex-1 items-center">
           {hasInput ? (
-            <Animated.Text
-              entering={FadeIn.duration(120)}
-              layout={LinearTransition}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              allowFontScaling={false}
-              className="text-center text-4xl font-light tracking-wide text-text"
-            >
-              {display}
-            </Animated.Text>
+            <>
+              <Animated.Text
+                entering={FadeIn.duration(120)}
+                layout={LinearTransition}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                allowFontScaling={false}
+                className="text-center text-4xl font-light tracking-wide text-text"
+              >
+                {display}
+              </Animated.Text>
+              {hit?.name ? (
+                <Animated.Text
+                  entering={FadeIn.duration(150)}
+                  numberOfLines={1}
+                  className="mt-1 text-center text-[13px] font-semibold text-brand"
+                >
+                  {hit.name}
+                  {contactSubtitle(hit) ? (
+                    <Text className="font-normal text-muted"> · {contactSubtitle(hit)}</Text>
+                  ) : null}
+                </Animated.Text>
+              ) : null}
+            </>
           ) : (
             <Text className="text-center text-base text-muted">Enter a number</Text>
           )}
