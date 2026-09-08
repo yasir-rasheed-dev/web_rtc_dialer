@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Light (default) — mirrors frontend/src design tokens */
+:root {
+  --rn-bg: 245 248 250;
+  --rn-surface: 255 255 255;
+  --rn-surface-2: 243 247 249;
+  --rn-border: 227 233 238;
+  --rn-text: 12 26 36;
+  --rn-muted: 86 101 114;
+}
+
+/* Dark — applied when the root element carries the `dark` class
+   (NativeWind sets it from the color scheme / our theme toggle) */
+.dark:root {
+  --rn-bg: 7 10 15;
+  --rn-surface: 16 25 34;
+  --rn-surface-2: 13 21 29;
+  --rn-border: 28 40 51;
+  --rn-text: 233 239 245;
+  --rn-muted: 147 167 184;
+}
