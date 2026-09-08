@@ -1,5 +1,6 @@
 import {
   ref,
+  get,
   push,
   update,
   onValue,
@@ -118,6 +119,23 @@ export function countUnread(messages: Record<string, any> | null, myId: string, 
     if (t > seenTs) n += 1;
   }
   return n;
+}
+
+// Expo push tokens for a set of users (stored at tenants/<t>/push/<uid>).
+export async function pushTokensFor(tenantId: string, uids: string[]): Promise<string[]> {
+  const out: string[] = [];
+  await Promise.all(
+    [...new Set(uids)].map(async (uid) => {
+      try {
+        const snap = await get(ref(rtdb, `tenants/${tenantId}/push/${uid}/token`));
+        const t = snap.val();
+        if (typeof t === "string" && t) out.push(t);
+      } catch {
+        /* noop */
+      }
+    })
+  );
+  return out;
 }
 
 // --- upload a file for an attachment (reuses the backend endpoint) ---

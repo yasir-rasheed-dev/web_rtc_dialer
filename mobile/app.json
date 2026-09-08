@@ -58,6 +58,20 @@
           "cameraPermission": false,
           "microphonePermission": "ringNex needs the microphone for calls."
         }
+      ],
+      "@config-plugins/react-native-callkeep",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "ringNex needs photo access to send images in Team Chat.",
+          "cameraPermission": "ringNex needs the camera to take photos for Team Chat."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#0684BC"
+        }
       ]
     ],
     "experiments": {

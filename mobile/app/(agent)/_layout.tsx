@@ -8,6 +8,8 @@ import { useSession } from "@/store/session";
 import { useCall } from "@/store/call";
 import { useChat } from "@/store/chat";
 import IncomingCall from "@/components/IncomingCall";
+import CallKeepBridge from "@/components/CallKeepBridge";
+import PushBridge from "@/components/PushBridge";
 
 export default function AgentLayout() {
   const { resolved } = useTheme();
@@ -77,6 +79,8 @@ export default function AgentLayout() {
       </Tabs>
 
       <IncomingCall />
+      <CallKeepBridge />
+      <PushBridge />
     </View>
   );
 }
