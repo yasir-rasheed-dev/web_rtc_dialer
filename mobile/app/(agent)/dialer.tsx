@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, {
@@ -16,6 +17,10 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { useSession } from "@/store/session";
+import { useCall } from "@/store/call";
+import { api } from "@/lib/api";
+
+const STATUS_CYCLE = ["READY", "PAUSED", "WRAP_UP"] as const;
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -82,11 +87,32 @@ function DialKey({ item, onPress }: { item: { d: string; sub?: string }; onPress
 
 export default function Dialer() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { session } = useSession();
+  const { start, simulateIncoming, isReal } = useCall();
   const [number, setNumber] = useState("");
+  const [agentStatus, setAgentStatus] = useState<(typeof STATUS_CYCLE)[number]>(
+    (session?.agentStatus as any) && STATUS_CYCLE.includes(session?.agentStatus as any)
+      ? (session!.agentStatus as any)
+      : "READY"
+  );
 
-  const status = STATUS[(session as any)?.agentStatus as keyof typeof STATUS] ?? STATUS.READY;
+  const status = STATUS[agentStatus] ?? STATUS.READY;
   const hasInput = number.length > 0;
+
+  const cycleStatus = () => {
+    Haptics.selectionAsync();
+    const next = STATUS_CYCLE[(STATUS_CYCLE.indexOf(agentStatus) + 1) % STATUS_CYCLE.length];
+    setAgentStatus(next);
+    api("/agent/status", { method: "POST", body: { status: next } }).catch(() => undefined);
+  };
+
+  const placeCall = () => {
+    if (!hasInput) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    start(number.trim());
+    router.push("/(agent)/call");
+  };
 
   // Call button: idle glow when a number is ready to dial.
   const glow = useSharedValue(0);
@@ -135,11 +161,25 @@ export default function Dialer() {
             {session?.sip?.username ? `Ext. ${session.sip.username}` : "No SIP account"}
           </Text>
         </View>
-        <View className="flex-row items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1">
+        <Pressable
+          onPress={cycleStatus}
+          className="flex-row items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1.5 active:opacity-70"
+        >
           <View style={{ backgroundColor: status.dot }} className="h-2 w-2 rounded-full" />
           <Text className="text-[12px] font-semibold text-text">{status.label}</Text>
-        </View>
+          <Ionicons name="chevron-down" size={12} color="#8293a0" />
+        </Pressable>
       </View>
+
+      {!isReal() ? (
+        <Pressable
+          onPress={() => simulateIncoming({ name: "Test Caller", number: "+92 300 1234567" })}
+          className="mx-5 mb-1 flex-row items-center justify-center gap-1.5 rounded-lg border border-dashed border-border py-1.5 active:opacity-60"
+        >
+          <Ionicons name="flask-outline" size={13} color="#8293a0" />
+          <Text className="text-[11px] font-medium text-muted">Simulate incoming call (Expo Go)</Text>
+        </Pressable>
+      ) : null}
 
       {/* number display */}
       <View className="min-h-[112px] flex-1 items-center justify-center px-6">
@@ -172,10 +212,7 @@ export default function Dialer() {
 
           <AnimatedPressable
             disabled={!hasInput}
-            onPress={() => {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              /* Phase 1: startCall(number) → router.push(`/(agent)/call/${id}`) */
-            }}
+            onPress={placeCall}
             style={[
               callStyle,
               { shadowColor: "#16a34a", shadowRadius: 16, shadowOffset: { width: 0, height: 6 } }

@@ -7,11 +7,14 @@ export type Session = {
   role?: { id: string; name: string };
   permissions: string[];
   sip?: {
-    username?: string;
-    password?: string;
-    domain?: string;
-    wssUrl?: string;
+    username: string;
+    password: string;
+    extension?: string;
+    displayName?: string;
+    domain: string;
+    wssUrl: string;
   } | null;
+  agentStatus?: string;
 };
 
 export function can(session: Session | null, perm: string): boolean {
