@@ -8,14 +8,19 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "backgroundColor": "#0684BC",
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "co.ringnex.mobile",
       "buildNumber": "1",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "ringNex needs the microphone for calls.",
-        "UIBackgroundModes": ["audio", "voip"],
+        "UIBackgroundModes": [
+          "audio",
+          "voip"
+        ],
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -46,10 +51,15 @@
       [
         "expo-build-properties",
         {
-          "ios": { "deploymentTarget": "15.1" },
-          "android": { "minSdkVersion": 24 }
+          "ios": {
+            "deploymentTarget": "15.1"
+          },
+          "android": {
+            "minSdkVersion": 24
+          }
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true
@@ -58,7 +68,9 @@
       "apiBase": "https://demoapi.ringnex.co",
       "sipDomain": "asterisk.ringnex.co",
       "wssUrl": "wss://asterisk.ringnex.co/webrtc-ws",
-      "eas": { "projectId": "REPLACE_WITH_EAS_PROJECT_ID" }
+      "eas": {
+        "projectId": "REPLACE_WITH_EAS_PROJECT_ID"
+      }
     }
   }
 }

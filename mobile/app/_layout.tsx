@@ -23,7 +23,8 @@ function AuthGate() {
 
   useEffect(() => {
     bootstrap();
-    return onAuthExpired(() => useSession.setState({ session: null, status: "guest" }));
+    const off = onAuthExpired(() => useSession.setState({ session: null, status: "guest" }));
+    return () => off();
   }, []);
 
   useEffect(() => {

@@ -16,9 +16,11 @@ let refreshInFlight: Promise<string | null> | null = null;
 const listeners = new Set<() => void>();
 
 /** Fired when the session is dead for good — the app should drop to login. */
-export function onAuthExpired(cb: () => void) {
+export function onAuthExpired(cb: () => void): () => void {
   listeners.add(cb);
-  return () => listeners.delete(cb);
+  return () => {
+    listeners.delete(cb);
+  };
 }
 function emitAuthExpired() {
   listeners.forEach((l) => {
