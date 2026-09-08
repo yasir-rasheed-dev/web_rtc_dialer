@@ -72,19 +72,24 @@ export default function CallScreen() {
   const ringing = snap.status === "dialing" || snap.status === "ringing";
   const party = snap.party;
 
-  // dismiss logic: leave when the call ends, or if it never actually
-  // started (status stayed "idle" — e.g. SIP not registered yet).
+  // dismiss logic: close the moment the call ends. If it never started
+  // (status stayed "idle" — SIP not registered) bail out after a short
+  // grace so a stray push doesn't leave a dead screen up.
   const startedRef = useRef(false);
   useEffect(() => {
-    if (snap.status !== "idle") startedRef.current = true;
+    if (snap.status !== "idle" && snap.status !== "ended") startedRef.current = true;
+
     if (snap.status === "ended") {
-      const t = setTimeout(() => router.back(), 900);
+      const t = setTimeout(() => router.back(), 180);
       return () => clearTimeout(t);
     }
     if (snap.status === "idle") {
-      const t = setTimeout(() => {
-        if (useCall.getState().snap.status === "idle") router.back();
-      }, 1500);
+      const t = setTimeout(
+        () => {
+          if (useCall.getState().snap.status === "idle") router.back();
+        },
+        startedRef.current ? 0 : 800
+      );
       return () => clearTimeout(t);
     }
   }, [snap.status]);
