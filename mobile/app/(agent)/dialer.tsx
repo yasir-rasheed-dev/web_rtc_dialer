@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Pressable, Text, useWindowDimensions, View } from "react-native";
+import { Alert, Pressable, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -34,7 +34,7 @@ export default function Dialer() {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const { session } = useSession();
-  const { start, simulateIncoming, isReal } = useCall();
+  const { start, simulateIncoming, isReal, registration } = useCall();
 
   const [number, setNumber] = useState("");
   const [agentStatus, setAgentStatus] = useState<(typeof STATUS_CYCLE)[number]>(
@@ -69,12 +69,32 @@ export default function Dialer() {
     setNumber("");
   };
 
+  const canCall = !isReal() || registration === "registered";
+
   const placeCall = () => {
     if (!hasInput) return;
+    if (isReal() && registration !== "registered") {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      Alert.alert(
+        "Not connected",
+        registration === "failed"
+          ? "SIP registration failed. Check your account / network and try again."
+          : "Still connecting to the call server — try again in a moment."
+      );
+      return;
+    }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     start(number.trim());
     router.push("/(agent)/call");
   };
+
+  const REG_UI: Record<string, { label: string; dot: string }> = {
+    registered: { label: "Connected", dot: "#16a34a" },
+    connecting: { label: "Connecting…", dot: "#d97706" },
+    failed: { label: "Not connected", dot: "#dc2626" },
+    offline: { label: "Offline", dot: "#8293a0" }
+  };
+  const regUi = REG_UI[registration] ?? REG_UI.offline;
 
   const display = useMemo(() => prettyNumber(number), [number]);
 
@@ -84,9 +104,18 @@ export default function Dialer() {
       <View className="flex-row items-center justify-between pb-1 pt-2">
         <View>
           <Text className="text-[15px] font-bold text-text">{session?.user.name ?? "Agent"}</Text>
-          <Text className="text-[11px] text-muted">
-            {session?.sip?.username ? `Ext. ${session.sip.username}` : "No SIP account"}
-          </Text>
+          <View className="mt-0.5 flex-row items-center gap-1.5">
+            <Text className="text-[11px] text-muted">
+              {session?.sip?.extension ? `Ext. ${session.sip.extension}` : session?.sip?.username ?? "No SIP account"}
+            </Text>
+            {isReal() ? (
+              <>
+                <Text className="text-[10px] text-muted">·</Text>
+                <View style={{ backgroundColor: regUi.dot }} className="h-1.5 w-1.5 rounded-full" />
+                <Text className="text-[10px] font-medium text-muted">{regUi.label}</Text>
+              </>
+            ) : null}
+          </View>
         </View>
         <Pressable
           onPress={cycleStatus}
@@ -152,10 +181,13 @@ export default function Dialer() {
             height: keySize,
             shadowColor: "#16a34a",
             shadowRadius: 14,
-            shadowOpacity: hasInput ? 0.5 : 0,
+            shadowOpacity: hasInput && canCall ? 0.5 : 0,
             shadowOffset: { width: 0, height: 6 }
           }}
-          className={"items-center justify-center rounded-full " + (hasInput ? "bg-success" : "bg-success/25")}
+          className={
+            "items-center justify-center rounded-full " +
+            (hasInput ? (canCall ? "bg-success" : "bg-success/40") : "bg-success/25")
+          }
         >
           <Ionicons name="call" size={Math.round(keySize * 0.42)} color="#fff" />
         </Pressable>

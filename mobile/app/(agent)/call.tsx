@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -72,11 +72,19 @@ export default function CallScreen() {
   const ringing = snap.status === "dialing" || snap.status === "ringing";
   const party = snap.party;
 
-  // leave the screen shortly after the call ends
+  // dismiss logic: leave when the call ends, or if it never actually
+  // started (status stayed "idle" — e.g. SIP not registered yet).
+  const startedRef = useRef(false);
   useEffect(() => {
-    if (snap.status === "idle") router.back();
+    if (snap.status !== "idle") startedRef.current = true;
     if (snap.status === "ended") {
       const t = setTimeout(() => router.back(), 900);
+      return () => clearTimeout(t);
+    }
+    if (snap.status === "idle") {
+      const t = setTimeout(() => {
+        if (useCall.getState().snap.status === "idle") router.back();
+      }, 1500);
       return () => clearTimeout(t);
     }
   }, [snap.status]);

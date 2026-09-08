@@ -1,4 +1,4 @@
-import { NativeModules } from "react-native";
+import Constants from "expo-constants";
 
 import { CallEngine } from "./types";
 import { createMockEngine } from "./mockEngine";
@@ -7,27 +7,33 @@ export * from "./types";
 
 // One engine per app session.
 //
-//  - Dev / production build with react-native-webrtc → the real sip.js
-//    engine (./realEngine): actual SIP registration + WebRTC audio.
-//  - Expo Go (no WebRTC native module) → the simulated engine, so the
-//    whole call UI still runs.
+//  - Dev / production build → the real sip.js + react-native-webrtc engine
+//    (./realEngine): actual SIP registration + WebRTC audio.
+//  - Expo Go (no native WebRTC) → the simulated engine.
 //
-// Same CallEngine interface either way — no screen changes between them.
+// Expo Go reports executionEnvironment "storeClient"; a dev/standalone
+// build reports "standalone" or "bare". That's the reliable signal —
+// NativeModules.WebRTCModule is undefined under the new architecture even
+// when react-native-webrtc IS present (it's a TurboModule).
 let engine: CallEngine | null = null;
+
+const IN_EXPO_GO = Constants.executionEnvironment === "storeClient";
 
 export function getEngine(): CallEngine {
   if (engine) return engine;
-  const hasWebRTC = Boolean((NativeModules as any)?.WebRTCModule);
-  if (hasWebRTC) {
+  if (!IN_EXPO_GO) {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { createRealEngine } = require("./realEngine");
       engine = createRealEngine();
-    } catch {
+      console.log("[sip] using REAL engine (react-native-webrtc)");
+    } catch (e) {
+      console.warn("[sip] real engine failed to load, falling back to mock:", e);
       engine = createMockEngine();
     }
   } else {
     engine = createMockEngine();
+    console.log("[sip] using SIMULATED engine (Expo Go)");
   }
   return engine!;
 }

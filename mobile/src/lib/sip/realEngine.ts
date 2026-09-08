@@ -1,19 +1,25 @@
 import { registerGlobals } from "react-native-webrtc";
 import InCallManager from "react-native-incall-manager";
-import { SimpleUser } from "sip.js/lib/platform/web";
 
 import { CallEngine, CallSnapshot, IDLE, Party, Registration, SipConfig } from "./types";
 
-// react-native-webrtc polyfills RTCPeerConnection / MediaStream /
-// navigator.mediaDevices onto the RN global scope so sip.js's web platform
-// (SimpleUser) can run unchanged. Must happen before SimpleUser loads.
+// sip.js's web platform touches `window` in a few spots; RN has no DOM.
+// Point it at the global object before sip.js is imported. react-native-
+// webrtc's registerGlobals() then adds RTCPeerConnection / MediaStream /
+// navigator.mediaDevices so SimpleUser can run unchanged.
+const g: any = globalThis as any;
+if (typeof g.window === "undefined") g.window = g;
+if (typeof g.navigator === "undefined") g.navigator = {};
 registerGlobals();
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { SimpleUser } = require("sip.js/lib/platform/web");
 
 // keep a trailing "+ * #" and digits only for the SIP user part
 const sipUser = (n: string) => n.replace(/[^\d+*#]/g, "");
 
 export function createRealEngine(): CallEngine {
-  let user: SimpleUser | null = null;
+  let user: any = null;
   let cfg: SipConfig | null = null;
   let snap: CallSnapshot = { ...IDLE };
   let reg: Registration = "offline";
@@ -72,6 +78,7 @@ export function createRealEngine(): CallEngine {
       cfg = c;
       reg = "connecting";
       emitReg();
+      console.log(`[sip] connect → ${c.wssUrl}  aor sip:${c.username}@${c.domain}`);
       try {
         user = new SimpleUser(c.wssUrl, {
           aor: `sip:${c.username}@${c.domain}`,
@@ -85,11 +92,14 @@ export function createRealEngine(): CallEngine {
           reconnectionAttempts: 5,
           reconnectionDelay: 4,
           delegate: {
-            onServerDisconnect: () => {
+            onServerConnect: () => console.log("[sip] ws connected"),
+            onServerDisconnect: (err?: unknown) => {
+              console.warn("[sip] ws disconnected", err);
               reg = "offline";
               emitReg();
             },
             onRegistered: () => {
+              console.log("[sip] REGISTERED");
               reg = "registered";
               emitReg();
             },
@@ -113,12 +123,17 @@ export function createRealEngine(): CallEngine {
         });
         user
           .connect()
-          .then(() => user!.register())
-          .catch(() => {
+          .then(() => {
+            console.log("[sip] transport connected, registering…");
+            return user.register();
+          })
+          .catch((e: unknown) => {
+            console.warn("[sip] connect/register failed:", e);
             reg = "failed";
             emitReg();
           });
-      } catch {
+      } catch (e) {
+        console.warn("[sip] SimpleUser construction failed:", e);
         reg = "failed";
         emitReg();
       }
@@ -148,21 +163,27 @@ export function createRealEngine(): CallEngine {
     getRegistration: () => reg,
 
     startCall(number, name) {
-      if (!user || !cfg) return;
+      if (!user || !cfg) {
+        console.warn("[sip] startCall ignored — engine not connected yet");
+        return;
+      }
       const dest = `sip:${sipUser(number)}@${cfg.domain}`;
+      console.log(`[sip] call → ${dest}  (reg=${reg})`);
       set({ status: "dialing", direction: "out", party: { name: name || number, number }, endedReason: null });
       user
         .call(dest, {}, {
           requestDelegate: {
             onProgress: () => set({ status: "ringing" }),
-            onReject: () => {
+            onReject: (r: unknown) => {
+              console.warn("[sip] call rejected:", r);
               stopAudio();
               set({ status: "ended", endedReason: "rejected" });
               scheduleReset();
             }
           }
         })
-        .catch(() => {
+        .catch((e: unknown) => {
+          console.warn("[sip] call() threw:", e);
           set({ status: "ended", endedReason: "failed" });
           scheduleReset();
         });
