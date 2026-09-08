@@ -6,7 +6,6 @@
     "scheme": "ringnex",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "backgroundColor": "#0684BC",
     "assetBundlePatterns": [
       "**/*"
@@ -45,18 +44,8 @@
       "expo-secure-store",
       "expo-dev-client",
       [
-        "@config-plugins/react-native-webrtc",
-        {
-          "cameraPermission": false,
-          "microphonePermission": "ringNex needs the microphone for calls."
-        }
-      ],
-      [
         "expo-build-properties",
         {
-          "ios": {
-            "deploymentTarget": "15.1"
-          },
           "android": {
             "minSdkVersion": 24
           }
