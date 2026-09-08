@@ -1,25 +1,32 @@
 import { registerGlobals } from "react-native-webrtc";
 import InCallManager from "react-native-incall-manager";
+import JsSIP from "jssip";
 
 import { CallEngine, CallSnapshot, IDLE, Party, Registration, SipConfig } from "./types";
 
-// sip.js's web platform touches `window` in a few spots; RN has no DOM.
-// Point it at the global object before sip.js is imported. react-native-
-// webrtc's registerGlobals() then adds RTCPeerConnection / MediaStream /
-// navigator.mediaDevices so SimpleUser can run unchanged.
-const g: any = globalThis as any;
-if (typeof g.window === "undefined") g.window = g;
-if (typeof g.navigator === "undefined") g.navigator = {};
+// react-native-webrtc puts RTCPeerConnection / MediaStream /
+// navigator.mediaDevices on the global scope. JsSIP (unlike sip.js's web
+// platform) has no DOM assumptions, so it runs on RN unchanged once these
+// globals exist.
 registerGlobals();
+JsSIP.debug.disable();
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { SimpleUser } = require("sip.js/lib/platform/web");
-
-// keep a trailing "+ * #" and digits only for the SIP user part
+// digits + "+ * #" only, for the SIP user part
 const sipUser = (n: string) => n.replace(/[^\d+*#]/g, "");
 
+function partyOf(session: any): Party {
+  try {
+    const ri = session?.remote_identity;
+    const num = ri?.uri?.user || "";
+    return { name: ri?.display_name || num || "Unknown", number: num };
+  } catch {
+    return { name: "Unknown", number: "" };
+  }
+}
+
 export function createRealEngine(): CallEngine {
-  let user: any = null;
+  let ua: any = null;
+  let session: any = null;
   let cfg: SipConfig | null = null;
   let snap: CallSnapshot = { ...IDLE };
   let reg: Registration = "offline";
@@ -36,23 +43,16 @@ export function createRealEngine(): CallEngine {
     snap = { ...snap, ...p };
     emit();
   };
+  const setReg = (r: Registration) => {
+    reg = r;
+    emitReg();
+  };
   const scheduleReset = () => {
     if (resetTimer) clearTimeout(resetTimer);
     resetTimer = setTimeout(() => {
       snap = { ...IDLE };
       emit();
     }, 1000);
-  };
-
-  const party = (): Party => {
-    try {
-      const s: any = (user as any)?.session;
-      const uri = s?.remoteIdentity?.uri;
-      const num = uri?.user || "";
-      return { name: s?.remoteIdentity?.displayName || num || "Unknown", number: num };
-    } catch {
-      return { name: "Unknown", number: "" };
-    }
   };
 
   const startAudio = (speaker = false) => {
@@ -71,82 +71,107 @@ export function createRealEngine(): CallEngine {
     }
   };
 
+  const callOpts = () => ({
+    mediaConstraints: { audio: true, video: false },
+    rtcOfferConstraints: { offerToReceiveAudio: true, offerToReceiveVideo: false },
+    pcConfig: { iceServers: [] as RTCIceServer[], rtcpMuxPolicy: "require" as const }
+  });
+
+  function wireSession(s: any) {
+    session = s;
+    s.on("progress", () => set({ status: "ringing" }));
+    s.on("accepted", () => {
+      set({ status: "active", connectedAt: Date.now(), party: partyOf(s) });
+      startAudio(snap.speaker);
+    });
+    s.on("confirmed", () => {
+      if (snap.status !== "active") set({ status: "active", connectedAt: Date.now() });
+    });
+    s.on("hold", () => set({ held: true, status: "held" }));
+    s.on("unhold", () => set({ held: false, status: "active" }));
+    s.on("ended", (e: any) => {
+      console.log("[sip] session ended:", e?.cause);
+      stopAudio();
+      session = null;
+      set({ status: "ended", endedReason: e?.cause || "ended" });
+      scheduleReset();
+    });
+    s.on("failed", (e: any) => {
+      console.warn("[sip] session failed:", e?.cause, e?.message?.status_code);
+      stopAudio();
+      session = null;
+      set({ status: "ended", endedReason: e?.cause || "failed" });
+      scheduleReset();
+    });
+  }
+
   return {
     isReal: true,
 
     connect(c: SipConfig) {
       cfg = c;
-      reg = "connecting";
-      emitReg();
+      setReg("connecting");
       console.log(`[sip] connect → ${c.wssUrl}  aor sip:${c.username}@${c.domain}`);
       try {
-        user = new SimpleUser(c.wssUrl, {
-          aor: `sip:${c.username}@${c.domain}`,
-          media: { constraints: { audio: true, video: false } },
-          userAgentOptions: {
-            authorizationUsername: c.username,
-            authorizationPassword: c.password,
-            displayName: c.displayName || c.username,
-            logBuiltinEnabled: false
-          },
-          reconnectionAttempts: 5,
-          reconnectionDelay: 4,
-          delegate: {
-            onServerConnect: () => console.log("[sip] ws connected"),
-            onServerDisconnect: (err?: unknown) => {
-              console.warn("[sip] ws disconnected", err);
-              reg = "offline";
-              emitReg();
-            },
-            onRegistered: () => {
-              console.log("[sip] REGISTERED");
-              reg = "registered";
-              emitReg();
-            },
-            onUnregistered: () => {
-              reg = "offline";
-              emitReg();
-            },
-            onCallCreated: () => set({ status: "dialing", direction: "out", party: party(), endedReason: null }),
-            onCallReceived: () => set({ status: "incoming", direction: "in", party: party(), endedReason: null }),
-            onCallAnswered: () => {
-              set({ status: "active", connectedAt: Date.now(), party: party() });
-              startAudio(snap.speaker);
-            },
-            onCallHangup: () => {
-              stopAudio();
-              set({ status: snap.status === "ended" ? "ended" : "ended", endedReason: snap.endedReason ?? "ended" });
-              scheduleReset();
-            },
-            onCallHold: (held: boolean) => set({ held, status: held ? "held" : "active" })
+        const socket = new JsSIP.WebSocketInterface(c.wssUrl);
+        ua = new JsSIP.UA({
+          sockets: [socket],
+          uri: `sip:${c.username}@${c.domain}`,
+          password: c.password,
+          display_name: c.displayName || c.username,
+          register: true,
+          register_expires: 300,
+          session_timers: false
+        });
+
+        ua.on("connected", () => console.log("[sip] ws connected"));
+        ua.on("disconnected", (e: any) => {
+          console.warn("[sip] ws disconnected", e?.reason);
+          setReg("offline");
+        });
+        ua.on("registered", () => {
+          console.log("[sip] REGISTERED");
+          setReg("registered");
+        });
+        ua.on("unregistered", () => setReg("offline"));
+        ua.on("registrationFailed", (e: any) => {
+          console.warn("[sip] registrationFailed:", e?.cause, e?.response?.status_code, e?.response?.reason_phrase);
+          setReg("failed");
+        });
+
+        ua.on("newRTCSession", ({ session: s, originator }: any) => {
+          if (originator === "remote") {
+            // incoming
+            wireSession(s);
+            set({ status: "incoming", direction: "in", party: partyOf(s), endedReason: null });
+          } else {
+            // outgoing — wireSession already called in startCall(); nothing to do
           }
         });
-        user
-          .connect()
-          .then(() => {
-            console.log("[sip] transport connected, registering…");
-            return user.register();
-          })
-          .catch((e: unknown) => {
-            console.warn("[sip] connect/register failed:", e);
-            reg = "failed";
-            emitReg();
-          });
+
+        ua.start();
       } catch (e) {
-        console.warn("[sip] SimpleUser construction failed:", e);
-        reg = "failed";
-        emitReg();
+        console.warn("[sip] UA construction failed:", e);
+        setReg("failed");
       }
     },
 
     disconnect() {
       stopAudio();
       if (resetTimer) clearTimeout(resetTimer);
-      user?.unregister().catch(() => {});
-      user?.disconnect().catch(() => {});
-      user = null;
-      reg = "offline";
-      emitReg();
+      try {
+        session?.terminate();
+      } catch {
+        /* noop */
+      }
+      try {
+        ua?.stop();
+      } catch {
+        /* noop */
+      }
+      ua = null;
+      session = null;
+      setReg("offline");
       snap = { ...IDLE };
       emit();
     },
@@ -163,40 +188,33 @@ export function createRealEngine(): CallEngine {
     getRegistration: () => reg,
 
     startCall(number, name) {
-      if (!user || !cfg) {
-        console.warn("[sip] startCall ignored — engine not connected yet");
+      if (!ua || !cfg) {
+        console.warn("[sip] startCall ignored — engine not connected");
         return;
       }
-      const dest = `sip:${sipUser(number)}@${cfg.domain}`;
-      console.log(`[sip] call → ${dest}  (reg=${reg})`);
+      const target = `sip:${sipUser(number)}@${cfg.domain}`;
+      console.log(`[sip] call → ${target}  (reg=${reg})`);
       set({ status: "dialing", direction: "out", party: { name: name || number, number }, endedReason: null });
-      user
-        .call(dest, {}, {
-          requestDelegate: {
-            onProgress: () => set({ status: "ringing" }),
-            onReject: (r: unknown) => {
-              console.warn("[sip] call rejected:", r);
-              stopAudio();
-              set({ status: "ended", endedReason: "rejected" });
-              scheduleReset();
-            }
-          }
-        })
-        .catch((e: unknown) => {
-          console.warn("[sip] call() threw:", e);
-          set({ status: "ended", endedReason: "failed" });
-          scheduleReset();
-        });
+      try {
+        const s = ua.call(target, callOpts());
+        wireSession(s);
+      } catch (e) {
+        console.warn("[sip] ua.call threw:", e);
+        set({ status: "ended", endedReason: "failed" });
+        scheduleReset();
+      }
     },
 
     answer() {
-      user?.answer().catch(() => {});
+      try {
+        session?.answer(callOpts());
+      } catch (e) {
+        console.warn("[sip] answer threw:", e);
+      }
     },
     decline() {
-      const s: any = (user as any)?.session;
       try {
-        if (s && typeof s.reject === "function") s.reject({ statusCode: 486, reasonPhrase: "Busy Here" });
-        else user?.decline().catch(() => {});
+        session?.terminate({ status_code: 486, reason_phrase: "Busy Here" });
       } catch {
         /* noop */
       }
@@ -204,12 +222,16 @@ export function createRealEngine(): CallEngine {
       scheduleReset();
     },
     hangup() {
-      user?.hangup().catch(() => {});
+      try {
+        session?.terminate();
+      } catch {
+        /* noop */
+      }
     },
 
     setMuted(m) {
       try {
-        m ? user?.mute() : user?.unmute();
+        m ? session?.mute({ audio: true }) : session?.unmute({ audio: true });
       } catch {
         /* noop */
       }
@@ -217,7 +239,7 @@ export function createRealEngine(): CallEngine {
     },
     setHeld(h) {
       try {
-        (h ? user?.hold() : user?.unhold())?.catch(() => {});
+        h ? session?.hold() : session?.unhold();
       } catch {
         /* noop */
       }
@@ -232,7 +254,11 @@ export function createRealEngine(): CallEngine {
       set({ speaker: s });
     },
     sendDtmf(digit) {
-      user?.sendDTMF(digit).catch(() => {});
+      try {
+        session?.sendDTMF(digit);
+      } catch {
+        /* noop */
+      }
     }
   };
 }
