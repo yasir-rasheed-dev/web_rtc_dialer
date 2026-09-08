@@ -17,8 +17,12 @@
 //   node scripts/reset-agent-sip.js --tenant <tenantId>        # every agent in a tenant
 //   node scripts/reset-agent-sip.js --all                      # every agent with a SIP account
 //
-// After it runs:  asterisk -rx "pjsip reload"   (usually not required for
-// realtime auth, but harmless and clears any sorcery cache).
+// After it runs the agent just needs to re-login (the softphone will
+// re-REGISTER with the new password). PJSIP realtime reads ps_auths live,
+// so an Asterisk reload is usually NOT needed. If you want one anyway,
+// this box runs a relocated build under /opt/ringnex-webrtc, so:
+//   /opt/ringnex-webrtc/usr/sbin/asterisk \
+//     -C /opt/ringnex-webrtc/etc/asterisk/asterisk.conf -rx "pjsip reload"
 
 import crypto from "node:crypto";
 import { db } from "../src/db.js";
@@ -144,5 +148,11 @@ for (const u of agents) {
   // eslint-disable-next-line no-await-in-loop
   await realignOne(u);
 }
-console.log(`Done — ${agents.length} agent(s) realigned. Now run:  asterisk -rx "pjsip reload"`);
+console.log(
+  `Done — ${agents.length} agent(s) realigned.\n` +
+    `Next: have the agent re-login (the softphone re-REGISTERs with the new\n` +
+    `password). PJSIP realtime picks up ps_auths live — no reload needed.\n` +
+    `If you still want to reload:\n` +
+    `  /opt/ringnex-webrtc/usr/sbin/asterisk -C /opt/ringnex-webrtc/etc/asterisk/asterisk.conf -rx "pjsip reload"`
+);
 process.exit(0);
