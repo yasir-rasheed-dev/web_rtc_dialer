@@ -51,7 +51,14 @@
           }
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "cameraPermission": false,
+          "microphonePermission": "ringNex needs the microphone for calls."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
