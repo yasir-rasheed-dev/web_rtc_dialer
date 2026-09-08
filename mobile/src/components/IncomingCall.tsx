@@ -16,7 +16,7 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { useCall } from "@/store/call";
-import { callkeepAvailable } from "@/lib/callkeep";
+import { callkeepAvailable, callkeepNativeLoaded } from "@/lib/callkeep";
 
 function initials(name: string) {
   return name
@@ -36,10 +36,12 @@ export default function IncomingCall() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { snap, answer, decline } = useCall();
-  // On a dev/standalone build CallKit / ConnectionService shows the
-  // incoming-call UI (lock screen + full screen). This in-app overlay is
-  // only the fallback for Expo Go.
-  const visible = snap.status === "incoming" && !callkeepAvailable;
+  // When CallKeep's native module is present (dev/standalone build) the OS
+  // shows the incoming-call UI via CallKit / ConnectionService. This in-app
+  // overlay is the fallback for Expo Go *and* for builds where the CallKeep
+  // native module didn't link.
+  const nativeRing = callkeepAvailable && callkeepNativeLoaded;
+  const visible = snap.status === "incoming" && !nativeRing;
   const party = snap.party;
 
   const pulse = useSharedValue(0);

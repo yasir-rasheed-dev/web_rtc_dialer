@@ -3,9 +3,12 @@ import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 
 import { useCall } from "@/store/call";
-import { CK, callkeepAvailable, initCallKeep, newUuid, promptCallAccount } from "@/lib/callkeep";
+import { CK, callkeepAvailable, callkeepNativeLoaded, initCallKeep, newUuid, promptCallAccount } from "@/lib/callkeep";
 import type { CallStatus } from "@/lib/sip";
 
+// The bridge only does anything on a build where CallKeep's native module
+// actually linked. Otherwise IncomingCall.tsx handles the ring in-app.
+const ckReady = callkeepAvailable && callkeepNativeLoaded;
 const ACCOUNT_NUDGE_KEY = "ck.accountNudge.v1";
 
 // Bridges the JsSIP call engine to the OS call UI (CallKit /
@@ -17,7 +20,7 @@ export default function CallKeepBridge() {
   const lastStatus = useRef<CallStatus>("idle");
 
   useEffect(() => {
-    if (!callkeepAvailable) return;
+    if (!ckReady) return;
     (async () => {
       await initCallKeep();
       // First run only: if the OS won't show calls natively yet, nudge
@@ -36,7 +39,7 @@ export default function CallKeepBridge() {
 
   // OS UI actions → engine
   useEffect(() => {
-    if (!callkeepAvailable) return;
+    if (!ckReady) return;
     const offs = [
       CK.on("answerCall", () => {
         useCall.getState().answer();
@@ -62,7 +65,7 @@ export default function CallKeepBridge() {
 
   // engine state → OS UI
   useEffect(() => {
-    if (!callkeepAvailable) return;
+    if (!ckReady) return;
     const prev = lastStatus.current;
     const s = snap.status;
     lastStatus.current = s;
@@ -84,10 +87,10 @@ export default function CallKeepBridge() {
 
   // in-app mute/hold changes → reflect on the OS UI
   useEffect(() => {
-    if (callkeepAvailable && uuidRef.current) CK.setMuted(uuidRef.current, snap.muted);
+    if (ckReady && uuidRef.current) CK.setMuted(uuidRef.current, snap.muted);
   }, [snap.muted]);
   useEffect(() => {
-    if (callkeepAvailable && uuidRef.current) CK.setOnHold(uuidRef.current, snap.held);
+    if (ckReady && uuidRef.current) CK.setOnHold(uuidRef.current, snap.held);
   }, [snap.held]);
 
   return null;
