@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "@/theme/ThemeProvider";
 import { useSession } from "@/store/session";
 import { useCall } from "@/store/call";
+import { useChat } from "@/store/chat";
 import IncomingCall from "@/components/IncomingCall";
 
 export default function AgentLayout() {
@@ -13,9 +14,11 @@ export default function AgentLayout() {
   const dark = resolved === "dark";
   const { session } = useSession();
   const { init, teardown } = useCall();
+  const chatConnect = useChat((s) => s.connect);
+  const chatDisconnect = useChat((s) => s.disconnect);
+  const unread = useChat((s) => s.unreadTotal);
 
-  // Register the SIP engine (real on a dev build, simulated in Expo Go)
-  // as soon as an agent with a SIP account is signed in.
+  // SIP engine as soon as an agent with a SIP account is signed in.
   useEffect(() => {
     const sip = session?.sip;
     if (!sip?.username) return;
@@ -28,6 +31,13 @@ export default function AgentLayout() {
     });
     return () => teardown();
   }, [session?.sip?.username]);
+
+  // Team Chat (Firebase) — connect once the session is up.
+  useEffect(() => {
+    if (!session?.user?.id || !session.tenant?.id) return;
+    chatConnect({ id: session.user.id, name: session.user.name }, session.tenant.id);
+    return () => chatDisconnect();
+  }, [session?.user?.id, session?.tenant?.id]);
 
   return (
     <View className="flex-1">
@@ -49,6 +59,14 @@ export default function AgentLayout() {
         <Tabs.Screen
           name="logs"
           options={{ title: "Calls", tabBarIcon: ({ color, size }) => <Ionicons name="time" color={color} size={size} /> }}
+        />
+        <Tabs.Screen
+          name="chat"
+          options={{
+            title: "Chat",
+            tabBarBadge: unread > 0 ? (unread > 99 ? "99+" : unread) : undefined,
+            tabBarIcon: ({ color, size }) => <Ionicons name="chatbubbles" color={color} size={size} />
+          }}
         />
         <Tabs.Screen
           name="settings"

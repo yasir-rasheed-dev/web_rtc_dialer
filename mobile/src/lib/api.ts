@@ -71,12 +71,13 @@ async function rawFetch(path: string, options: ApiOptions, token: string) {
   const headers: Record<string, string> = { Accept: "application/json", ...(options.headers ?? {}) };
   if (token) headers.Authorization = `Bearer ${token}`;
   const hasBody = options.body !== undefined && options.body !== null;
-  if (hasBody) headers["Content-Type"] = "application/json";
+  const isForm = typeof FormData !== "undefined" && options.body instanceof FormData;
+  if (hasBody && !isForm) headers["Content-Type"] = "application/json";
   return fetch(`${CONFIG.apiBase}/api${path}`, {
     method: options.method ?? "GET",
     headers,
     signal: options.signal,
-    body: hasBody ? JSON.stringify(options.body) : undefined
+    body: hasBody ? (isForm ? (options.body as any) : JSON.stringify(options.body)) : undefined
   });
 }
 

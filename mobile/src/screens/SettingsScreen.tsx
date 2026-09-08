@@ -1,8 +1,10 @@
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { useSession } from "@/store/session";
+import { useChat } from "@/store/chat";
 import { useTheme } from "@/theme/ThemeProvider";
 
 const THEME_OPTIONS: { key: "light" | "dark" | "system"; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
@@ -13,8 +15,11 @@ const THEME_OPTIONS: { key: "light" | "dark" | "system"; label: string; icon: ke
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { session, logout } = useSession();
   const { pref, setPref } = useTheme();
+  const unread = useChat((s) => s.unreadTotal);
+  const isAgent = Boolean(session?.sip?.username);
 
   return (
     <ScrollView className="flex-1 bg-bg" contentContainerStyle={{ paddingTop: insets.top + 12, paddingBottom: 40 }}>
@@ -27,6 +32,24 @@ export default function SettingsScreen() {
           {session?.role?.name} · {session?.tenant.name}
         </Text>
       </View>
+
+      {isAgent ? (
+        <Pressable
+          onPress={() => router.push("/(agent)/chat" as any)}
+          className="mx-4 mb-4 flex-row items-center gap-3 rounded-2xl border border-border bg-surface p-4 active:bg-surface-2"
+        >
+          <View className="h-9 w-9 items-center justify-center rounded-full bg-brand/10">
+            <Ionicons name="chatbubbles" size={18} color="#0684BC" />
+          </View>
+          <Text className="flex-1 text-[15px] font-semibold text-text">Team Chat</Text>
+          {unread > 0 ? (
+            <View className="h-5 min-w-[20px] items-center justify-center rounded-full bg-brand px-1.5">
+              <Text className="text-[11px] font-bold text-white">{unread > 99 ? "99+" : unread}</Text>
+            </View>
+          ) : null}
+          <Ionicons name="chevron-forward" size={18} color="#8293a0" />
+        </Pressable>
+      ) : null}
 
       <Text className="px-5 pb-2 pt-2 text-[12px] font-bold uppercase tracking-wide text-muted">Appearance</Text>
       <View className="mx-4 mb-4 flex-row gap-2 rounded-2xl border border-border bg-surface p-2">
