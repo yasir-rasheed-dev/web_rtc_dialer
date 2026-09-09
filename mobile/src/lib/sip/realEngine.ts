@@ -271,6 +271,9 @@ export function createRealEngine(): CallEngine {
         /* noop */
       }
     },
+    refreshAudio() {
+      if (snap.status === "active" || snap.status === "held") startAudio(snap.speaker);
+    },
 
     startWarmTransfer(target: string) {
       if (!ua || !cfg || !session) return;

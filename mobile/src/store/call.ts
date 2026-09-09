@@ -22,6 +22,7 @@ type CallState = {
   toggleMute: () => void;
   toggleHold: () => void;
   toggleSpeaker: () => void;
+  refreshAudio: () => void;
   dtmf: (d: string) => void;
   startWarmTransfer: (target: string) => void;
   completeTransfer: () => void;
@@ -94,6 +95,7 @@ export const useCall = create<CallState>((set, get) => ({
     const e = getEngine();
     e.setSpeaker(!e.getSnapshot().speaker);
   },
+  refreshAudio: () => getEngine().refreshAudio?.(),
   dtmf: (d) => getEngine().sendDtmf(d),
   startWarmTransfer: (target) => getEngine().startWarmTransfer(target),
   completeTransfer: () => getEngine().completeTransfer(),

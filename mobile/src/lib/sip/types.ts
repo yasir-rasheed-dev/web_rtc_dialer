@@ -48,6 +48,10 @@ export interface CallEngine {
   setSpeaker(s: boolean): void;
   sendDtmf(digit: string): void;
 
+  /** Re-assert the in-call audio route (e.g. after CallKeep ends a system
+   *  call and resets AudioManager). No-op on the simulated engine. */
+  refreshAudio?(): void;
+
   // warm (attended) transfer: hold the current call, consult the target,
   // then either complete (bridge them, drop yourself) or cancel.
   startWarmTransfer(target: string): void;
