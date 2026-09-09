@@ -80,7 +80,14 @@ export function createRealEngine(): CallEngine {
 
   function wireSession(s: any) {
     session = s;
-    s.on("progress", () => set({ status: "ringing" }));
+    s.on("progress", (e: any) => {
+      // On an incoming call JsSIP emits 'progress' when IT auto-sends our
+      // 180 Ringing (originator "local") — that must not clobber the
+      // "incoming" ring state. Only an outbound call's remote 18x means
+      // "ringing".
+      if (snap.direction === "in" || e?.originator === "local") return;
+      set({ status: "ringing" });
+    });
     s.on("accepted", () => {
       set({ status: "active", connectedAt: Date.now(), party: partyOf(s) });
       startAudio(snap.speaker);
