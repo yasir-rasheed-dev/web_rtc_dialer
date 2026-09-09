@@ -7,11 +7,17 @@ import * as Crypto from "expo-crypto";
 // overlay is used instead.
 export const callkeepAvailable = Constants.executionEnvironment !== "storeClient";
 
-// The JS package resolves in Metro whether or not the native module is in
-// the app binary, and on Android importing it never throws even when the
-// native side is missing. The only reliable "is it really there" signal is
-// the native module object itself.
-const nativeModulePresent = !!(NativeModules as any).RNCallKeep;
+// react-native-callkeep is NOT compatible with the New Architecture that
+// Expo SDK 57 forces on: its native module declares two @ReactMethod
+// entries both named "displayIncomingCall", and the TurboModule interop
+// parser throws on that — every access to NativeModules.RNCallKeep raises.
+// So probing it must be wrapped, and a throw here means "not usable".
+let nativeModulePresent = false;
+try {
+  nativeModulePresent = !!(NativeModules as any).RNCallKeep;
+} catch {
+  nativeModulePresent = false;
+}
 
 let RNCallKeep: any = null;
 if (callkeepAvailable && nativeModulePresent) {
