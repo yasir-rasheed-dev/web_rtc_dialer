@@ -24,7 +24,10 @@ let registeredToken: string | null = null;
  *  new-message notifications out to every platform (web / electron /
  *  mobile) from one place — see teamChatRoutes.js /notify. */
 export async function registerPush(): Promise<string | null> {
-  if (!pushAvailable || !Device.isDevice) return null;
+  if (!pushAvailable || !Device.isDevice) {
+    console.log(`[push] skip — pushAvailable=${pushAvailable} isDevice=${Device.isDevice}`);
+    return null;
+  }
   try {
     if (Platform.OS === "android") {
       await Notifications.setNotificationChannelAsync("messages", {
@@ -36,19 +39,22 @@ export async function registerPush(): Promise<string | null> {
     }
     let status = (await Notifications.getPermissionsAsync()).status;
     if (status !== "granted") status = (await Notifications.requestPermissionsAsync()).status;
+    console.log(`[push] permission=${status}`);
     if (status !== "granted") return null;
 
     // native device token = the raw FCM registration token (Android) /
     // APNs token (iOS), which is what Firebase Admin sends to.
     const devToken = await Notifications.getDevicePushTokenAsync();
     const token = String(devToken.data);
+    console.log(`[push] device token (${devToken.type}): ${token.slice(0, 24)}…`);
     if (!token || token === registeredToken) return token;
 
     await api("/team-chat/push-token", { method: "POST", body: { token, platform: Platform.OS } });
     registeredToken = token;
+    console.log("[push] registered with backend ✓");
     return token;
-  } catch (e) {
-    console.warn("[push] register failed:", e);
+  } catch (e: any) {
+    console.warn("[push] register failed:", e?.message || e);
     return null;
   }
 }
