@@ -10,3 +10,10 @@ dist/
 *.log
 
 storage/voicemails/
+
+# Apple / signing keys — never commit
+*.p8
+*.p12
+*.pem
+ringnex-webrtc/secret/
+ringnex-webrtc/secrets/
