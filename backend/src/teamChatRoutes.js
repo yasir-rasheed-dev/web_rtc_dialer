@@ -8,6 +8,7 @@ import multer from "multer";
 
 import { db } from "./db.js";
 import { mintFirebaseToken, sendPushMulticast } from "./firebaseAdmin.js";
+import { sendApnsAlert } from "./apnsPush.js";
 
 function asyncRoute(handler) {
   return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
@@ -124,23 +125,32 @@ async function notifyRecipients(req, res) {
   if (!others.length) return res.json({ sent: 0 });
 
   const [rows] = await db.query(
-    `SELECT pt.token
+    `SELECT pt.token, pt.platform
        FROM user_push_tokens pt
        JOIN users u ON u.id = pt.user_id AND u.tenant_id = pt.tenant_id AND u.active = 1
       WHERE pt.tenant_id = ? AND pt.user_id IN (${others.map(() => "?").join(",")})`,
     [req.user.tenant_id, ...others]
   );
-  const tokens = rows.map((r) => r.token);
-  if (!tokens.length) return res.json({ sent: 0 });
+  if (!rows.length) return res.json({ sent: 0 });
 
-  const { successCount, invalidTokens } = await sendPushMulticast(tokens, { title, body, data });
+  // iOS tokens are raw APNs device tokens (Expo) → straight to Apple.
+  // Everything else stays on Firebase.
+  const iosTokens = rows.filter((r) => r.platform === "ios").map((r) => r.token);
+  const fcmTokens = rows.filter((r) => r.platform !== "ios").map((r) => r.token);
+
+  const [fcmRes, apnsRes] = await Promise.all([
+    fcmTokens.length ? sendPushMulticast(fcmTokens, { title, body, data }) : { successCount: 0, invalidTokens: [] },
+    iosTokens.length ? sendApnsAlert(iosTokens, { title, body, data }) : { successCount: 0, invalidTokens: [] }
+  ]);
+
+  const invalidTokens = [...fcmRes.invalidTokens, ...apnsRes.invalidTokens];
   if (invalidTokens.length) {
     await db.query(
       `DELETE FROM user_push_tokens WHERE token IN (${invalidTokens.map(() => "?").join(",")})`,
       invalidTokens
     );
   }
-  res.json({ sent: successCount });
+  res.json({ sent: fcmRes.successCount + apnsRes.successCount });
 }
 
 export default function createTeamChatRoutes(authenticate) {

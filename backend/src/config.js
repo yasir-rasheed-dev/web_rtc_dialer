@@ -99,5 +99,20 @@ export const config = Object.freeze({
   // Shared secret the Asterisk dialplan sends when it asks the backend to
   // wake a mobile agent (FCM data push) for an inbound call — so a killed
   // app can still ring. Empty = the /api/internal/voip-push route is off.
-  voipPushSecret: process.env.VOIP_PUSH_SECRET || ""
+  voipPushSecret: process.env.VOIP_PUSH_SECRET || "",
+
+  // Apple push (APNs) — the Expo iOS app registers a raw APNs device token
+  // (not an FCM token), so iOS notifications go straight to Apple with the
+  // same .p8 auth key uploaded to Firebase. Blank keyId/teamId = iOS push
+  // silently off (no boot crash). APNS_KEY_PATH points at the .p8 file, or
+  // APNS_KEY holds its PEM contents inline. APNS_PRODUCTION=false for a
+  // dev / `expo run` build (APNs sandbox); true for TestFlight/App Store.
+  apns: {
+    keyId: process.env.APNS_KEY_ID || "",
+    teamId: process.env.APNS_TEAM_ID || "",
+    bundleId: process.env.APNS_BUNDLE_ID || "co.ringnex.mobile",
+    keyPath: process.env.APNS_KEY_PATH || "",
+    key: process.env.APNS_KEY || "",
+    production: /^(1|true|yes)$/i.test(process.env.APNS_PRODUCTION || "")
+  }
 });

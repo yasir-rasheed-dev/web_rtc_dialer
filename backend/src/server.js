@@ -49,6 +49,7 @@ import createCommioRoutes, { createSuperAdminCommioRoutes } from "./commioRoutes
 import * as commio from "./commio.js";
 import createTeamChatRoutes from "./teamChatRoutes.js";
 import { sendDataPush } from "./firebaseAdmin.js";
+import { sendApnsBackground } from "./apnsPush.js";
 import createTollFreeRoutes, { getQueueStatus, syncQueuePauseForAgent } from "./tollFreeRoutes.js";
 import createDncRoutes from "./dncRoutes.js";
 import createVoicemailRoutes from "./voicemailRoutes.js";
@@ -1078,26 +1079,28 @@ app.all(
     if (!users.length) return res.json({ pushed: 0, reason: "no such agent" });
 
     const [tokRows] = await db.query(
-      "SELECT token FROM user_push_tokens WHERE user_id = ? AND platform IN ('android','ios')",
+      "SELECT token, platform FROM user_push_tokens WHERE user_id = ? AND platform IN ('android','ios')",
       [users[0].id]
     );
-    const tokens = tokRows.map((r) => r.token);
-    if (!tokens.length) return res.json({ pushed: 0, reason: "no device tokens" });
+    if (!tokRows.length) return res.json({ pushed: 0, reason: "no device tokens" });
 
-    const { successCount, invalidTokens } = await sendDataPush(tokens, {
-      type: "incoming_call",
-      caller,
-      callerName,
-      endpoint,
-      ts: String(Date.now())
-    });
+    const androidTokens = tokRows.filter((r) => r.platform === "android").map((r) => r.token);
+    const iosTokens = tokRows.filter((r) => r.platform === "ios").map((r) => r.token);
+    const wakeData = { type: "incoming_call", caller, callerName, endpoint, ts: String(Date.now()) };
+
+    const [aRes, iRes] = await Promise.all([
+      androidTokens.length ? sendDataPush(androidTokens, wakeData) : { successCount: 0, invalidTokens: [] },
+      iosTokens.length ? sendApnsBackground(iosTokens, wakeData) : { successCount: 0, invalidTokens: [] }
+    ]);
+
+    const invalidTokens = [...aRes.invalidTokens, ...iRes.invalidTokens];
     if (invalidTokens.length) {
       await db.query(
         `DELETE FROM user_push_tokens WHERE token IN (${invalidTokens.map(() => "?").join(",")})`,
         invalidTokens
       );
     }
-    res.json({ pushed: successCount });
+    res.json({ pushed: aRes.successCount + iRes.successCount });
   })
 );
 // Chat attachments — filenames are random UUIDs (see teamChatRoutes.js), so
