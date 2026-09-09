@@ -27,6 +27,7 @@
     "android": {
       "package": "co.ringnex.mobile",
       "versionCode": 1,
+      "googleServicesFile": "./google-services.json",
       "permissions": [
         "RECORD_AUDIO",
         "MODIFY_AUDIO_SETTINGS",
