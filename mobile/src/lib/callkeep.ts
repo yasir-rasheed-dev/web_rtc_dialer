@@ -171,6 +171,9 @@ export const CK = {
   end(uuid: string) {
     RNCallKeep?.endCall(uuid);
   },
+  updateDisplay(uuid: string, name: string, handle: string) {
+    RNCallKeep?.updateDisplay?.(uuid, name || handle, handle || "unknown");
+  },
   setMuted(uuid: string, muted: boolean) {
     RNCallKeep?.setMutedCall?.(uuid, muted);
   },

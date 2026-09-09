@@ -21,17 +21,23 @@ import type { CallStatus } from "@/lib/sip";
 const ckReady = callkeepAvailable && callkeepNativeLoaded;
 const ACCOUNT_NUDGE_KEY = "ck.accountNudge.v1";
 
-// Bridges the JsSIP call engine to the OS call UI (CallKit /
-// ConnectionService). Mount once, renders nothing. No-op in Expo Go.
+// CallKeep is used ONLY as the incoming ringer (foreground / background /
+// killed-app via the VoIP push). The instant the user accepts, the system
+// call is ended and the in-app call screen + InCallManager own the whole
+// call — a live ConnectionService call fights react-native-webrtc for the
+// mic on Android, and its state machine drifts from JsSIP's.
+//
+// Because RNCallKeep fires the same `endCall` event whether the *user*
+// pressed decline/hangup or *we* called CK.end(), every programmatic end
+// goes through endedByUs first so the event handler can tell them apart.
+const endedByUs = new Set<string>();
+
 export default function CallKeepBridge() {
   const router = useRouter();
   const snap = useCall((s) => s.snap);
   const uuidRef = useRef<string | null>(null);
   const lastStatus = useRef<CallStatus>("idle");
 
-  // Can the OS actually show calls right now? iOS: yes once linked.
-  // Android: only when the user has enabled ringNex under Calling accounts
-  // — otherwise displayIncomingCall silently no-ops, so keep the in-app ring.
   const [canShowNative, setCanShowNative] = useState(false);
 
   const refreshNative = async () => {
@@ -41,14 +47,32 @@ export default function CallKeepBridge() {
     setCanShowNative(!!st.enabled);
   };
 
+  const ckEnd = (uuid: string | null) => {
+    if (!uuid) return;
+    console.log("[ck] end()", uuid);
+    endedByUs.add(uuid);
+    try {
+      CK.end(uuid);
+    } catch (e) {
+      console.warn("[ck] end threw", e);
+    }
+    setTimeout(() => endedByUs.delete(uuid), 6000);
+  };
+
+  const clearCall = () => {
+    uuidRef.current = null;
+    clearPendingVoip();
+  };
+
   useEffect(() => {
     refreshNative();
     const sub = AppState.addEventListener("change", (s) => s === "active" && refreshNative());
     return () => sub.remove();
   }, []);
 
-  // Let IncomingCall know whether to suppress the in-app overlay.
+  // Tell IncomingCall whether to suppress its in-app overlay.
   useEffect(() => {
+    console.log("[ck] canShowNative =", canShowNative);
     useCall.setState({ nativeCallUi: canShowNative });
     return () => useCall.setState({ nativeCallUi: false });
   }, [canShowNative]);
@@ -59,18 +83,19 @@ export default function CallKeepBridge() {
       await initCallKeep();
       await refreshNative();
       await registerVoipTask();
-      // Cold-started by tapping "Answer" on a VoIP-push call? Arm the
-      // engine so the incoming INVITE (still in flight) auto-answers, and
-      // reuse the UUID the push task already showed.
+
+      // Cold-started by tapping "Answer" on a VoIP-push call: reuse that
+      // uuid, seed the party, arm the engine to auto-answer the INVITE
+      // that's still on its way, and open the call screen.
       const p = getPendingVoip();
       if (p) {
+        console.log("[ck] launch with pending VoIP call", p.uuid, p.caller);
         uuidRef.current = p.uuid;
         useCall.setState((st) => ({ snap: { ...st.snap, party: { name: p.callerName, number: p.caller } } }));
         useCall.getState().armAutoAnswer(true);
         router.push("/(agent)/call" as any);
       }
-      // First run only: if the OS won't show calls natively yet, nudge
-      // the user to the Calling accounts screen. Never nag twice.
+
       try {
         const seen = await SecureStore.getItemAsync(ACCOUNT_NUDGE_KEY);
         if (!seen) {
@@ -78,93 +103,103 @@ export default function CallKeepBridge() {
           setTimeout(() => promptCallAccount(), 1200);
         }
       } catch {
-        /* secure-store unavailable — skip the nudge */
+        /* secure-store unavailable */
       }
     })();
   }, []);
 
-  // OS UI actions → engine
+  // ---- OS UI actions → engine ----
   useEffect(() => {
     if (!ckReady) return;
     const offs = [
-      CK.on("answerCall", () => {
-        // A VoIP-push call whose SIP INVITE hasn't landed yet: arm
-        // auto-answer instead of answering a session that isn't there.
-        if (getPendingVoip() && useCall.getState().snap.status !== "incoming") {
-          useCall.getState().armAutoAnswer(true);
+      CK.on("answerCall", (data: any) => {
+        const uuid = data?.callUUID || uuidRef.current;
+        const st = useCall.getState();
+        console.log("[ck] << answerCall", uuid, "status=", st.snap.status, "pendingVoip=", !!getPendingVoip());
+        if (getPendingVoip() && st.snap.status !== "incoming") {
+          st.armAutoAnswer(true); // INVITE not here yet
         } else {
-          useCall.getState().answer();
+          st.answer();
         }
         router.push("/(agent)/call" as any);
+        // hand the call to the app right away — no lingering system call
+        ckEnd(uuid);
+        clearCall();
+        // ConnectionService teardown can reset AudioManager after answer();
+        // re-assert the in-call route once the SIP leg is actually up.
+        setTimeout(() => useCall.getState().refreshAudio(), 700);
+        setTimeout(() => useCall.getState().refreshAudio(), 1800);
       }),
-      CK.on("endCall", () => {
+
+      CK.on("endCall", (data: any) => {
+        const uuid = data?.callUUID || uuidRef.current;
+        if (uuid && endedByUs.has(uuid)) {
+          endedByUs.delete(uuid);
+          console.log("[ck] << endCall", uuid, "(ours — ignore)");
+          return;
+        }
         const s = useCall.getState().snap.status;
+        console.log("[ck] << endCall", uuid, "(user) status=", s);
         if (getPendingVoip() && s !== "incoming" && s !== "active") {
           rejectPendingVoip();
           useCall.getState().armAutoAnswer(false);
-        } else if (s === "incoming") {
+        } else if (s === "incoming" || s === "ringing" || s === "dialing") {
           useCall.getState().decline();
         } else {
           useCall.getState().hangup();
         }
+        clearCall();
       }),
+
       CK.on("didPerformSetMutedCallAction", ({ muted }: any) => {
+        console.log("[ck] << setMuted", muted);
         if (useCall.getState().snap.muted !== muted) useCall.getState().toggleMute();
       }),
       CK.on("didToggleHoldCallAction", ({ hold }: any) => {
+        console.log("[ck] << toggleHold", hold);
         if (useCall.getState().snap.held !== hold) useCall.getState().toggleHold();
       }),
       CK.on("didPerformDTMFAction", ({ digits }: any) => {
+        console.log("[ck] << dtmf", digits);
         if (digits) useCall.getState().dtmf(String(digits));
       })
     ];
     return () => offs.forEach((o) => o());
   }, []);
 
-  // engine state → OS UI.
-  //
-  // CallKeep is used ONLY as the incoming ringer (foreground, background,
-  // or killed-app via the VoIP push). Outbound calls never touch it. Once
-  // the call connects, the system call is ended and the in-app call screen
-  // + InCallManager own it — a live ConnectionService call fights
-  // react-native-webrtc for the mic on Android. Ending it resets
-  // AudioManager, so the audio route is re-asserted a few times after.
+  // ---- engine state → OS UI (ring only) ----
   useEffect(() => {
     if (!ckReady || !canShowNative) return;
-    const prev = lastStatus.current;
     const s = snap.status;
+    const prev = lastStatus.current;
     lastStatus.current = s;
 
-    if (s === "incoming" && (prev === "idle" || prev === "ended")) {
+    // raise the incoming ring once per call
+    if (s === "incoming" && prev !== "incoming") {
       if (uuidRef.current && getPendingVoip()) {
-        // VoIP push already raised the UI with this uuid — reuse it.
-      } else {
+        console.log("[ck] INVITE arrived for pushed call", uuidRef.current);
+      } else if (!uuidRef.current) {
         uuidRef.current = newUuid();
         const handle = snap.party?.number || "unknown";
+        console.log("[ck] >> showIncoming", uuidRef.current, handle, snap.party?.name);
         CK.showIncoming(uuidRef.current, handle, snap.party?.name || handle);
       }
     }
 
-    if (s === "active" && uuidRef.current) {
-      const u = uuidRef.current;
-      uuidRef.current = null;
-      clearPendingVoip();
-      CK.connected(u);
-      setTimeout(() => {
-        CK.end(u);
-        const reassert = () => useCall.getState().refreshAudio();
-        reassert();
-        setTimeout(reassert, 500);
-        setTimeout(reassert, 1400);
-      }, 900);
+    // caller name resolved (saved contact lookup) after the ring started —
+    // refresh what the system ringer shows.
+    if (s === "incoming" && uuidRef.current && snap.party?.name && snap.party.name !== snap.party.number) {
+      CK.updateDisplay(uuidRef.current, snap.party.name, snap.party.number || "unknown");
     }
 
+    // ring ended before it was answered (declined elsewhere / caller gave
+    // up / failed) — dismiss the system ringer if it's still up.
     if ((s === "ended" || s === "idle") && uuidRef.current) {
-      CK.end(uuidRef.current);
-      uuidRef.current = null;
-      clearPendingVoip();
+      console.log("[ck] call ", s, "→ dismiss ringer", uuidRef.current);
+      ckEnd(uuidRef.current);
+      clearCall();
     }
-  }, [snap.status, snap.party?.number, canShowNative]);
+  }, [snap.status, snap.party?.number, snap.party?.name, canShowNative]);
 
   return null;
 }

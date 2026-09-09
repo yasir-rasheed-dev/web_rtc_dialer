@@ -61,14 +61,16 @@ export function createRealEngine(): CallEngine {
 
   const startAudio = (speaker = false) => {
     try {
+      console.log(`[sip] InCallManager.start (speaker=${speaker})`);
       InCallManager.start({ media: "audio" });
       InCallManager.setForceSpeakerphoneOn(speaker);
-    } catch {
-      /* noop */
+    } catch (e) {
+      console.warn("[sip] startAudio threw", e);
     }
   };
   const stopAudio = () => {
     try {
+      console.log("[sip] InCallManager.stop");
       InCallManager.stop();
     } catch {
       /* noop */
@@ -84,6 +86,7 @@ export function createRealEngine(): CallEngine {
   function wireSession(s: any) {
     session = s;
     s.on("progress", (e: any) => {
+      console.log(`[sip] session progress (originator=${e?.originator}) dir=${snap.direction}`);
       // On an incoming call JsSIP emits 'progress' when IT auto-sends our
       // 180 Ringing (originator "local") — that must not clobber the
       // "incoming" ring state. Only an outbound call's remote 18x means
@@ -92,10 +95,12 @@ export function createRealEngine(): CallEngine {
       set({ status: "ringing" });
     });
     s.on("accepted", () => {
+      console.log("[sip] session accepted → active, starting audio");
       set({ status: "active", connectedAt: Date.now(), party: partyOf(s) });
       startAudio(snap.speaker);
     });
     s.on("confirmed", () => {
+      console.log("[sip] session confirmed");
       if (snap.status !== "active") set({ status: "active", connectedAt: Date.now() });
       startAudio(snap.speaker);
     });
