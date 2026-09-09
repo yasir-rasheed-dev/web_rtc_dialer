@@ -1056,16 +1056,19 @@ app.use("/api/team-chat", createTeamChatRoutes(authenticate));
 // a killed/dozing mobile app gets an FCM data push and can raise its own
 // incoming-call UI (CallKeep) + reconnect SIP before the dialplan's short
 // Wait() elapses and it actually Dial()s. Auth = shared secret, not a JWT.
-app.post(
+// GET or POST — Asterisk's CURL() sends everything on the query string.
+app.all(
   "/api/internal/voip-push",
   asyncRoute(async (req, res) => {
+    if (req.method !== "GET" && req.method !== "POST") return res.status(405).end();
+    const p = { ...req.query, ...req.body };
     const secret = config.voipPushSecret;
-    if (!secret || (req.body?.secret || req.query?.secret) !== secret) {
+    if (!secret || String(p.secret || "") !== secret) {
       return res.status(403).json({ error: "forbidden" });
     }
-    const endpoint = String(req.body?.endpoint || req.query?.endpoint || "").trim();
-    const caller = String(req.body?.caller || req.query?.caller || "").trim();
-    const callerName = String(req.body?.callerName || req.query?.callerName || "").trim();
+    const endpoint = String(p.endpoint || "").trim();
+    const caller = String(p.caller || "").trim();
+    const callerName = String(p.callerName || "").trim();
     if (!endpoint) return res.status(400).json({ error: "endpoint required" });
 
     const [users] = await db.query(
