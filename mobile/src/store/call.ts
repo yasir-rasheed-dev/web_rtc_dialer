@@ -27,6 +27,7 @@ type CallState = {
   completeTransfer: () => void;
   cancelWarmTransfer: () => void;
   armAutoAnswer: (on: boolean) => void;
+  refreshAudio: () => void;
   simulateIncoming: (party: Party) => void;
   isReal: () => boolean;
 };
@@ -100,6 +101,7 @@ export const useCall = create<CallState>((set, get) => ({
   completeTransfer: () => getEngine().completeTransfer(),
   cancelWarmTransfer: () => getEngine().cancelWarmTransfer(),
   armAutoAnswer: (on) => getEngine().armAutoAnswer?.(on),
+  refreshAudio: () => getEngine().refreshAudio?.(),
   simulateIncoming: (party) => getEngine().simulateIncoming?.(party),
   isReal: () => getEngine().isReal
 }));

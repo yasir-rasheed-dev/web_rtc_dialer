@@ -59,6 +59,11 @@ export interface CallEngine {
    *  and the real SIP INVITE is still on its way. */
   armAutoAnswer?(on: boolean): void;
 
+  /** Re-assert the in-call audio route (InCallManager). Called after the
+   *  CallKeep/ConnectionService call is ended and the app takes the call
+   *  over, since that teardown resets AudioManager mode. */
+  refreshAudio?(): void;
+
   /** dev helper — only the simulated engine implements this */
   simulateIncoming?(party: Party): void;
 }

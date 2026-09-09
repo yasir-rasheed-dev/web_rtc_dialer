@@ -95,6 +95,7 @@ export function createRealEngine(): CallEngine {
     });
     s.on("confirmed", () => {
       if (snap.status !== "active") set({ status: "active", connectedAt: Date.now() });
+      startAudio(snap.speaker);
     });
     s.on("hold", () => set({ held: true, status: "held" }));
     s.on("unhold", () => set({ held: false, status: "active" }));
@@ -245,6 +246,9 @@ export function createRealEngine(): CallEngine {
           /* noop */
         }
       }
+    },
+    refreshAudio() {
+      if (snap.status === "active" || snap.status === "held") startAudio(snap.speaker);
     },
     decline() {
       try {

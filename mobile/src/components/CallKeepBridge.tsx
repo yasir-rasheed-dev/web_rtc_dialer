@@ -121,45 +121,50 @@ export default function CallKeepBridge() {
     return () => offs.forEach((o) => o());
   }, []);
 
-  // engine state → OS UI (only when the OS UI can actually render)
+  // engine state → OS UI.
+  //
+  // CallKeep is used ONLY as the incoming ringer (foreground, background,
+  // or killed-app via the VoIP push). Outbound calls never touch it. Once
+  // the call connects, the system call is ended and the in-app call screen
+  // + InCallManager own it — a live ConnectionService call fights
+  // react-native-webrtc for the mic on Android. Ending it resets
+  // AudioManager, so the audio route is re-asserted a few times after.
   useEffect(() => {
     if (!ckReady || !canShowNative) return;
     const prev = lastStatus.current;
     const s = snap.status;
     lastStatus.current = s;
 
-    if ((s === "incoming" || s === "dialing") && (prev === "idle" || prev === "ended")) {
-      // A VoIP-push call already has its UUID + incoming UI from the push
-      // task — don't raise a second one.
+    if (s === "incoming" && (prev === "idle" || prev === "ended")) {
       if (uuidRef.current && getPendingVoip()) {
-        // reuse
+        // VoIP push already raised the UI with this uuid — reuse it.
       } else {
         uuidRef.current = newUuid();
         const handle = snap.party?.number || "unknown";
-        const name = snap.party?.name || handle;
-        if (s === "incoming") CK.showIncoming(uuidRef.current, handle, name);
-        else CK.reportOutgoing(uuidRef.current, handle, name);
+        CK.showIncoming(uuidRef.current, handle, snap.party?.name || handle);
       }
     }
-    if (s === "ringing" && uuidRef.current) CK.connecting(uuidRef.current);
+
     if (s === "active" && uuidRef.current) {
-      CK.connected(uuidRef.current);
+      const u = uuidRef.current;
+      uuidRef.current = null;
       clearPendingVoip();
+      CK.connected(u);
+      setTimeout(() => {
+        CK.end(u);
+        const reassert = () => useCall.getState().refreshAudio();
+        reassert();
+        setTimeout(reassert, 500);
+        setTimeout(reassert, 1400);
+      }, 900);
     }
+
     if ((s === "ended" || s === "idle") && uuidRef.current) {
       CK.end(uuidRef.current);
       uuidRef.current = null;
       clearPendingVoip();
     }
   }, [snap.status, snap.party?.number, canShowNative]);
-
-  // in-app mute/hold changes → reflect on the OS UI
-  useEffect(() => {
-    if (ckReady && uuidRef.current) CK.setMuted(uuidRef.current, snap.muted);
-  }, [snap.muted]);
-  useEffect(() => {
-    if (ckReady && uuidRef.current) CK.setOnHold(uuidRef.current, snap.held);
-  }, [snap.held]);
 
   return null;
 }
