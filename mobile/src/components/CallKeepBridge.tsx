@@ -71,19 +71,6 @@ export default function CallKeepBridge() {
     })();
   }, []);
 
-  const dropSystemCall = () => {
-    const u = uuidRef.current;
-    if (!u) return;
-    uuidRef.current = null;
-    // Close the system UI so the app + InCallManager fully own the call
-    // audio (Android mic conflict), then re-assert the audio route since
-    // ending a ConnectionService call resets AudioManager mode.
-    setTimeout(() => {
-      CK.end(u);
-      setTimeout(() => useCall.getState().refreshAudio(), 400);
-    }, 600);
-  };
-
   // OS UI actions → engine
   useEffect(() => {
     if (!ckReady) return;
@@ -91,13 +78,11 @@ export default function CallKeepBridge() {
       CK.on("answerCall", () => {
         useCall.getState().answer();
         router.push("/(agent)/call" as any);
-        dropSystemCall();
       }),
       CK.on("endCall", () => {
         const s = useCall.getState().snap.status;
         if (s === "incoming") useCall.getState().decline();
         else useCall.getState().hangup();
-        uuidRef.current = null;
       }),
       CK.on("didPerformSetMutedCallAction", ({ muted }: any) => {
         if (useCall.getState().snap.muted !== muted) useCall.getState().toggleMute();
@@ -112,29 +97,35 @@ export default function CallKeepBridge() {
     return () => offs.forEach((o) => o());
   }, []);
 
-  // engine state → OS UI.
-  //
-  // CallKeep is used ONLY to present the incoming-call ring (lock screen /
-  // background). As soon as the call is answered or connects, the system
-  // call is ended and the in-app call screen + InCallManager own it —
-  // keeping the system call alive fights react-native-webrtc for the mic
-  // on Android (outgoing audio breaks). Outbound calls never touch CallKeep.
+  // engine state → OS UI (only when the OS UI can actually render)
   useEffect(() => {
     if (!ckReady || !canShowNative) return;
     const prev = lastStatus.current;
     const s = snap.status;
     lastStatus.current = s;
 
-    if (s === "incoming" && (prev === "idle" || prev === "ended")) {
+    if ((s === "incoming" || s === "dialing") && (prev === "idle" || prev === "ended")) {
       uuidRef.current = newUuid();
       const handle = snap.party?.number || "unknown";
-      CK.showIncoming(uuidRef.current, handle, snap.party?.name || handle);
+      const name = snap.party?.name || handle;
+      if (s === "incoming") CK.showIncoming(uuidRef.current, handle, name);
+      else CK.reportOutgoing(uuidRef.current, handle, name);
     }
-    if ((s === "active" || s === "ended" || s === "idle") && uuidRef.current) {
+    if (s === "ringing" && uuidRef.current) CK.connecting(uuidRef.current);
+    if (s === "active" && uuidRef.current) CK.connected(uuidRef.current);
+    if ((s === "ended" || s === "idle") && uuidRef.current) {
       CK.end(uuidRef.current);
       uuidRef.current = null;
     }
   }, [snap.status, snap.party?.number, canShowNative]);
+
+  // in-app mute/hold changes → reflect on the OS UI
+  useEffect(() => {
+    if (ckReady && uuidRef.current) CK.setMuted(uuidRef.current, snap.muted);
+  }, [snap.muted]);
+  useEffect(() => {
+    if (ckReady && uuidRef.current) CK.setOnHold(uuidRef.current, snap.held);
+  }, [snap.held]);
 
   return null;
 }
