@@ -9,7 +9,8 @@
     "ios": "expo run:ios",
     "prebuild": "expo prebuild --clean",
     "lint": "expo lint",
-    "fix-deps": "expo install --fix"
+    "fix-deps": "expo install --fix",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@config-plugins/react-native-callkeep": "^14.0.2",
@@ -56,6 +57,7 @@
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@types/react": "~19.2.0",
+    "patch-package": "^8.0.1",
     "typescript": "~6.0.3"
   },
   "expo": {
