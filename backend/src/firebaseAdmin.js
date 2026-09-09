@@ -47,6 +47,25 @@ export async function sendPushNotification({ token, title, body, data = {} }) {
   });
 }
 
+function classifyResponses(responses, batch, invalidTokens) {
+  let successCount = 0;
+  responses.forEach((r, idx) => {
+    if (r.success) {
+      successCount += 1;
+      return;
+    }
+    const code = r.error?.code || "";
+    if (
+      code.includes("registration-token-not-registered") ||
+      code.includes("invalid-registration-token") ||
+      code.includes("invalid-argument")
+    ) {
+      invalidTokens.push(batch[idx]);
+    }
+  });
+  return successCount;
+}
+
 // Fan a notification out to many device tokens (web / electron / mobile).
 // Returns the number delivered and any tokens the FCM server rejected as
 // dead, so the caller can prune them.
@@ -69,20 +88,34 @@ export async function sendPushMulticast(tokens, { title, body, data = {} }) {
       apns: { headers: { "apns-priority": "10" } },
       webpush: { headers: { Urgency: "high" }, fcmOptions: data.url ? { link: String(data.url) } : undefined }
     });
-    resp.responses.forEach((r, idx) => {
-      if (r.success) {
-        successCount += 1;
-        return;
-      }
-      const code = r.error?.code || "";
-      if (
-        code.includes("registration-token-not-registered") ||
-        code.includes("invalid-registration-token") ||
-        code.includes("invalid-argument")
-      ) {
-        invalidTokens.push(batch[idx]);
-      }
+    successCount += classifyResponses(resp.responses, batch, invalidTokens);
+  }
+  return { successCount, invalidTokens };
+}
+
+// Data-only, max-priority push used to WAKE a killed/backgrounded mobile
+// app for an inbound call. No `notification` block on purpose: Android only
+// hands a data-only message to the app's background handler (which then
+// raises the CallKeep incoming UI). iOS would need a real PushKit/VoIP
+// token — not wired yet, so Android is the target here.
+export async function sendDataPush(tokens, data = {}) {
+  const uniq = [...new Set((tokens || []).filter(Boolean))];
+  if (!app || !uniq.length) return { successCount: 0, invalidTokens: [] };
+
+  const messaging = admin.messaging(app);
+  const strData = Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v ?? "")]));
+  const invalidTokens = [];
+  let successCount = 0;
+
+  for (let i = 0; i < uniq.length; i += 500) {
+    const batch = uniq.slice(i, i + 500);
+    const resp = await messaging.sendEachForMulticast({
+      tokens: batch,
+      data: strData,
+      android: { priority: "high", ttl: 30_000 },
+      apns: { headers: { "apns-priority": "10", "apns-push-type": "background" }, payload: { aps: { "content-available": 1 } } }
     });
+    successCount += classifyResponses(resp.responses, batch, invalidTokens);
   }
   return { successCount, invalidTokens };
 }

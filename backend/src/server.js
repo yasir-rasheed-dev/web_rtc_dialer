@@ -48,6 +48,7 @@ import createCampaignRoutes from "./campaignRoutes.js";
 import createCommioRoutes, { createSuperAdminCommioRoutes } from "./commioRoutes.js";
 import * as commio from "./commio.js";
 import createTeamChatRoutes from "./teamChatRoutes.js";
+import { sendDataPush } from "./firebaseAdmin.js";
 import createTollFreeRoutes, { getQueueStatus, syncQueuePauseForAgent } from "./tollFreeRoutes.js";
 import createDncRoutes from "./dncRoutes.js";
 import createVoicemailRoutes from "./voicemailRoutes.js";
@@ -1050,6 +1051,52 @@ app.use(
   createLeadsRoutes(authenticate, { callAccessScope, appendCallAgentScope, appendRequestedAgent, normalizeDateFilter })
 );
 app.use("/api/team-chat", createTeamChatRoutes(authenticate));
+
+// Called by the Asterisk dialplan just before it rings a WebRTC agent, so
+// a killed/dozing mobile app gets an FCM data push and can raise its own
+// incoming-call UI (CallKeep) + reconnect SIP before the dialplan's short
+// Wait() elapses and it actually Dial()s. Auth = shared secret, not a JWT.
+app.post(
+  "/api/internal/voip-push",
+  asyncRoute(async (req, res) => {
+    const secret = config.voipPushSecret;
+    if (!secret || (req.body?.secret || req.query?.secret) !== secret) {
+      return res.status(403).json({ error: "forbidden" });
+    }
+    const endpoint = String(req.body?.endpoint || req.query?.endpoint || "").trim();
+    const caller = String(req.body?.caller || req.query?.caller || "").trim();
+    const callerName = String(req.body?.callerName || req.query?.callerName || "").trim();
+    if (!endpoint) return res.status(400).json({ error: "endpoint required" });
+
+    const [users] = await db.query(
+      "SELECT id, tenant_id FROM users WHERE sip_username = ? AND active = 1 LIMIT 1",
+      [endpoint]
+    );
+    if (!users.length) return res.json({ pushed: 0, reason: "no such agent" });
+
+    const [tokRows] = await db.query(
+      "SELECT token FROM user_push_tokens WHERE user_id = ? AND platform IN ('android','ios')",
+      [users[0].id]
+    );
+    const tokens = tokRows.map((r) => r.token);
+    if (!tokens.length) return res.json({ pushed: 0, reason: "no device tokens" });
+
+    const { successCount, invalidTokens } = await sendDataPush(tokens, {
+      type: "incoming_call",
+      caller,
+      callerName,
+      endpoint,
+      ts: String(Date.now())
+    });
+    if (invalidTokens.length) {
+      await db.query(
+        `DELETE FROM user_push_tokens WHERE token IN (${invalidTokens.map(() => "?").join(",")})`,
+        invalidTokens
+      );
+    }
+    res.json({ pushed: successCount });
+  })
+);
 // Chat attachments — filenames are random UUIDs (see teamChatRoutes.js), so
 // this is safe to serve statically without going through the JWT-auth
 // layer (an <img>/<a> tag can't attach an Authorization header anyway).

@@ -94,5 +94,10 @@ export const config = Object.freeze({
   github: {
     repo: process.env.GITHUB_REPO || "yasir-rasheed-dev/web_rtc_dialer",
     token: process.env.GITHUB_TOKEN || ""
-  }
+  },
+
+  // Shared secret the Asterisk dialplan sends when it asks the backend to
+  // wake a mobile agent (FCM data push) for an inbound call — so a killed
+  // app can still ring. Empty = the /api/internal/voip-push route is off.
+  voipPushSecret: process.env.VOIP_PUSH_SECRET || ""
 });
