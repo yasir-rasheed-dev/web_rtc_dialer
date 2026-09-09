@@ -18,7 +18,8 @@
         "NSMicrophoneUsageDescription": "ringNex needs the microphone for calls.",
         "UIBackgroundModes": [
           "audio",
-          "voip"
+          "voip",
+          "remote-notification"
         ],
         "ITSAppUsesNonExemptEncryption": false
       },

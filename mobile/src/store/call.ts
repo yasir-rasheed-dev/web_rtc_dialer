@@ -26,6 +26,7 @@ type CallState = {
   startWarmTransfer: (target: string) => void;
   completeTransfer: () => void;
   cancelWarmTransfer: () => void;
+  armAutoAnswer: (on: boolean) => void;
   simulateIncoming: (party: Party) => void;
   isReal: () => boolean;
 };
@@ -98,6 +99,7 @@ export const useCall = create<CallState>((set, get) => ({
   startWarmTransfer: (target) => getEngine().startWarmTransfer(target),
   completeTransfer: () => getEngine().completeTransfer(),
   cancelWarmTransfer: () => getEngine().cancelWarmTransfer(),
+  armAutoAnswer: (on) => getEngine().armAutoAnswer?.(on),
   simulateIncoming: (party) => getEngine().simulateIncoming?.(party),
   isReal: () => getEngine().isReal
 }));

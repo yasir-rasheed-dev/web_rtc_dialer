@@ -32,6 +32,7 @@ export function createRealEngine(): CallEngine {
   let snap: CallSnapshot = { ...IDLE };
   let reg: Registration = "offline";
   let resetTimer: ReturnType<typeof setTimeout> | null = null;
+  let autoAnswer = false; // set when a VoIP-push call was already accepted
 
   const callSubs = new Set<(s: CallSnapshot) => void>();
   const regSubs = new Set<(r: Registration) => void>();
@@ -155,6 +156,15 @@ export function createRealEngine(): CallEngine {
             const p = partyOf(s);
             console.log(`[sip] INCOMING from ${p.name} <${p.number}> → status=incoming`);
             set({ status: "incoming", direction: "in", party: p, endedReason: null });
+            if (autoAnswer) {
+              autoAnswer = false;
+              console.log("[sip] auto-answering (VoIP push already accepted)");
+              try {
+                s.answer(callOpts());
+              } catch (e) {
+                console.warn("[sip] auto-answer threw:", e);
+              }
+            }
           } else {
             // outgoing — wireSession already called in startCall(); nothing to do
           }
@@ -221,6 +231,19 @@ export function createRealEngine(): CallEngine {
         session?.answer(callOpts());
       } catch (e) {
         console.warn("[sip] answer threw:", e);
+      }
+    },
+    armAutoAnswer(on: boolean) {
+      autoAnswer = on;
+      // If the INVITE is already here (arrived between accept and this
+      // call), answer it now.
+      if (on && session && snap.status === "incoming") {
+        autoAnswer = false;
+        try {
+          session.answer(callOpts());
+        } catch {
+          /* noop */
+        }
       }
     },
     decline() {

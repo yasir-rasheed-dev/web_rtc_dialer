@@ -1,4 +1,7 @@
 import "../global.css";
+// Registers the VoIP-push background task (TaskManager.defineTask) at
+// startup — must load before the OS can run it for a killed-app call.
+import "@/lib/voipPush";
 
 import { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";

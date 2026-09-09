@@ -54,6 +54,11 @@ export interface CallEngine {
   completeTransfer(): void;
   cancelWarmTransfer(): void;
 
+  /** Arm auto-answer for the next inbound session — used when the user has
+   *  already accepted the call on the CallKeep UI raised by a VoIP push,
+   *  and the real SIP INVITE is still on its way. */
+  armAutoAnswer?(on: boolean): void;
+
   /** dev helper — only the simulated engine implements this */
   simulateIncoming?(party: Party): void;
 }
