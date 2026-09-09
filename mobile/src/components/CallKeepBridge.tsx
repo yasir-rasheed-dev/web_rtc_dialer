@@ -37,6 +37,8 @@ export default function CallKeepBridge() {
   const snap = useCall((s) => s.snap);
   const uuidRef = useRef<string | null>(null);
   const lastStatus = useRef<CallStatus>("idle");
+  const shownAt = useRef(0); // when we last called showIncoming()
+  const answeredViaCk = useRef(false); // user hit Answer on the system UI
 
   const [canShowNative, setCanShowNative] = useState(false);
 
@@ -115,15 +117,20 @@ export default function CallKeepBridge() {
       CK.on("answerCall", (data: any) => {
         const uuid = data?.callUUID || uuidRef.current;
         const st = useCall.getState();
+        answeredViaCk.current = true;
         console.log("[ck] << answerCall", uuid, "status=", st.snap.status, "pendingVoip=", !!getPendingVoip());
         if (getPendingVoip() && st.snap.status !== "incoming") {
           st.armAutoAnswer(true); // INVITE not here yet
-        } else {
+        } else if (st.snap.status === "incoming") {
           st.answer();
+        } else {
+          // spurious-endCall killed the ring but the SIP INVITE may still
+          // be alive — arm so it's answered the moment it (re)appears.
+          st.armAutoAnswer(true);
         }
         router.push("/(agent)/call" as any);
-        // hand the call to the app right away — no lingering system call
         ckEnd(uuid);
+        if (uuidRef.current && uuidRef.current !== uuid) ckEnd(uuidRef.current);
         clearCall();
         // ConnectionService teardown can reset AudioManager after answer();
         // re-assert the in-call route once the SIP leg is actually up.
@@ -139,13 +146,26 @@ export default function CallKeepBridge() {
           return;
         }
         const s = useCall.getState().snap.status;
-        console.log("[ck] << endCall", uuid, "(user) status=", s);
+        const sinceShown = Date.now() - shownAt.current;
+        console.log("[ck] << endCall", uuid, "status=", s, "sinceShown=", sinceShown, "answeredViaCk=", answeredViaCk.current);
+
+        // Android's ConnectionService often kills our incoming connection
+        // on its own within a second or two of displayIncomingCall — that
+        // arrives here as `endCall` but is NOT a user decline. Don't 486
+        // the caller; drop to the reliable in-app ring for this call.
+        if (s === "incoming" && !answeredViaCk.current && sinceShown < 3500) {
+          console.log("[ck] spurious endCall → falling back to in-app ring");
+          useCall.setState({ nativeCallUi: false });
+          uuidRef.current = null;
+          return;
+        }
+
         if (getPendingVoip() && s !== "incoming" && s !== "active") {
           rejectPendingVoip();
           useCall.getState().armAutoAnswer(false);
         } else if (s === "incoming" || s === "ringing" || s === "dialing") {
           useCall.getState().decline();
-        } else {
+        } else if (!answeredViaCk.current) {
           useCall.getState().hangup();
         }
         clearCall();
@@ -169,10 +189,19 @@ export default function CallKeepBridge() {
 
   // ---- engine state → OS UI (ring only) ----
   useEffect(() => {
-    if (!ckReady || !canShowNative) return;
+    if (!ckReady) return;
     const s = snap.status;
     const prev = lastStatus.current;
     lastStatus.current = s;
+
+    // new incoming call — re-arm CallKeep (a previous call may have fallen
+    // back to the in-app ring after a spurious ConnectionService kill).
+    if (s === "incoming" && prev !== "incoming") {
+      answeredViaCk.current = false;
+      if (canShowNative) useCall.setState({ nativeCallUi: true });
+    }
+
+    if (!canShowNative || !useCall.getState().nativeCallUi) return;
 
     // raise the incoming ring once per call
     if (s === "incoming" && prev !== "incoming") {
@@ -180,6 +209,7 @@ export default function CallKeepBridge() {
         console.log("[ck] INVITE arrived for pushed call", uuidRef.current);
       } else if (!uuidRef.current) {
         uuidRef.current = newUuid();
+        shownAt.current = Date.now();
         const handle = snap.party?.number || "unknown";
         console.log("[ck] >> showIncoming", uuidRef.current, handle, snap.party?.name);
         CK.showIncoming(uuidRef.current, handle, snap.party?.name || handle);
