@@ -2,7 +2,12 @@ import admin from "firebase-admin";
 
 const projectId = process.env.FIREBASE_PROJECT_ID || "";
 const clientEmail = process.env.FIREBASE_CLIENT_EMAIL || "";
-const privateKey = process.env.FIREBASE_PRIVATE_KEY || "";
+// Stored in .env as a single line with escaped newlines ("-----BEGIN...\n...");
+// restore the real newlines the PEM parser needs. Also tolerate a value
+// wrapped in surrounding quotes.
+const privateKey = (process.env.FIREBASE_PRIVATE_KEY || "")
+  .replace(/^["']|["']$/g, "")
+  .replace(/\\n/g, "\n");
 
 // Team Chat's actual messages live in the Realtime Database and are
 // written directly from the frontend — this admin app is only for
