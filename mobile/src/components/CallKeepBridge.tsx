@@ -1,9 +1,18 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { AppState, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 
 import { useCall } from "@/store/call";
-import { CK, callkeepAvailable, callkeepNativeLoaded, initCallKeep, newUuid, promptCallAccount } from "@/lib/callkeep";
+import {
+  CK,
+  callAccountStatus,
+  callkeepAvailable,
+  callkeepNativeLoaded,
+  initCallKeep,
+  newUuid,
+  promptCallAccount
+} from "@/lib/callkeep";
 import type { CallStatus } from "@/lib/sip";
 
 // The bridge only does anything on a build where CallKeep's native module
@@ -19,16 +28,35 @@ export default function CallKeepBridge() {
   const uuidRef = useRef<string | null>(null);
   const lastStatus = useRef<CallStatus>("idle");
 
-  // Tell IncomingCall whether the OS call UI is handling the ring.
+  // Can the OS actually show calls right now? iOS: yes once linked.
+  // Android: only when the user has enabled ringNex under Calling accounts
+  // — otherwise displayIncomingCall silently no-ops, so keep the in-app ring.
+  const [canShowNative, setCanShowNative] = useState(false);
+
+  const refreshNative = async () => {
+    if (!ckReady) return setCanShowNative(false);
+    if (Platform.OS === "ios") return setCanShowNative(true);
+    const st = await callAccountStatus();
+    setCanShowNative(!!st.enabled);
+  };
+
   useEffect(() => {
-    useCall.setState({ nativeCallUi: ckReady });
-    return () => useCall.setState({ nativeCallUi: false });
+    refreshNative();
+    const sub = AppState.addEventListener("change", (s) => s === "active" && refreshNative());
+    return () => sub.remove();
   }, []);
+
+  // Let IncomingCall know whether to suppress the in-app overlay.
+  useEffect(() => {
+    useCall.setState({ nativeCallUi: canShowNative });
+    return () => useCall.setState({ nativeCallUi: false });
+  }, [canShowNative]);
 
   useEffect(() => {
     if (!ckReady) return;
     (async () => {
       await initCallKeep();
+      await refreshNative();
       // First run only: if the OS won't show calls natively yet, nudge
       // the user to the Calling accounts screen. Never nag twice.
       try {
@@ -69,9 +97,9 @@ export default function CallKeepBridge() {
     return () => offs.forEach((o) => o());
   }, []);
 
-  // engine state → OS UI
+  // engine state → OS UI (only when the OS UI can actually render)
   useEffect(() => {
-    if (!ckReady) return;
+    if (!ckReady || !canShowNative) return;
     const prev = lastStatus.current;
     const s = snap.status;
     lastStatus.current = s;
@@ -89,7 +117,7 @@ export default function CallKeepBridge() {
       CK.end(uuidRef.current);
       uuidRef.current = null;
     }
-  }, [snap.status, snap.party?.number]);
+  }, [snap.status, snap.party?.number, canShowNative]);
 
   // in-app mute/hold changes → reflect on the OS UI
   useEffect(() => {
