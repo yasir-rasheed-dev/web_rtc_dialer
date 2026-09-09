@@ -26,7 +26,6 @@ import {
   dmId,
   editMessageText,
   markThreadSeen,
-  pushTokensFor,
   sendMessage,
   subscribeMessages,
   uploadChatFile,
@@ -34,7 +33,7 @@ import {
   type ChatKind,
   type ChatMessage
 } from "@/lib/chat";
-import { sendPush } from "@/lib/push";
+import { notifyRecipients } from "@/lib/push";
 
 type Tray = {
   id: string;
@@ -95,20 +94,15 @@ export default function ChatThread() {
   }, [kind, peerOrTeamId, directory]);
 
   const notify = useCallback(
-    async (preview: string) => {
-      if (!tenantId || !recipientIds.length) return;
-      try {
-        const tokens = await pushTokensFor(tenantId, recipientIds);
-        await sendPush(tokens, {
-          title: kind === "dm" ? me.name : `${title} · ${me.name}`,
-          body: preview,
-          data: { id: peerOrTeamId, kind, name: title }
-        });
-      } catch {
-        /* push is best-effort */
-      }
+    (preview: string) => {
+      if (!recipientIds.length) return;
+      notifyRecipients(recipientIds, {
+        title: kind === "dm" ? me.name : `${title} · ${me.name}`,
+        body: preview,
+        data: { id: peerOrTeamId, kind, name: title }
+      });
     },
-    [tenantId, recipientIds, kind, title, peerOrTeamId]
+    [recipientIds, kind, title, peerOrTeamId]
   );
 
   /* ---- attachments ---- */

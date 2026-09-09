@@ -7,7 +7,7 @@ import express from "express";
 import multer from "multer";
 
 import { db } from "./db.js";
-import { mintFirebaseToken } from "./firebaseAdmin.js";
+import { mintFirebaseToken, sendPushMulticast } from "./firebaseAdmin.js";
 
 function asyncRoute(handler) {
   return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
@@ -85,11 +85,72 @@ async function saveFcmToken(req, res) {
   res.status(204).end();
 }
 
+// Register one device/browser push token for the current user. Called by
+// the web app, the Electron app and the mobile app on startup.
+async function savePushToken(req, res) {
+  const token = String(req.body.token || "").trim();
+  const platform = String(req.body.platform || "web").trim().toLowerCase().slice(0, 16) || "web";
+  if (!token) return res.status(400).json({ error: "token required" });
+  await db.execute(
+    `INSERT INTO user_push_tokens (id, user_id, tenant_id, token, platform)
+       VALUES (UUID(), ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       user_id = VALUES(user_id),
+       tenant_id = VALUES(tenant_id),
+       platform = VALUES(platform),
+       updated_at = CURRENT_TIMESTAMP`,
+    [req.user.id, req.user.tenant_id, token, platform]
+  );
+  res.status(204).end();
+}
+
+async function deletePushToken(req, res) {
+  const token = String(req.body.token || "").trim();
+  if (token) await db.execute("DELETE FROM user_push_tokens WHERE token=? AND user_id=?", [token, req.user.id]);
+  res.status(204).end();
+}
+
+// Fan a new-chat-message notification out to its recipients across every
+// platform they're signed in on. The client resolves who should get it
+// (DM peer / team members / custom-group participants) and passes their
+// user ids; we only ever notify ids in the caller's own tenant.
+async function notifyRecipients(req, res) {
+  const ids = Array.isArray(req.body.recipientIds) ? req.body.recipientIds.map(String).filter(Boolean) : [];
+  const title = String(req.body.title || "New message").slice(0, 120);
+  const body = String(req.body.body || "").slice(0, 240);
+  const data = req.body.data && typeof req.body.data === "object" ? req.body.data : {};
+
+  const others = [...new Set(ids)].filter((id) => id !== String(req.user.id));
+  if (!others.length) return res.json({ sent: 0 });
+
+  const [rows] = await db.query(
+    `SELECT pt.token
+       FROM user_push_tokens pt
+       JOIN users u ON u.id = pt.user_id AND u.tenant_id = pt.tenant_id AND u.active = 1
+      WHERE pt.tenant_id = ? AND pt.user_id IN (${others.map(() => "?").join(",")})`,
+    [req.user.tenant_id, ...others]
+  );
+  const tokens = rows.map((r) => r.token);
+  if (!tokens.length) return res.json({ sent: 0 });
+
+  const { successCount, invalidTokens } = await sendPushMulticast(tokens, { title, body, data });
+  if (invalidTokens.length) {
+    await db.query(
+      `DELETE FROM user_push_tokens WHERE token IN (${invalidTokens.map(() => "?").join(",")})`,
+      invalidTokens
+    );
+  }
+  res.json({ sent: successCount });
+}
+
 export default function createTeamChatRoutes(authenticate) {
   const router = express.Router();
   router.get("/directory", authenticate, asyncRoute(getDirectory));
   router.post("/firebase-token", authenticate, asyncRoute(issueFirebaseToken));
   router.post("/upload", authenticate, upload.single("file"), asyncRoute(uploadAttachment));
   router.post("/fcm-token", authenticate, asyncRoute(saveFcmToken));
+  router.post("/push-token", authenticate, asyncRoute(savePushToken));
+  router.delete("/push-token", authenticate, asyncRoute(deletePushToken));
+  router.post("/notify", authenticate, asyncRoute(notifyRecipients));
   return router;
 }

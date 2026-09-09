@@ -11,14 +11,11 @@ export default function PushBridge() {
   const router = useRouter();
   const me = useChat((s) => s.me);
   const tenantId = useChat((s) => s.tenantId);
-  // `ready` flips true only after signInToFirebase() resolves — writing the
-  // push token before that fails the RTDB rules (auth == null).
-  const ready = useChat((s) => s.ready);
 
   useEffect(() => {
-    if (!pushAvailable || !ready || !me?.id || !tenantId) return;
-    registerPush(tenantId, me.id);
-  }, [ready, me?.id, tenantId]);
+    if (!pushAvailable || !me?.id || !tenantId) return;
+    registerPush();
+  }, [me?.id, tenantId]);
 
   useEffect(() => {
     if (!pushAvailable) return;

@@ -33,6 +33,7 @@ import { useTeamChatUnreadCount } from "../lib/teamChatBadge";
 import { useFollowUpsBadge } from "../lib/followUpsBadge";
 import { useMissedCallsBadge } from "../lib/missedCallsBadge";
 import { useVoicemailBadge } from "../lib/voicemailBadge";
+import { usePushRegistration } from "../lib/pushRegister";
 import Login from "../pages/login/Login";
 import Dashboard from "../pages/dashboard/Dashboard";
 import Supervisor from "../pages/supervisor/Supervisor";
@@ -142,6 +143,7 @@ function TenantApp() {
   const [liveAgentStatus, setLiveAgentStatus] = useState({});
   const [supervisorAgents, setSupervisorAgents] = useState([]);
   const teamChatUnread = useTeamChatUnreadCount(session);
+  usePushRegistration(session);
   const missedCalls = useMissedCallsBadge(session);
   const voicemails = useVoicemailBadge(session);
   const followUps = useFollowUpsBadge(session);

@@ -634,7 +634,32 @@ export default function TeamChat({ session }) {
     await push(ref(db, msgPath), payload);
     setSending(false);
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "instant" }), 0);
-  }, [messageInput, attachments, selectedChat, myId, user?.name, sending, tenantId]);
+
+    // Cross-platform push (web / electron / mobile) — the backend fans it
+    // out to every device each recipient is signed in on.
+    let recipientIds = [];
+    if (selectedChat.type === "group") {
+      const team = teams.find((t) => String(t.id) === String(selectedChat.id));
+      recipientIds = (team?.members || []).map((m) => String(m.id));
+    } else if (selectedChat.type === "custom-group") {
+      recipientIds = Object.keys(selectedChat.participants || {});
+    } else {
+      recipientIds = [String(selectedChat.id)];
+    }
+    recipientIds = recipientIds.filter((id) => id && id !== String(myId));
+    if (recipientIds.length) {
+      const isDm = selectedChat.type === "individual" || selectedChat.type === "dm";
+      api("/team-chat/notify", {
+        method: "POST",
+        body: {
+          recipientIds,
+          title: isDm ? user.name : `${selectedChat.name} · ${user.name}`,
+          body: text || (uploaded.length > 1 ? `📷 ${uploaded.length} photos` : "📷 Photo"),
+          data: { id: String(selectedChat.id), kind: isDm ? "dm" : selectedChat.type === "group" ? "group" : "custom-group", name: selectedChat.name || "" }
+        }
+      }).catch(() => {});
+    }
+  }, [messageInput, attachments, selectedChat, myId, user?.name, sending, tenantId, teams]);
 
   const createCustomGroup = async () => {
     if (!groupName.trim() || !selectedParticipants.length) return;
