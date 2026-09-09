@@ -32,6 +32,8 @@ export interface CallEngine {
 
   connect(cfg: SipConfig): void;
   disconnect(): void;
+  /** Re-establish the SIP link now (app resumed / network back). */
+  reconnect?(): void;
 
   onCall(cb: (s: CallSnapshot) => void): () => void;
   onRegistration(cb: (r: Registration) => void): () => void;

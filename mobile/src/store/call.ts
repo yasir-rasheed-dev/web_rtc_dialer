@@ -1,3 +1,4 @@
+import { AppState, type NativeEventSubscription } from "react-native";
 import { create } from "zustand";
 
 import { getEngine } from "@/lib/sip";
@@ -28,11 +29,13 @@ type CallState = {
   cancelWarmTransfer: () => void;
   armAutoAnswer: (on: boolean) => void;
   refreshAudio: () => void;
+  reconnect: () => void;
   simulateIncoming: (party: Party) => void;
   isReal: () => boolean;
 };
 
 let unsub: Array<() => void> = [];
+let appStateSub: NativeEventSubscription | null = null;
 let resolvedFor = ""; // number we last ran a contact lookup for
 
 // When a call's party has only a number (no saved name), resolve it
@@ -71,11 +74,19 @@ export const useCall = create<CallState>((set, get) => ({
     ];
     e.connect(cfg);
     set({ connected: true, snap: e.getSnapshot(), registration: e.getRegistration() });
+
+    // Re-assert the SIP link whenever the app comes back to the foreground.
+    appStateSub?.remove();
+    appStateSub = AppState.addEventListener("change", (s) => {
+      if (s === "active") getEngine().reconnect?.();
+    });
   },
 
   teardown() {
     unsub.forEach((u) => u());
     unsub = [];
+    appStateSub?.remove();
+    appStateSub = null;
     getEngine().disconnect();
     set({ connected: false, snap: { ...IDLE }, registration: "offline" });
   },
@@ -102,6 +113,7 @@ export const useCall = create<CallState>((set, get) => ({
   cancelWarmTransfer: () => getEngine().cancelWarmTransfer(),
   armAutoAnswer: (on) => getEngine().armAutoAnswer?.(on),
   refreshAudio: () => getEngine().refreshAudio?.(),
+  reconnect: () => getEngine().reconnect?.(),
   simulateIncoming: (party) => getEngine().simulateIncoming?.(party),
   isReal: () => getEngine().isReal
 }));

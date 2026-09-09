@@ -33,6 +33,8 @@ export function createRealEngine(): CallEngine {
   let reg: Registration = "offline";
   let resetTimer: ReturnType<typeof setTimeout> | null = null;
   let autoAnswer = false; // set when a VoIP-push call was already accepted
+  let stopping = false; // true only during an intentional disconnect()
+  let watchdog: ReturnType<typeof setInterval> | null = null;
 
   const callSubs = new Set<(s: CallSnapshot) => void>();
   const regSubs = new Set<(r: Registration) => void>();
@@ -120,6 +122,7 @@ export function createRealEngine(): CallEngine {
 
     connect(c: SipConfig) {
       cfg = c;
+      stopping = false;
       setReg("connecting");
       console.log(`[sip] connect → ${c.wssUrl}  aor sip:${c.username}@${c.domain}`);
       try {
@@ -130,20 +133,26 @@ export function createRealEngine(): CallEngine {
           password: c.password,
           display_name: c.displayName || c.username,
           register: true,
-          register_expires: 300,
-          session_timers: false
+          // shorter expiry keeps the NAT/proxy binding fresh and surfaces a
+          // dropped link sooner; JsSIP re-registers on its own at ~half.
+          register_expires: 120,
+          session_timers: false,
+          // auto WebSocket recovery with backoff (JsSIP built-in)
+          connection_recovery_min_interval: 2,
+          connection_recovery_max_interval: 15
         });
 
         ua.on("connected", () => console.log("[sip] ws connected"));
         ua.on("disconnected", (e: any) => {
-          console.warn("[sip] ws disconnected", e?.reason);
-          setReg("offline");
+          console.warn("[sip] ws disconnected", e?.reason || e?.code || "");
+          // Not an intentional teardown → we're recovering, not "offline".
+          if (!stopping) setReg("connecting");
         });
         ua.on("registered", () => {
           console.log("[sip] REGISTERED");
           setReg("registered");
         });
-        ua.on("unregistered", () => setReg("offline"));
+        ua.on("unregistered", () => setReg(stopping ? "offline" : "connecting"));
         ua.on("registrationFailed", (e: any) => {
           console.warn("[sip] registrationFailed:", e?.cause, e?.response?.status_code, e?.response?.reason_phrase);
           setReg("failed");
@@ -172,15 +181,55 @@ export function createRealEngine(): CallEngine {
         });
 
         ua.start();
+
+        // Safety net on top of JsSIP's own recovery: every 20s, if we're
+        // not in a call and the link isn't fully up, nudge it.
+        if (watchdog) clearInterval(watchdog);
+        watchdog = setInterval(() => {
+          if (stopping || !ua || session) return;
+          try {
+            if (!ua.isConnected()) {
+              console.log("[sip] watchdog: socket down → start()");
+              ua.start();
+            } else if (!ua.isRegistered()) {
+              console.log("[sip] watchdog: not registered → register()");
+              ua.register();
+            }
+          } catch (e) {
+            console.warn("[sip] watchdog error:", e);
+          }
+        }, 20_000);
       } catch (e) {
         console.warn("[sip] UA construction failed:", e);
         setReg("failed");
       }
     },
 
+    // Called when the app returns to the foreground / regains network —
+    // re-establish the link right away instead of waiting for a retry tick.
+    reconnect() {
+      if (stopping || !ua) return;
+      try {
+        if (!ua.isConnected()) {
+          setReg("connecting");
+          ua.start();
+        } else if (!ua.isRegistered()) {
+          setReg("connecting");
+          ua.register();
+        }
+      } catch (e) {
+        console.warn("[sip] reconnect error:", e);
+      }
+    },
+
     disconnect() {
+      stopping = true;
       stopAudio();
       if (resetTimer) clearTimeout(resetTimer);
+      if (watchdog) {
+        clearInterval(watchdog);
+        watchdog = null;
+      }
       try {
         session?.terminate();
       } catch {
