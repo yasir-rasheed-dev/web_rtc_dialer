@@ -19,6 +19,12 @@ export default function CallKeepBridge() {
   const uuidRef = useRef<string | null>(null);
   const lastStatus = useRef<CallStatus>("idle");
 
+  // Tell IncomingCall whether the OS call UI is handling the ring.
+  useEffect(() => {
+    useCall.setState({ nativeCallUi: ckReady });
+    return () => useCall.setState({ nativeCallUi: false });
+  }, []);
+
   useEffect(() => {
     if (!ckReady) return;
     (async () => {

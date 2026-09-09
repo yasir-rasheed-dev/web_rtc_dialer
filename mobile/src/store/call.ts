@@ -9,6 +9,9 @@ type CallState = {
   snap: CallSnapshot;
   registration: Registration;
   connected: boolean;
+  // true only once CallKeepBridge confirms the native call UI is live;
+  // when false the in-app IncomingCall overlay handles the ring.
+  nativeCallUi: boolean;
   init: (cfg: SipConfig) => void;
   teardown: () => void;
   // actions (delegate to the engine)
@@ -50,6 +53,7 @@ export const useCall = create<CallState>((set, get) => ({
   snap: { ...IDLE },
   registration: "offline",
   connected: false,
+  nativeCallUi: false,
 
   init(cfg) {
     if (get().connected) return;
