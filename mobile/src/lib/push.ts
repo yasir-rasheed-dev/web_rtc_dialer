@@ -40,11 +40,16 @@ export async function registerPush(tenantId: string, uid: string): Promise<strin
     const projectId = (Constants.expoConfig?.extra as any)?.eas?.projectId;
     const token = (await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined)).data;
 
-    await set(ref(rtdb, `tenants/${tenantId}/push/${uid}`), {
-      token,
-      platform: Platform.OS,
-      at: Date.now()
-    });
+    // The RTDB write needs Firebase auth to have completed. PushBridge
+    // gates on `ready`, but retry once more in case of a slow sign-in.
+    const write = () =>
+      set(ref(rtdb, `tenants/${tenantId}/push/${uid}`), { token, platform: Platform.OS, at: Date.now() });
+    try {
+      await write();
+    } catch (e) {
+      await new Promise((r) => setTimeout(r, 2500));
+      await write();
+    }
     api("/team-chat/fcm-token", { method: "POST", body: { token } }).catch(() => {});
     return token;
   } catch (e) {
