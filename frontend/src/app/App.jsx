@@ -43,6 +43,8 @@ import Supervisor from "../pages/supervisor/Supervisor";
 // an in-progress SIP call never drops when the agent navigates to another
 // page. Everything else below is lazy-loaded to keep the initial bundle lean.
 import EndCallPopup from "../components/ui/EndCallPopup";
+import GhlEndCallPopup from "../components/ui/GhlEndCallPopup";
+import { getGhlAgentConfig } from "../lib/ghlApi";
 import GlobalCallOverlay from "../components/ui/GlobalCallOverlay";
 import DesktopCallBridge from "../components/DesktopCallBridge";
 import Softphone from "../pages/softphone/Softphone";
@@ -147,6 +149,7 @@ function TenantApp() {
   const [supervisorAgents, setSupervisorAgents] = useState([]);
   const teamChatUnread = useTeamChatUnreadCount(session);
   usePushRegistration(session);
+  const [ghlConfig, setGhlConfig] = useState({ active: false });
   const missedCalls = useMissedCallsBadge(session);
   const voicemails = useVoicemailBadge(session);
   const followUps = useFollowUpsBadge(session);
@@ -202,6 +205,13 @@ function TenantApp() {
   useEffect(() => {
     setWorkspaceTz(session?.tenant?.timezone || null);
   }, [session?.tenant?.timezone]);
+
+  // GoHighLevel: is there an active connection for this tenant, and its
+  // pipeline config — drives the call-end popup (agents included).
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    getGhlAgentConfig().then((c) => setGhlConfig(c || { active: false }));
+  }, [session?.user?.id]);
 
   // request() fires this when the access token expired AND a silent
   // refresh failed (refresh token gone / revoked / reused) — drop to the
@@ -474,8 +484,15 @@ function TenantApp() {
           Web: window.ringnexDesktop never exists, so this is unchanged. */}
       {!ownerAccount && session.sip && !window.ringnexDesktop && <GlobalCallOverlay onDialerPage={page === "dialer"} />}
       {!ownerAccount && session.sip && <DesktopCallBridge />}
-      {!ownerAccount && session.sip && session.tenant?.canUseLeads && hasAny(session, ["SHOW_END_CALL_POPUP"]) && (
-        <EndCallPopup enabled={page !== "auto-dialer"} />
+      {/* One call-end popup: the Lead Management one (with a GoHighLevel
+          section when connected), or — if Lead Mgmt is off but GHL is
+          connected — the standalone GoHighLevel popup. */}
+      {!ownerAccount && session.sip && (
+        session.tenant?.canUseLeads && hasAny(session, ["SHOW_END_CALL_POPUP"]) ? (
+          <EndCallPopup enabled={page !== "auto-dialer"} ghl={ghlConfig} />
+        ) : ghlConfig.active ? (
+          <GhlEndCallPopup enabled={page !== "auto-dialer"} config={ghlConfig} />
+        ) : null
       )}
     </div>
   );

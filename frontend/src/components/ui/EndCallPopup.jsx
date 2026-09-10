@@ -12,6 +12,7 @@ import { notifyError, notifySuccess } from "../../lib/toast";
 import { lookupCallerIdentity } from "../../lib/api";
 import { formatDuration } from "../../lib/phone";
 import { getDispositions, saveLeadFromCall, uploadLeadAttachment } from "../../lib/leadsApi";
+import { getGhlCallContext, OPP_STATUSES } from "../../lib/ghlApi";
 
 const fieldLabel = "flex flex-col gap-1.5 text-xs font-medium text-muted";
 
@@ -62,7 +63,7 @@ const EMPTY_FORM = {
  * `page !== "dialer"`) is what stops the two from double-firing on the
  * same call.
  */
-export default function EndCallPopup({ enabled = true }) {
+export default function EndCallPopup({ enabled = true, ghl = { active: false } }) {
   const [detail, setDetail] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [dispositions, setDispositions] = useState([]);
@@ -71,6 +72,15 @@ export default function EndCallPopup({ enabled = true }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const fileInputRef = useRef(null);
+
+  // GoHighLevel section (only when connected + active for this tenant)
+  const ghlActive = !!ghl?.active;
+  const ghlPipelines = ghl?.pipelines || [];
+  const [ghlOpps, setGhlOpps] = useState([]);
+  const [ghlChoice, setGhlChoice] = useState("none"); // none | create | <oppId>
+  const [ghlPipelineId, setGhlPipelineId] = useState("");
+  const [ghlStageId, setGhlStageId] = useState("");
+  const [ghlStatus, setGhlStatus] = useState("open");
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -86,6 +96,18 @@ export default function EndCallPopup({ enabled = true }) {
       setShowTags(false);
       setFile(null);
       setError("");
+
+      // GoHighLevel: does the contact already exist, what opportunities?
+      setGhlOpps([]);
+      setGhlChoice(ghlActive && ghl?.createOpportunityDefault ? "create" : "none");
+      setGhlPipelineId(ghl?.pipelineId || ghlPipelines[0]?.id || "");
+      setGhlStageId(ghl?.pipelineStageId || ghlPipelines[0]?.stages?.[0]?.id || "");
+      setGhlStatus("open");
+      if (ghlActive && payload.number) {
+        getGhlCallContext(payload.number)
+          .then((ctx) => setGhlOpps(ctx?.opportunities || []))
+          .catch(() => undefined);
+      }
 
       // Confirms whether this number is *already* a saved Contact (vs.
       // just an internal agent's extension or nothing at all) so the
@@ -105,14 +127,32 @@ export default function EndCallPopup({ enabled = true }) {
           .catch(() => undefined);
       }
     };
-    window.addEventListener("ringnex:call-ended", onCallEnded);
+    window.addEventListener("ringnex:call-ended", onCallEnded); // eslint-disable-line
     return () => window.removeEventListener("ringnex:call-ended", onCallEnded);
-  }, [enabled]);
+  }, [enabled, ghl]);
 
   useEffect(() => {
     if (!detail) return;
     getDispositions().then(setDispositions).catch(() => undefined);
   }, [detail]);
+
+  // Picking an existing GHL opportunity mirrors its pipeline/stage/status.
+  useEffect(() => {
+    if (ghlChoice === "none" || ghlChoice === "create") return;
+    const opp = ghlOpps.find((o) => o.id === ghlChoice);
+    if (opp) {
+      if (opp.pipelineId) setGhlPipelineId(opp.pipelineId);
+      if (opp.pipelineStageId) setGhlStageId(opp.pipelineStageId);
+      if (opp.status) setGhlStatus(opp.status);
+    }
+  }, [ghlChoice]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const ghlStages = (ghlPipelines.find((p) => p.id === ghlPipelineId)?.stages || []);
+  const ghlOppOptions = [
+    { value: "none", label: "Don't touch opportunities" },
+    { value: "create", label: "Create a new opportunity" },
+    ...ghlOpps.map((o) => ({ value: o.id, label: `Update: ${o.name || "opportunity"}` }))
+  ];
 
   const close = () => {
     setDetail(null);
@@ -130,6 +170,13 @@ export default function EndCallPopup({ enabled = true }) {
     try {
       const followUpAt =
         form.followUpDate && form.followUpTime ? `${form.followUpDate} ${form.followUpTime}:00` : null;
+      const ghlOpportunity =
+        ghlActive && ghlChoice !== "none"
+          ? ghlChoice === "create"
+            ? { mode: "create", pipelineId: ghlPipelineId, pipelineStageId: ghlStageId, status: ghlStatus }
+            : { mode: "update", opportunityId: ghlChoice, pipelineStageId: ghlStageId, status: ghlStatus }
+          : undefined;
+
       const { interactionId } = await saveLeadFromCall({
         callLinkedid: null,
         name: form.name.trim() || null,
@@ -139,7 +186,8 @@ export default function EndCallPopup({ enabled = true }) {
         dispositionId: form.dispositionId || null,
         followUpAt,
         remarks: form.remarks.trim(),
-        tags: form.tags
+        tags: form.tags,
+        ...(ghlOpportunity ? { ghlOpportunity } : {})
       });
       if (file) {
         await uploadLeadAttachment(interactionId, file).catch((uploadError) =>
@@ -250,6 +298,46 @@ export default function EndCallPopup({ enabled = true }) {
             required
           />
         </label>
+
+        {ghlActive ? (
+          <div className="rounded-xl border border-border bg-surface-2 p-3">
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted">GoHighLevel</p>
+            <p className="mb-2 text-[11px] text-muted">
+              The contact and your remark sync automatically. Choose what to do with an opportunity:
+            </p>
+            <Select
+              options={ghlOppOptions}
+              value={ghlOppOptions.find((o) => o.value === ghlChoice) || ghlOppOptions[0]}
+              onChange={(o) => setGhlChoice(o?.value || "none")}
+            />
+            {ghlChoice !== "none" ? (
+              <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                <div className={ghlChoice === "create" ? "" : "pointer-events-none opacity-50"}>
+                  <Select
+                    options={ghlPipelines.map((p) => ({ value: p.id, label: p.name }))}
+                    value={ghlPipelines.map((p) => ({ value: p.id, label: p.name })).find((o) => o.value === ghlPipelineId) || null}
+                    onChange={(o) => {
+                      setGhlPipelineId(o?.value || "");
+                      setGhlStageId(ghlPipelines.find((p) => p.id === o?.value)?.stages?.[0]?.id || "");
+                    }}
+                    placeholder="Pipeline"
+                  />
+                </div>
+                <Select
+                  options={ghlStages.map((s) => ({ value: s.id, label: s.name }))}
+                  value={ghlStages.map((s) => ({ value: s.id, label: s.name })).find((o) => o.value === ghlStageId) || null}
+                  onChange={(o) => setGhlStageId(o?.value || "")}
+                  placeholder="Stage"
+                />
+                <Select
+                  options={OPP_STATUSES}
+                  value={OPP_STATUSES.find((o) => o.value === ghlStatus) || OPP_STATUSES[0]}
+                  onChange={(o) => setGhlStatus(o?.value || "open")}
+                />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         {showTags ? (
           <label className={fieldLabel}>
