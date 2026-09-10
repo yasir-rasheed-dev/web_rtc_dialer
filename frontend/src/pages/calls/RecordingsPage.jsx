@@ -18,6 +18,8 @@ import Card from "../../components/ui/Card";
 import EmptyState from "../../components/ui/EmptyState";
 import PageHeader from "../../components/ui/PageHeader";
 import { SkeletonTable } from "../../components/ui/Skeleton";
+import PhoneNumber from "../../components/ui/PhoneNumber";
+import { formatPhoneDisplay } from "../../lib/phone";
 import { api, recordingBlob } from "../../lib/api";
 import { Filters, Pagination, formatDate, formatSeconds, useAgentOptions } from "./shared";
 
@@ -165,8 +167,8 @@ export default function RecordingsPage() {
                     const agentName = call.agent_name || call.agent_sip_username || "—";
                     return (
                       <tr key={call.id} className="border-t border-border transition-colors hover:bg-surface-2">
-                        <td className="whitespace-nowrap px-4 py-3 font-semibold tabular-nums text-text">
-                          {otherParty(call) || "—"}
+                        <td className="whitespace-nowrap px-4 py-3 font-semibold text-text">
+                          {otherParty(call) ? <PhoneNumber value={otherParty(call)} /> : "—"}
                         </td>
                         <td className="px-4 py-3">
                           <span className="flex items-center gap-2.5">
@@ -233,7 +235,7 @@ export default function RecordingsPage() {
                   {audio.call.agent_name || audio.call.agent_sip_username || "Recording"}
                 </p>
                 <p className="truncate text-xs text-muted">
-                  {formatDate(audio.call.started_at)} · {audio.call.from_number} → {audio.call.to_number}
+                  {formatDate(audio.call.started_at)} · {formatPhoneDisplay(audio.call.from_number)} → {formatPhoneDisplay(audio.call.to_number)}
                 </p>
               </div>
               <button

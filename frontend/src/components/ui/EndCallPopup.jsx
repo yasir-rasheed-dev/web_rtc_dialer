@@ -13,6 +13,7 @@ import { lookupCallerIdentity } from "../../lib/api";
 import { formatDuration } from "../../lib/phone";
 import { getDispositions, saveLeadFromCall, uploadLeadAttachment } from "../../lib/leadsApi";
 import { getGhlCallContext, OPP_STATUSES } from "../../lib/ghlApi";
+import PhoneNumber from "./PhoneNumber";
 
 const fieldLabel = "flex flex-col gap-1.5 text-xs font-medium text-muted";
 
@@ -240,7 +241,9 @@ export default function EndCallPopup({ enabled = true, ghl = { active: false } }
         </div>
         <div className="rounded-xl border border-border bg-surface-2 p-3">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">Number</p>
-          <p className="mt-1 truncate text-sm font-semibold text-text">{detail.number}</p>
+          <p className="mt-1 truncate text-sm font-semibold text-text">
+            {detail.number ? <PhoneNumber value={detail.number} /> : "—"}
+          </p>
         </div>
         <div className="rounded-xl border border-border bg-surface-2 p-3">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">Duration</p>

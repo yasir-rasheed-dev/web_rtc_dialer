@@ -8,6 +8,7 @@ import Select from "./Select";
 import Toggle from "./Toggle";
 import { notifyError, notifySuccess } from "../../lib/toast";
 import { getGhlCallContext, postGhlCallOutcome, OPP_STATUSES } from "../../lib/ghlApi";
+import PhoneNumber from "./PhoneNumber";
 
 // Standalone call-end popup for tenants with GoHighLevel connected but NOT
 // the Lead Management system. Always skippable.
@@ -127,8 +128,8 @@ export default function GhlEndCallPopup({ enabled = true, config }) {
 
   return (
     <Modal open title="Call ended" onClose={close} width="max-w-lg">
-      <p className="-mt-2 mb-4 text-xs text-muted">
-        {detail.number}
+      <p className="-mt-2 mb-4 flex items-center gap-1 text-xs text-muted">
+        <PhoneNumber value={detail.number} className="text-xs" />
         {loading ? " · checking GoHighLevel…" : ""}
       </p>
 

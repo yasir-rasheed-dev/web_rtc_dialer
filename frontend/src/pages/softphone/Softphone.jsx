@@ -28,12 +28,14 @@ import {
 } from "lucide-react";
 import { RingnexSipClient } from "../../lib/sipClient";
 import {
+  formatDialInput,
   formatDuration,
   formatForDialing,
   initials,
   isValidDialString,
   normalizeDialString
 } from "../../lib/phone";
+import PhoneNumber from "../../components/ui/PhoneNumber";
 import { api, lookupCallerIdentity } from "../../lib/api";
 import {
   loadConfig,
@@ -1185,7 +1187,9 @@ const addPstnParticipant = () => {
                   <p className="text-xs text-muted">
                     {currentParty.displayName || (callStatus === "incoming" ? "Incoming call" : "Calling")}
                   </p>
-                  <p className="text-lg font-semibold text-text">{currentParty.number || "Unknown caller"}</p>
+                  <p className="text-lg font-semibold text-text">
+                    {currentParty.number ? <PhoneNumber value={currentParty.number} /> : "Unknown caller"}
+                  </p>
                   {(currentParty.jobTitle || currentParty.company) && (
                     <p className="text-xs text-muted">
                       {[currentParty.jobTitle, currentParty.company].filter(Boolean).join(" · ")}
@@ -1318,8 +1322,12 @@ const addPstnParticipant = () => {
                 }`}
               >
                 <input
-                  value={dialNumber}
+                  value={formatDialInput(dialNumber)}
                   onChange={(event) => setDialNumber(normalizeDialString(event.target.value))}
+                  onPaste={(event) => {
+                    event.preventDefault();
+                    setDialNumber(normalizeDialString(event.clipboardData.getData("text")));
+                  }}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") placeCall(event);
                   }}
@@ -1428,10 +1436,14 @@ const addPstnParticipant = () => {
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-text">
-                    {currentParty.displayName || currentParty.number || "Unknown"}
+                    {currentParty.displayName || (currentParty.number ? <PhoneNumber value={currentParty.number} /> : "Unknown")}
                   </p>
                   <p className="truncate text-xs text-muted">
-                    {currentParty.displayName ? currentParty.number : CALL_LABELS[callStatus]}
+                    {currentParty.displayName && currentParty.number ? (
+                      <PhoneNumber value={currentParty.number} />
+                    ) : (
+                      CALL_LABELS[callStatus]
+                    )}
                   </p>
                 </div>
                 <div className="shrink-0 text-right">

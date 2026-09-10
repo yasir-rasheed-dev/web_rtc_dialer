@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Briefcase, ContactRound, Globe, LayoutGrid, Mail, MapPin, Pencil, Phone, Plus, RefreshCw, Search, Table2, Trash2, X } from "lucide-react";
+import { Briefcase, ContactRound, Globe, LayoutGrid, Mail, MapPin, Pencil, Phone, PhoneCall, Plus, RefreshCw, Search, Table2, Trash2, X } from "lucide-react";
 
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
@@ -13,6 +13,16 @@ import { confirmModal } from "../../lib/modal";
 import { notifyError, notifySuccess } from "../../lib/toast";
 import { api } from "../../lib/api";
 import { getGhlAgentConfig } from "../../lib/ghlApi";
+import PhoneNumber from "../../components/ui/PhoneNumber";
+
+// Dial a contact through the global softphone (window.ringnexDial), the
+// same path the dialer and the incoming/active-call overlay use.
+function dialContact(contact) {
+  const number = contact.phone || "";
+  if (!number || typeof window.ringnexDial !== "function") return;
+  const name = [contact.first_name, contact.last_name].filter(Boolean).join(" ").trim();
+  window.ringnexDial(number, { displayName: name || undefined });
+}
 
 function fieldLabel() {
   return "flex flex-col gap-1.5 text-xs font-medium text-muted";
@@ -364,7 +374,7 @@ function ContactFormModal({ open, onClose, contact, onSaved }) {
   );
 }
 
-function ContactCard({ contact, canEdit, canDelete, onEdit, onDelete, deleting }) {
+function ContactCard({ contact, canEdit, canDelete, canCall, onEdit, onDelete, deleting }) {
   return (
     <Card animate={false} className="flex flex-col gap-3 !p-4 transition-colors hover:border-border-strong">
       <div className="flex items-start justify-between gap-2">
@@ -385,8 +395,18 @@ function ContactCard({ contact, canEdit, canDelete, onEdit, onDelete, deleting }
             )}
           </div>
         </div>
-        {(canEdit || canDelete) && (
+        {(canEdit || canDelete || canCall) && (
           <div className="flex shrink-0 gap-1">
+            {canCall && contact.phone && (
+              <button
+                onClick={() => dialContact(contact)}
+                className="rounded-lg p-1.5 text-emerald-600 hover:bg-emerald-500/10"
+                aria-label={`Call ${contact.first_name || contact.phone}`}
+                title="Call"
+              >
+                <PhoneCall size={14} />
+              </button>
+            )}
             {canEdit && (
               <button
                 onClick={() => onEdit(contact)}
@@ -413,7 +433,7 @@ function ContactCard({ contact, canEdit, canDelete, onEdit, onDelete, deleting }
         {contact.phone && (
           <span className="flex items-center gap-1.5">
             <Phone size={12} />
-            {contact.phone}
+            <PhoneNumber value={contact.phone} />
           </span>
         )}
         {contact.email && (
@@ -432,6 +452,7 @@ export default function ContactsPage({ permissions = [] }) {
   const canCreate = permissions.includes("CREATE_CONTACTS");
   const canEdit = permissions.includes("EDIT_CONTACTS");
   const canDelete = permissions.includes("DELETE_CONTACTS");
+  const canCall = permissions.includes("MAKE_CALLS");
 
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -656,6 +677,7 @@ export default function ContactsPage({ permissions = [] }) {
                 contact={contact}
                 canEdit={canEdit}
                 canDelete={canDelete}
+                canCall={canCall}
                 onEdit={setModalContact}
                 onDelete={deleteContact}
                 deleting={deletingId === contact.id}
@@ -677,7 +699,7 @@ export default function ContactsPage({ permissions = [] }) {
                   <th className="pb-2 pr-4">Company</th>
                   <th className="pb-2 pr-4">Phone</th>
                   <th className="pb-2 pr-4">Email</th>
-                  {(canEdit || canDelete) && <th className="pb-2">Actions</th>}
+                  {(canEdit || canDelete || canCall) && <th className="pb-2">Actions</th>}
                 </tr>
               </thead>
               <tbody>
@@ -694,11 +716,23 @@ export default function ContactsPage({ permissions = [] }) {
                       </div>
                     </td>
                     <td className="py-3 pr-4 text-muted">{contact.company || "—"}</td>
-                    <td className="py-3 pr-4 text-muted">{contact.phone || "—"}</td>
+                    <td className="py-3 pr-4 text-muted">
+                      {contact.phone ? <PhoneNumber value={contact.phone} /> : "—"}
+                    </td>
                     <td className="py-3 pr-4 text-muted">{contact.email || "—"}</td>
-                    {(canEdit || canDelete) && (
+                    {(canEdit || canDelete || canCall) && (
                       <td className="py-3">
                         <div className="flex gap-1">
+                          {canCall && contact.phone && (
+                            <button
+                              onClick={() => dialContact(contact)}
+                              className="rounded-lg p-1.5 text-emerald-600 hover:bg-emerald-500/10"
+                              aria-label="Call contact"
+                              title="Call"
+                            >
+                              <PhoneCall size={14} />
+                            </button>
+                          )}
                           {canEdit && (
                             <button
                               onClick={() => setModalContact(contact)}

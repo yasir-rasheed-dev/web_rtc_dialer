@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Mic, MicOff, Pause, PhoneIncoming, PhoneOff, Play } from "lucide-react";
 
 import { formatDuration, initials } from "../../lib/phone";
+import PhoneNumber from "./PhoneNumber";
 
 const IDLE_STATE = {
   registered: false,
@@ -77,7 +78,9 @@ export default function GlobalCallOverlay({ onDialerPage = false }) {
                     {[state.currentParty?.jobTitle, state.currentParty?.company].filter(Boolean).join(" · ")}
                   </p>
                 )}
-                <p className="truncate text-xs text-muted">{state.currentParty?.number || "Unknown caller"}</p>
+                <p className="truncate text-xs text-muted">
+                  {state.currentParty?.number ? <PhoneNumber value={state.currentParty.number} /> : "Unknown caller"}
+                </p>
               </div>
             </div>
             <div className="mt-4 flex items-center justify-center gap-8">
@@ -126,7 +129,13 @@ export default function GlobalCallOverlay({ onDialerPage = false }) {
               {initials(primaryParty)}
             </span>
             <div className="min-w-0">
-              <p className="max-w-[140px] truncate text-sm font-medium text-text">{primaryParty || "Unknown"}</p>
+              <p className="max-w-[160px] truncate text-sm font-medium text-text">
+                {state.currentParty?.displayName
+                  ? state.currentParty.displayName
+                  : state.currentParty?.number
+                    ? <PhoneNumber value={state.currentParty.number} />
+                    : "Unknown"}
+              </p>
               <p className="text-xs text-muted">
                 {state.callStatus === "active" || state.callStatus === "held" ? formatDuration(elapsed) : state.callStatus}
               </p>

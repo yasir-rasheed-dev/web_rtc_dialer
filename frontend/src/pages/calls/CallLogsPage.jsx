@@ -22,6 +22,8 @@ import PageHeader from "../../components/ui/PageHeader";
 import { SkeletonTable } from "../../components/ui/Skeleton";
 import StatusBadge from "../../components/ui/StatusBadge";
 import Button from "../../components/ui/Button";
+import PhoneNumber from "../../components/ui/PhoneNumber";
+import { formatPhoneDisplay } from "../../lib/phone";
 import { api, getCallCounts, getVoicemailCounts, markVoicemailHeard, recordingBlob, voicemailBlob } from "../../lib/api";
 import { Filters, Pagination, formatDate, formatSeconds, useAgentOptions } from "./shared";
 
@@ -378,7 +380,9 @@ export default function CallLogsPage({ permissions = [], onVoicemailHeard }) {
                     <tr key={voicemail.id} className="border-b border-border/60 last:border-0">
                       <td className="py-2 pr-4 text-muted">{formatDate(voicemail.created_at)}</td>
                       <td className="py-2 pr-4 font-medium text-text">{voicemail.agent_name || "—"}</td>
-                      <td className="py-2 pr-4 text-muted">{voicemail.from_number || "—"}</td>
+                      <td className="py-2 pr-4 text-muted">
+                        {voicemail.from_number ? <PhoneNumber value={voicemail.from_number} /> : "—"}
+                      </td>
                       <td className="py-2 pr-4 text-muted">{formatSeconds(voicemail.duration_sec)}</td>
                       <td className="py-2 pr-4">
                         <StatusBadge tone={voicemail.heard_at ? "neutral" : "brand"}>
@@ -455,8 +459,8 @@ export default function CallLogsPage({ permissions = [], onVoicemailHeard }) {
                       const agentName = call.agent_name || call.agent_sip_username || "—";
                       return (
                         <tr key={call.id} className="border-t border-border transition-colors hover:bg-surface-2">
-                          <td className="whitespace-nowrap px-4 py-3 font-semibold tabular-nums text-text">
-                            {otherParty(call) || "—"}
+                          <td className="whitespace-nowrap px-4 py-3 font-semibold text-text">
+                            {otherParty(call) ? <PhoneNumber value={otherParty(call)} /> : "—"}
                           </td>
                           <td className="px-4 py-3">
                             <span className="flex items-center gap-2.5">
@@ -549,8 +553,8 @@ export default function CallLogsPage({ permissions = [], onVoicemailHeard }) {
                 </p>
                 <p className="truncate text-xs text-muted">
                   {audio.kind === "voicemail"
-                    ? `${formatDate(audio.item.created_at)} · ${audio.item.from_number || "—"}`
-                    : `${formatDate(audio.item.started_at)} · ${audio.item.from_number} → ${audio.item.to_number}`}
+                    ? `${formatDate(audio.item.created_at)} · ${formatPhoneDisplay(audio.item.from_number) || "—"}`
+                    : `${formatDate(audio.item.started_at)} · ${formatPhoneDisplay(audio.item.from_number)} → ${formatPhoneDisplay(audio.item.to_number)}`}
                 </p>
               </div>
               <button
