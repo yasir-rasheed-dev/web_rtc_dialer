@@ -250,6 +250,61 @@ export async function createOpportunity(tenantId, { contactId, name, monetaryVal
   });
 }
 
+// The customer number for a call, given its direction + legs.
+export function customerDigits({ direction, from, to }) {
+  const dir = String(direction || "").toUpperCase();
+  if (dir !== "INBOUND" && dir !== "OUTBOUND") return "";
+  const digits = String(dir === "OUTBOUND" ? to : from || "").replace(/\D/g, "");
+  return digits.length >= 7 ? digits : "";
+}
+
+/** Match/create the GHL contact for a call's customer number, link it back
+ *  to the ringNex contact, and return { contactId, isNew, localId }.
+ *  Shared by the call-end sync and the call-note push. */
+export async function syncCallContact(tenantId, call) {
+  const digits = customerDigits(call);
+  if (!digits) return null;
+
+  const last10 = digits.slice(-10);
+  const cand = [...new Set([digits, last10, `+${digits}`, `+1${last10}`, `1${last10}`])];
+  let local = null;
+  try {
+    const [rows] = await db.query(
+      `SELECT c.id, c.first_name, c.last_name, c.ghl_contact_id
+         FROM contact_phones p
+         JOIN contacts c ON c.id = p.contact_id AND c.tenant_id = p.tenant_id
+        WHERE p.tenant_id = ? AND p.number IN (${cand.map(() => "?").join(",")})
+        LIMIT 1`,
+      [tenantId, ...cand]
+    );
+    local = rows[0] || null;
+  } catch {
+    /* contact_phones shape differs — proceed without a local match */
+  }
+
+  const first = local?.first_name || "";
+  const last = local?.last_name || "";
+  const name = [first, last].filter(Boolean).join(" ").trim();
+
+  const { contactId, isNew } = await upsertContact(tenantId, {
+    phone: `+${digits}`,
+    firstName: first || undefined,
+    lastName: last || undefined,
+    name: name || undefined,
+    source: "ringNex"
+  });
+  if (!contactId) return null;
+
+  if (local && !local.ghl_contact_id) {
+    await db.execute("UPDATE contacts SET ghl_contact_id = ? WHERE id = ? AND tenant_id = ?", [
+      contactId,
+      local.id,
+      tenantId
+    ]);
+  }
+  return { contactId, isNew, localId: local?.id || null, name: name || `+${digits}` };
+}
+
 export async function listPipelines(tenantId) {
   const conn = await getConnection(tenantId);
   if (!conn) return [];

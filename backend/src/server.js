@@ -49,6 +49,7 @@ import createCommioRoutes, { createSuperAdminCommioRoutes } from "./commioRoutes
 import * as commio from "./commio.js";
 import createTeamChatRoutes from "./teamChatRoutes.js";
 import createCrmRoutes from "./crmRoutes.js";
+import { addContactNote, isGhlEnabled, syncCallContact } from "./ghl.js";
 import { sendDataPush } from "./firebaseAdmin.js";
 import { sendApnsBackground } from "./apnsPush.js";
 import createTollFreeRoutes, { getQueueStatus, syncQueuePauseForAgent } from "./tollFreeRoutes.js";
@@ -3527,7 +3528,10 @@ app.get("/api/reports/performance/export", authenticate, requirePermission("VIEW
 }));
 
 app.patch("/api/calls/:id", authenticate, requirePermission("EDIT_CALL_DISPOSITION"), asyncRoute(async (req, res) => {
-  const [rows] = await db.execute("SELECT agent_user_id FROM calls WHERE id=? AND tenant_id=? LIMIT 1", [req.params.id, req.user.tenant_id]);
+  const [rows] = await db.execute(
+    "SELECT agent_user_id, direction, from_number, to_number FROM calls WHERE id=? AND tenant_id=? LIMIT 1",
+    [req.params.id, req.user.tenant_id]
+  );
   const call = rows[0];
   if (!call) return res.status(404).json({ error: "Call not found" });
   const scope = await callAccessScope(req.user, "VIEW_TEAM_CALL_LOGS");
@@ -3537,6 +3541,27 @@ app.patch("/api/calls/:id", authenticate, requirePermission("EDIT_CALL_DISPOSITI
   await db.execute("UPDATE calls SET disposition=?,notes=? WHERE id=? AND tenant_id=?", [disposition, notes, req.params.id, req.user.tenant_id]);
   await audit(req.user.id, "CALL_DISPOSITION", "call", req.params.id, { disposition }, req.user.tenant_id);
   res.status(204).end();
+
+  // Push the remark to the GoHighLevel contact for this call — fire and
+  // forget, after the response, no-op unless GHL is active for the tenant.
+  if (notes) {
+    (async () => {
+      try {
+        if (!(await isGhlEnabled(req.user.tenant_id))) return;
+        const linked = await syncCallContact(req.user.tenant_id, {
+          direction: call.direction,
+          from: call.from_number,
+          to: call.to_number
+        });
+        if (linked?.contactId) {
+          const body = disposition ? `[${disposition}] ${notes}` : notes;
+          await addContactNote(req.user.tenant_id, linked.contactId, body);
+        }
+      } catch (e) {
+        console.warn("[ghl] call-note push failed:", e.message);
+      }
+    })();
+  }
 }));
 
 app.get("/api/recordings", authenticate, requirePermission("VIEW_RECORDINGS"), asyncRoute(async (req, res) => {

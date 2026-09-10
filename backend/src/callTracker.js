@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { db } from "./db.js";
+import { createOpportunity, getConnection, isGhlEnabled, syncCallContact } from "./ghl.js";
 
 // Reads just the RIFF/fmt/data chunk headers (not the whole file) to
 // compute a WAV's duration — voicemails have no answered_at/ended_at
@@ -517,6 +518,45 @@ export class CallTracker {
         this.applyAgentStatus(call.tenantId, call.agentUserId, call.agent, "READY").catch((error) =>
           console.error("[callTracker] auto-READY-after-call failed:", error.message)
         );
+      }
+
+      // GoHighLevel sync — fire and forget, never blocks the call flow.
+      // No-ops unless the tenant has an active GHL connection.
+      this.#syncToGhl({ ...call }).catch(() => {});
+    }
+  }
+
+  // On call end: upsert the customer as a GHL contact (dedup on GHL's
+  // side by phone), link it back to the ringNex contact, and open an
+  // opportunity for brand-new contacts when the owner enabled that.
+  async #syncToGhl(call) {
+    try {
+      if (!call?.tenantId) return;
+      if (!(await isGhlEnabled(call.tenantId))) return;
+
+      const result = await syncCallContact(call.tenantId, call);
+      if (!result) return;
+      const { contactId, isNew, name } = result;
+
+      const conn = await getConnection(call.tenantId);
+      if (isNew && conn?.createOpportunity && conn.pipelineId && conn.pipelineStageId) {
+        await createOpportunity(call.tenantId, { contactId, name });
+      }
+
+      await db.execute(
+        "UPDATE tenant_ghl_connections SET last_sync_at = NOW(), last_error = NULL WHERE tenant_id = ?",
+        [call.tenantId]
+      );
+      console.log(`[ghl] synced ${call.direction} call → contact ${contactId}${isNew ? " (new)" : ""}`);
+    } catch (e) {
+      console.warn("[ghl] call-end sync failed:", e.message);
+      try {
+        await db.execute("UPDATE tenant_ghl_connections SET last_error = ? WHERE tenant_id = ?", [
+          String(e.message).slice(0, 255),
+          call?.tenantId || null
+        ]);
+      } catch {
+        /* noop */
       }
     }
   }
