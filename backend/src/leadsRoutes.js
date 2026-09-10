@@ -19,6 +19,7 @@ import multer from "multer";
 
 import { db } from "./db.js";
 import { requirePermission, requireTenantFeature } from "./saas.js";
+import { isGhlEnabled, syncLeadFromCall } from "./ghl.js";
 
 function asyncRoute(handler) {
   return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
@@ -304,6 +305,25 @@ export default function createLeadsRoutes(
     } finally {
       connection.release();
     }
+
+    // Mirror the capture to GoHighLevel — fire and forget, after the
+    // response, no-op unless GHL is active for the tenant.
+    (async () => {
+      try {
+        if (!(await isGhlEnabled(req.user.tenant_id))) return;
+        let dispositionName = null;
+        if (dispositionId) {
+          const [[d]] = await db.execute("SELECT name FROM dispositions WHERE id=? AND tenant_id=? LIMIT 1", [
+            dispositionId,
+            req.user.tenant_id
+          ]);
+          dispositionName = d?.name || null;
+        }
+        await syncLeadFromCall(req.user.tenant_id, { phone, name, address, dispositionName, remarks, tags });
+      } catch (e) {
+        console.warn("[ghl] lead-from-call sync failed:", e.message);
+      }
+    })();
   }
 
   async function uploadAttachment(req, res) {

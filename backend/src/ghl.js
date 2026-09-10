@@ -201,7 +201,7 @@ async function ghlFetch(tenantId, path, { method = "GET", body, conn, retry = tr
 }
 
 /** Create or update a GHL contact by phone/email (dedup on GHL's side). */
-export async function upsertContact(tenantId, { firstName, lastName, name, phone, email, source, tags }) {
+export async function upsertContact(tenantId, { firstName, lastName, name, phone, email, source, tags, address1 }) {
   const conn = await getConnection(tenantId);
   if (!conn) throw new Error("[ghl] no connection");
   const data = await ghlFetch(tenantId, "/contacts/upsert", {
@@ -215,6 +215,7 @@ export async function upsertContact(tenantId, { firstName, lastName, name, phone
       ...(phone ? { phone } : {}),
       ...(email ? { email } : {}),
       ...(source ? { source } : {}),
+      ...(address1 ? { address1 } : {}),
       ...(tags && tags.length ? { tags } : {})
     }
   });
@@ -303,6 +304,67 @@ export async function syncCallContact(tenantId, call) {
     ]);
   }
   return { contactId, isNew, localId: local?.id || null, name: name || `+${digits}` };
+}
+
+/** End Call popup save → GHL. Richer than syncCallContact: uses the name /
+ *  address / tags / disposition the agent just typed, and pushes the
+ *  remarks as a contact note. Creates an opportunity for a brand-new GHL
+ *  contact when the owner enabled that (the AMI call-end hook usually got
+ *  there first, so this only fires as a fallback). */
+export async function syncLeadFromCall(tenantId, { phone, name, address, dispositionName, remarks, tags }) {
+  const digits = String(phone || "").replace(/\D/g, "");
+  if (digits.length < 7) return null;
+
+  const last10 = digits.slice(-10);
+  const cand = [...new Set([digits, last10, `+${digits}`, `+1${last10}`, `1${last10}`])];
+  let local = null;
+  try {
+    const [rows] = await db.query(
+      `SELECT c.id, c.ghl_contact_id
+         FROM contact_phones p
+         JOIN contacts c ON c.id = p.contact_id AND c.tenant_id = p.tenant_id
+        WHERE p.tenant_id = ? AND p.number IN (${cand.map(() => "?").join(",")})
+        LIMIT 1`,
+      [tenantId, ...cand]
+    );
+    local = rows[0] || null;
+  } catch {
+    /* skip local link */
+  }
+
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  const first = parts.shift() || "";
+  const { contactId, isNew } = await upsertContact(tenantId, {
+    phone: `+${digits}`,
+    firstName: first || undefined,
+    lastName: parts.join(" ") || undefined,
+    name: name || undefined,
+    address1: address || undefined,
+    source: "ringNex",
+    tags: tags && tags.length ? tags : undefined
+  });
+  if (!contactId) return null;
+
+  if (local && !local.ghl_contact_id) {
+    await db.execute("UPDATE contacts SET ghl_contact_id = ? WHERE id = ? AND tenant_id = ?", [
+      contactId,
+      local.id,
+      tenantId
+    ]);
+  }
+
+  const note = [dispositionName ? `[${dispositionName}]` : "", remarks || ""].join(" ").trim();
+  if (note) await addContactNote(tenantId, contactId, note);
+
+  const conn = await getConnection(tenantId);
+  if (isNew && conn?.createOpportunity && conn.pipelineId && conn.pipelineStageId) {
+    await createOpportunity(tenantId, { contactId, name: name || `+${digits}` });
+  }
+  await db.execute(
+    "UPDATE tenant_ghl_connections SET last_sync_at = NOW(), last_error = NULL WHERE tenant_id = ?",
+    [tenantId]
+  );
+  return { contactId, isNew };
 }
 
 export async function listPipelines(tenantId) {
