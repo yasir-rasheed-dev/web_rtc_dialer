@@ -177,75 +177,79 @@ async function callOutcome(req, res) {
 // Pull every GHL contact into the ringNex address book. Deduped by phone:
 // an existing ringNex contact is only *linked* (ghl_contact_id filled),
 // never duplicated or overwritten. Owner-triggered from Contacts.
+const cut = (v, n) => {
+  const s = String(v ?? "").trim();
+  return s ? s.slice(0, n) : null;
+};
+
+async function importOneContact(tenantId, ownerId, c) {
+  const digits = String(c.phone || "").replace(/\D/g, "");
+  if (digits.length < 7) return "skipped";
+
+  const last10 = digits.slice(-10);
+  const cand = [...new Set([digits, last10, `+${digits}`, `+1${last10}`, `1${last10}`])];
+  const [ex] = await db.query(
+    `SELECT c.id, c.ghl_contact_id
+       FROM contact_phones p
+       JOIN contacts c ON c.id = p.contact_id AND c.tenant_id = p.tenant_id
+      WHERE p.tenant_id = ? AND p.number IN (${cand.map(() => "?").join(",")})
+      LIMIT 1`,
+    [tenantId, ...cand]
+  );
+
+  if (ex.length) {
+    if (ex[0].ghl_contact_id) return "skipped";
+    await db.execute("UPDATE contacts SET ghl_contact_id = ? WHERE id = ? AND tenant_id = ?", [
+      c.id,
+      ex[0].id,
+      tenantId
+    ]);
+    return "linked";
+  }
+
+  const id = crypto.randomUUID();
+  await db.execute(
+    `INSERT INTO contacts
+       (id,tenant_id,owner_user_id,first_name,last_name,company,source,phone,email,notes,ghl_contact_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+    [
+      id,
+      tenantId,
+      ownerId,
+      cut(c.firstName || String(c.contactName || "").split(/\s+/)[0], 80),
+      cut(c.lastName, 80),
+      cut(c.companyName, 120),
+      "OTHER",
+      `+${digits}`,
+      cut(String(c.email || "").toLowerCase(), 190),
+      "Imported from GoHighLevel",
+      c.id
+    ]
+  );
+  await db.execute(
+    `INSERT INTO contact_phones (id,tenant_id,contact_id,number,label,is_primary) VALUES (?,?,?,?,'MOBILE',1)`,
+    [crypto.randomUUID(), tenantId, id, `+${digits}`]
+  );
+  return "imported";
+}
+
 async function importContacts(req, res) {
   if (!(await isGhlEnabled(req.user.tenant_id))) return res.status(400).json({ error: "GoHighLevel is not active" });
   const tenantId = req.user.tenant_id;
   const list = await listAllContacts(tenantId, { max: 5000 });
 
-  let imported = 0;
-  let linked = 0;
-  let skipped = 0;
-
+  const counts = { imported: 0, linked: 0, skipped: 0, failed: 0 };
   for (const c of list) {
-    const digits = String(c.phone || "").replace(/\D/g, "");
-    if (digits.length < 7) {
-      skipped += 1;
-      continue;
+    try {
+      const r = await importOneContact(tenantId, req.user.id, c);
+      counts[r] += 1;
+    } catch (e) {
+      console.warn("[ghl] import row failed:", e.message);
+      counts.failed += 1;
     }
-    const last10 = digits.slice(-10);
-    const cand = [...new Set([digits, last10, `+${digits}`, `+1${last10}`, `1${last10}`])];
-    const [ex] = await db.query(
-      `SELECT c.id, c.ghl_contact_id
-         FROM contact_phones p
-         JOIN contacts c ON c.id = p.contact_id AND c.tenant_id = p.tenant_id
-        WHERE p.tenant_id = ? AND p.number IN (${cand.map(() => "?").join(",")})
-        LIMIT 1`,
-      [tenantId, ...cand]
-    );
-
-    if (ex.length) {
-      if (!ex[0].ghl_contact_id) {
-        await db.execute("UPDATE contacts SET ghl_contact_id = ? WHERE id = ? AND tenant_id = ?", [
-          c.id,
-          ex[0].id,
-          tenantId
-        ]);
-        linked += 1;
-      } else {
-        skipped += 1;
-      }
-      continue;
-    }
-
-    const id = crypto.randomUUID();
-    const firstName = c.firstName || String(c.contactName || "").split(/\s+/)[0] || null;
-    const lastName = c.lastName || null;
-    await db.execute(
-      `INSERT INTO contacts
-         (id,tenant_id,owner_user_id,first_name,last_name,company,source,phone,email,notes,ghl_contact_id)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-      [
-        id,
-        tenantId,
-        req.user.id,
-        firstName,
-        lastName,
-        c.companyName || null,
-        "GHL",
-        `+${digits}`,
-        String(c.email || "").trim().toLowerCase() || null,
-        "Imported from GoHighLevel",
-        c.id
-      ]
-    );
-    await db.execute(
-      `INSERT INTO contact_phones (id,tenant_id,contact_id,number,label,is_primary) VALUES (?,?,?,?,'MOBILE',1)`,
-      [crypto.randomUUID(), tenantId, id, `+${digits}`]
-    );
-    imported += 1;
   }
 
-  res.json({ total: list.length, imported, linked, skipped });
+  res.json({ total: list.length, ...counts });
 }
 
 export default function createCrmRoutes(authenticate) {

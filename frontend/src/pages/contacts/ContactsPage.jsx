@@ -478,7 +478,11 @@ export default function ContactsPage({ permissions = [] }) {
     setGhlSyncing(true);
     try {
       const r = await api("/integrations/crm/import-contacts", { method: "POST" });
-      notifySuccess(`GoHighLevel: ${r.imported} added, ${r.linked} linked, ${r.skipped} skipped.`);
+      notifySuccess(
+        `GoHighLevel: ${r.imported} added, ${r.linked} linked, ${r.skipped} skipped` +
+          (r.failed ? `, ${r.failed} failed` : "") +
+          "."
+      );
       load(search);
     } catch (e) {
       notifyError(e.message || "Sync failed.");
