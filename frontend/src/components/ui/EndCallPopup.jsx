@@ -105,7 +105,17 @@ export default function EndCallPopup({ enabled = true, ghl = { active: false } }
       setGhlStatus("open");
       if (ghlActive && payload.number) {
         getGhlCallContext(payload.number)
-          .then((ctx) => setGhlOpps(ctx?.opportunities || []))
+          .then((ctx) => {
+            const existing = ctx?.opportunities || [];
+            setGhlOpps(existing);
+            if (existing.length) {
+              const o = existing[0];
+              setGhlChoice(o.id);
+              setGhlPipelineId(o.pipelineId || "");
+              setGhlStageId(o.pipelineStageId || "");
+              setGhlStatus(o.status || "open");
+            }
+          })
           .catch(() => undefined);
       }
 
@@ -147,12 +157,20 @@ export default function EndCallPopup({ enabled = true, ghl = { active: false } }
     }
   }, [ghlChoice]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const ghlStages = (ghlPipelines.find((p) => p.id === ghlPipelineId)?.stages || []);
-  const ghlOppOptions = [
-    { value: "none", label: "Don't touch opportunities" },
-    { value: "create", label: "Create a new opportunity" },
-    ...ghlOpps.map((o) => ({ value: o.id, label: `Update: ${o.name || "opportunity"}` }))
-  ];
+  const ghlStages = ghlPipelines.find((p) => p.id === ghlPipelineId)?.stages || [];
+  const ghlHasExisting = ghlOpps.length > 0;
+  // A contact that already has an opportunity can only be updated — no
+  // second opportunity, no pipeline move.
+  const ghlOppOptions = ghlHasExisting
+    ? [
+        { value: "none", label: "Leave opportunity unchanged" },
+        ...ghlOpps.map((o) => ({ value: o.id, label: `Update “${o.name || "opportunity"}”` }))
+      ]
+    : [
+        { value: "none", label: "No opportunity" },
+        { value: "create", label: "Create a new opportunity" }
+      ];
+  const ghlPipelineLocked = ghlHasExisting || ghlChoice !== "create";
 
   const close = () => {
     setDetail(null);
@@ -312,17 +330,16 @@ export default function EndCallPopup({ enabled = true, ghl = { active: false } }
             />
             {ghlChoice !== "none" ? (
               <div className="mt-2 grid gap-2 sm:grid-cols-3">
-                <div className={ghlChoice === "create" ? "" : "pointer-events-none opacity-50"}>
-                  <Select
-                    options={ghlPipelines.map((p) => ({ value: p.id, label: p.name }))}
-                    value={ghlPipelines.map((p) => ({ value: p.id, label: p.name })).find((o) => o.value === ghlPipelineId) || null}
-                    onChange={(o) => {
-                      setGhlPipelineId(o?.value || "");
-                      setGhlStageId(ghlPipelines.find((p) => p.id === o?.value)?.stages?.[0]?.id || "");
-                    }}
-                    placeholder="Pipeline"
-                  />
-                </div>
+                <Select
+                  options={ghlPipelines.map((p) => ({ value: p.id, label: p.name }))}
+                  value={ghlPipelines.map((p) => ({ value: p.id, label: p.name })).find((o) => o.value === ghlPipelineId) || null}
+                  onChange={(o) => {
+                    setGhlPipelineId(o?.value || "");
+                    setGhlStageId(ghlPipelines.find((p) => p.id === o?.value)?.stages?.[0]?.id || "");
+                  }}
+                  isDisabled={ghlPipelineLocked}
+                  placeholder="Pipeline"
+                />
                 <Select
                   options={ghlStages.map((s) => ({ value: s.id, label: s.name }))}
                   value={ghlStages.map((s) => ({ value: s.id, label: s.name })).find((o) => o.value === ghlStageId) || null}

@@ -476,6 +476,36 @@ export function syncLeadFromCall(tenantId, { phone, name, address, dispositionNa
   });
 }
 
+/** Every contact in the connected GHL location (paged), capped. */
+export async function listAllContacts(tenantId, { max = 2000 } = {}) {
+  const conn = await getConnection(tenantId);
+  if (!conn) return [];
+  const out = [];
+  let startAfter;
+  let startAfterId;
+  while (out.length < max) {
+    const qs = new URLSearchParams({ locationId: conn.locationId, limit: "100" });
+    if (startAfterId) {
+      qs.set("startAfterId", startAfterId);
+      if (startAfter != null) qs.set("startAfter", String(startAfter));
+    }
+    let data;
+    try {
+      data = await ghlFetch(tenantId, `/contacts/?${qs.toString()}`, { conn });
+    } catch (e) {
+      console.warn("[ghl] listAllContacts page failed:", e.message);
+      break;
+    }
+    const batch = data.contacts || [];
+    out.push(...batch);
+    const meta = data.meta || {};
+    if (batch.length < 100 || !meta.startAfterId) break;
+    startAfterId = meta.startAfterId;
+    startAfter = meta.startAfter;
+  }
+  return out.slice(0, max);
+}
+
 export async function listPipelines(tenantId) {
   const conn = await getConnection(tenantId);
   if (!conn) return [];

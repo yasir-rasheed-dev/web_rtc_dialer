@@ -12,6 +12,7 @@ import { Skeleton, SkeletonTable } from "../../components/ui/Skeleton";
 import { confirmModal } from "../../lib/modal";
 import { notifyError, notifySuccess } from "../../lib/toast";
 import { api } from "../../lib/api";
+import { getGhlAgentConfig } from "../../lib/ghlApi";
 
 function fieldLabel() {
   return "flex flex-col gap-1.5 text-xs font-medium text-muted";
@@ -441,6 +442,8 @@ export default function ContactsPage({ permissions = [] }) {
   const [visibleCount, setVisibleCount] = useState(CONTACTS_GRID_BATCH);
   const [modalContact, setModalContact] = useState(undefined); // undefined = closed, null = new, object = editing
   const [deletingId, setDeletingId] = useState(null);
+  const [ghlActive, setGhlActive] = useState(false);
+  const [ghlSyncing, setGhlSyncing] = useState(false);
   const sentinelRef = useRef(null);
   const isFirstRun = useRef(true);
 
@@ -457,6 +460,32 @@ export default function ContactsPage({ permissions = [] }) {
       setLoading(false);
     }
   }, []);
+
+  // Show the "Sync from GoHighLevel" button only when GHL is fully set up.
+  useEffect(() => {
+    if (!canCreate) return;
+    getGhlAgentConfig().then((c) => setGhlActive(!!c?.active));
+  }, [canCreate]);
+
+  const syncFromGhl = async () => {
+    const ok = await confirmModal({
+      title: "Sync contacts from GoHighLevel?",
+      message:
+        "Pulls every GoHighLevel contact into this address book. Existing contacts (matched by phone) are linked, never duplicated.",
+      confirmText: "Sync now"
+    });
+    if (!ok) return;
+    setGhlSyncing(true);
+    try {
+      const r = await api("/integrations/crm/import-contacts", { method: "POST" });
+      notifySuccess(`GoHighLevel: ${r.imported} added, ${r.linked} linked, ${r.skipped} skipped.`);
+      load(search);
+    } catch (e) {
+      notifyError(e.message || "Sync failed.");
+    } finally {
+      setGhlSyncing(false);
+    }
+  };
 
   // Load immediately on mount; every subsequent change to `search` debounces
   // so we don't fire a request per keystroke.
@@ -529,9 +558,21 @@ export default function ContactsPage({ permissions = [] }) {
         description="This address book belongs only to the current workspace."
         actions={
           canCreate && (
-            <Button icon={Plus} onClick={() => setModalContact(null)}>
-              New contact
-            </Button>
+            <div className="flex items-center gap-2">
+              {ghlActive && (
+                <Button
+                  variant="secondary"
+                  icon={RefreshCw}
+                  loading={ghlSyncing}
+                  onClick={syncFromGhl}
+                >
+                  Sync from GoHighLevel
+                </Button>
+              )}
+              <Button icon={Plus} onClick={() => setModalContact(null)}>
+                New contact
+              </Button>
+            </div>
           )
         }
       />
