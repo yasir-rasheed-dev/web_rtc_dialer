@@ -114,5 +114,21 @@ export const config = Object.freeze({
     keyPath: process.env.APNS_KEY_PATH || "",
     key: process.env.APNS_KEY || "",
     production: /^(1|true|yes)$/i.test(process.env.APNS_PRODUCTION || "")
+  },
+
+  // GoHighLevel integration (per-tenant OAuth to one GHL sub-account).
+  // Blank client id/secret = the whole feature is off — no routes do
+  // anything, no UI, no sync. Redirect URI must NOT contain "ghl" (GHL
+  // white-label filter) — the callback lives at /api/integrations/crm.
+  ghl: {
+    clientId: process.env.GHL_CLIENT_ID || "",
+    clientSecret: process.env.GHL_CLIENT_SECRET || "",
+    redirectUri:
+      process.env.GHL_REDIRECT_URI || "https://demoapi.ringnex.co/api/integrations/crm/callback",
+    scopes:
+      process.env.GHL_SCOPES ||
+      "contacts.readonly contacts.write opportunities.readonly opportunities.write locations.readonly",
+    apiBase: process.env.GHL_API_BASE || "https://services.leadconnectorhq.com",
+    apiVersion: process.env.GHL_API_VERSION || "2021-07-28"
   }
 });

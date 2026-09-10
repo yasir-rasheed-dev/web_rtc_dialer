@@ -48,6 +48,7 @@ import createCampaignRoutes from "./campaignRoutes.js";
 import createCommioRoutes, { createSuperAdminCommioRoutes } from "./commioRoutes.js";
 import * as commio from "./commio.js";
 import createTeamChatRoutes from "./teamChatRoutes.js";
+import createCrmRoutes from "./crmRoutes.js";
 import { sendDataPush } from "./firebaseAdmin.js";
 import { sendApnsBackground } from "./apnsPush.js";
 import createTollFreeRoutes, { getQueueStatus, syncQueuePauseForAgent } from "./tollFreeRoutes.js";
@@ -1052,6 +1053,7 @@ app.use(
   createLeadsRoutes(authenticate, { callAccessScope, appendCallAgentScope, appendRequestedAgent, normalizeDateFilter })
 );
 app.use("/api/team-chat", createTeamChatRoutes(authenticate));
+app.use("/api/integrations/crm", createCrmRoutes(authenticate));
 
 // Called by the Asterisk dialplan just before it rings a WebRTC agent, so
 // a killed/dozing mobile app gets an FCM data push and can raise its own
