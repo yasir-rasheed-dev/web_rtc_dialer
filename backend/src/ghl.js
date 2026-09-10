@@ -231,24 +231,100 @@ export async function addContactNote(tenantId, contactId, noteBody) {
   });
 }
 
-export async function createOpportunity(tenantId, { contactId, name, monetaryValue }) {
+const OPP_STATUSES = new Set(["open", "won", "lost", "abandoned"]);
+
+export async function createOpportunity(
+  tenantId,
+  { contactId, name, monetaryValue, pipelineId, pipelineStageId, status }
+) {
   const conn = await getConnection(tenantId);
-  if (!conn || !conn.pipelineId || !conn.pipelineStageId) {
-    return { skipped: "no pipeline configured" };
-  }
+  const pId = pipelineId || conn?.pipelineId;
+  const sId = pipelineStageId || conn?.pipelineStageId;
+  if (!conn || !pId || !sId) return { skipped: "no pipeline configured" };
   return ghlFetch(tenantId, "/opportunities/", {
     method: "POST",
     conn,
     body: {
-      pipelineId: conn.pipelineId,
+      pipelineId: pId,
       locationId: conn.locationId,
-      pipelineStageId: conn.pipelineStageId,
+      pipelineStageId: sId,
       name: name || "New opportunity",
-      status: "open",
+      status: OPP_STATUSES.has(status) ? status : "open",
       contactId,
       ...(monetaryValue ? { monetaryValue: Number(monetaryValue) } : {})
     }
   });
+}
+
+export async function updateOpportunity(tenantId, opportunityId, { pipelineStageId, pipelineId, status }) {
+  if (!opportunityId) return { skipped: "no opportunity id" };
+  return ghlFetch(tenantId, `/opportunities/${opportunityId}`, {
+    method: "PUT",
+    body: {
+      ...(pipelineId ? { pipelineId } : {}),
+      ...(pipelineStageId ? { pipelineStageId } : {}),
+      ...(OPP_STATUSES.has(status) ? { status } : {})
+    }
+  });
+}
+
+/** Is there already a GHL contact for this phone? Returns the contact or
+ *  null (used by the call-end popup to auto-fill). */
+export async function getContactByPhone(tenantId, phone) {
+  const digits = String(phone || "").replace(/\D/g, "");
+  if (digits.length < 7) return null;
+  const conn = await getConnection(tenantId);
+  if (!conn) return null;
+  const last10 = digits.slice(-10);
+  try {
+    const data = await ghlFetch(
+      tenantId,
+      `/contacts/?locationId=${encodeURIComponent(conn.locationId)}&query=${encodeURIComponent(digits)}&limit=20`,
+      { conn }
+    );
+    const list = data.contacts || [];
+    const match =
+      list.find((c) => String(c.phone || "").replace(/\D/g, "").endsWith(last10)) || list[0] || null;
+    if (!match) return null;
+    return {
+      id: match.id,
+      name: match.contactName || [match.firstName, match.lastName].filter(Boolean).join(" ") || "",
+      firstName: match.firstName || "",
+      lastName: match.lastName || "",
+      email: match.email || "",
+      companyName: match.companyName || "",
+      phone: match.phone || ""
+    };
+  } catch (e) {
+    console.warn("[ghl] getContactByPhone failed:", e.message);
+    return null;
+  }
+}
+
+/** Existing opportunities for a GHL contact (so the popup can offer a
+ *  status change instead of always creating a new one). */
+export async function listContactOpportunities(tenantId, contactId) {
+  if (!contactId) return [];
+  const conn = await getConnection(tenantId);
+  if (!conn) return [];
+  try {
+    const data = await ghlFetch(
+      tenantId,
+      `/opportunities/search?location_id=${encodeURIComponent(conn.locationId)}&contact_id=${encodeURIComponent(contactId)}&limit=20`,
+      { conn }
+    );
+    return (data.opportunities || []).map((o) => ({
+      id: o.id,
+      name: o.name,
+      pipelineId: o.pipelineId,
+      pipelineStageId: o.pipelineStageId || o.stageId,
+      status: o.status,
+      monetaryValue: o.monetaryValue || 0
+    }));
+  } catch (e) {
+    console.warn("[ghl] listContactOpportunities failed:", e.message);
+    return [];
+  }
 }
 
 // The customer number for a call, given its direction + legs.
@@ -306,14 +382,17 @@ export async function syncCallContact(tenantId, call) {
   return { contactId, isNew, localId: local?.id || null, name: name || `+${digits}` };
 }
 
-/** End Call popup save → GHL. Richer than syncCallContact: uses the name /
- *  address / tags / disposition the agent just typed, and pushes the
- *  remarks as a contact note. Creates an opportunity for a brand-new GHL
- *  contact when the owner enabled that (the AMI call-end hook usually got
- *  there first, so this only fires as a fallback). */
-export async function syncLeadFromCall(tenantId, { phone, name, address, dispositionName, remarks, tags }) {
+/** The one place a call-end popup submit is applied to GHL: upsert the
+ *  contact (name/address/tags), link it to the ringNex contact, push a
+ *  note, and create / update / skip an opportunity.
+ *
+ *  opportunity: { mode: "none"|"create"|"update", opportunityId?,
+ *                 pipelineId?, pipelineStageId?, status? }
+ *  mode omitted → default: create in the owner's configured pipeline, but
+ *  only for a brand-new GHL contact when create_opportunity is on. */
+export async function applyCallOutcome(tenantId, { phone, contactName, address, tags, note, opportunity }) {
   const digits = String(phone || "").replace(/\D/g, "");
-  if (digits.length < 7) return null;
+  if (digits.length < 7) return { skipped: "bad phone" };
 
   const last10 = digits.slice(-10);
   const cand = [...new Set([digits, last10, `+${digits}`, `+1${last10}`, `1${last10}`])];
@@ -332,18 +411,18 @@ export async function syncLeadFromCall(tenantId, { phone, name, address, disposi
     /* skip local link */
   }
 
-  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  const parts = String(contactName || "").trim().split(/\s+/).filter(Boolean);
   const first = parts.shift() || "";
   const { contactId, isNew } = await upsertContact(tenantId, {
     phone: `+${digits}`,
     firstName: first || undefined,
     lastName: parts.join(" ") || undefined,
-    name: name || undefined,
+    name: contactName || undefined,
     address1: address || undefined,
     source: "ringNex",
     tags: tags && tags.length ? tags : undefined
   });
-  if (!contactId) return null;
+  if (!contactId) return { skipped: "no contact id" };
 
   if (local && !local.ghl_contact_id) {
     await db.execute("UPDATE contacts SET ghl_contact_id = ? WHERE id = ? AND tenant_id = ?", [
@@ -353,18 +432,48 @@ export async function syncLeadFromCall(tenantId, { phone, name, address, disposi
     ]);
   }
 
-  const note = [dispositionName ? `[${dispositionName}]` : "", remarks || ""].join(" ").trim();
-  if (note) await addContactNote(tenantId, contactId, note);
+  if (note && note.trim()) await addContactNote(tenantId, contactId, note.trim());
 
   const conn = await getConnection(tenantId);
-  if (isNew && conn?.createOpportunity && conn.pipelineId && conn.pipelineStageId) {
-    await createOpportunity(tenantId, { contactId, name: name || `+${digits}` });
+  const opp = opportunity || {};
+  let opportunityResult = null;
+  if (opp.mode === "update" && opp.opportunityId) {
+    opportunityResult = await updateOpportunity(tenantId, opp.opportunityId, {
+      pipelineId: opp.pipelineId,
+      pipelineStageId: opp.pipelineStageId,
+      status: opp.status
+    });
+  } else if (opp.mode === "create" && opp.pipelineId && opp.pipelineStageId) {
+    opportunityResult = await createOpportunity(tenantId, {
+      contactId,
+      name: contactName || `+${digits}`,
+      pipelineId: opp.pipelineId,
+      pipelineStageId: opp.pipelineStageId,
+      status: opp.status
+    });
+  } else if (!opp.mode && isNew && conn?.createOpportunity && conn.pipelineId && conn.pipelineStageId) {
+    opportunityResult = await createOpportunity(tenantId, { contactId, name: contactName || `+${digits}` });
   }
+
   await db.execute(
     "UPDATE tenant_ghl_connections SET last_sync_at = NOW(), last_error = NULL WHERE tenant_id = ?",
     [tenantId]
   );
-  return { contactId, isNew };
+  return { contactId, isNew, opportunity: opportunityResult };
+}
+
+/** Lead Management End Call popup → GHL: remarks (with disposition) become
+ *  the note; the agent's GHL opportunity choice (if any) is applied. */
+export function syncLeadFromCall(tenantId, { phone, name, address, dispositionName, remarks, tags, ghlOpportunity }) {
+  const note = [dispositionName ? `[${dispositionName}]` : "", remarks || ""].join(" ").trim();
+  return applyCallOutcome(tenantId, {
+    phone,
+    contactName: name,
+    address,
+    tags,
+    note,
+    opportunity: ghlOpportunity || null
+  });
 }
 
 export async function listPipelines(tenantId) {

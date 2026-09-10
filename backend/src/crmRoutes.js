@@ -5,13 +5,16 @@ import { config } from "./config.js";
 import { db } from "./db.js";
 import { requirePermission } from "./saas.js";
 import {
+  applyCallOutcome,
   authorizeUrl,
   bustEnabledCache,
-  createOpportunity,
   disconnect,
   exchangeCode,
   getConnection,
+  getContactByPhone,
   isGhlConfigured,
+  isGhlEnabled,
+  listContactOpportunities,
   listPipelines,
   saveConnection
 } from "./ghl.js";
@@ -114,6 +117,60 @@ async function removeConnection(req, res) {
   res.json({ ok: true });
 }
 
+// ---- agent-facing (any authenticated user) ----
+
+// Tells the agent app whether to show a GHL call-end popup + its config.
+async function agentConfig(req, res) {
+  if (!(await isGhlEnabled(req.user.tenant_id))) return res.json({ active: false });
+  const conn = await getConnection(req.user.tenant_id);
+  let pipelines = [];
+  try {
+    pipelines = await listPipelines(req.user.tenant_id);
+  } catch {
+    /* leave empty */
+  }
+  res.json({
+    active: true,
+    pipelineId: conn?.pipelineId || null,
+    pipelineStageId: conn?.pipelineStageId || null,
+    createOpportunityDefault: conn?.createOpportunity !== false,
+    pipelines
+  });
+}
+
+// Popup opens after a call → does GHL already have this contact, and what
+// opportunities does it have?
+async function callContext(req, res) {
+  if (!(await isGhlEnabled(req.user.tenant_id))) return res.json({ active: false });
+  const phone = String(req.query.phone || "");
+  const contact = await getContactByPhone(req.user.tenant_id, phone);
+  const opportunities = contact ? await listContactOpportunities(req.user.tenant_id, contact.id) : [];
+  res.json({ active: true, contact, opportunities });
+}
+
+// Popup submit (GHL-only popup, or the Lead Mgmt popup's GHL section).
+async function callOutcome(req, res) {
+  if (!(await isGhlEnabled(req.user.tenant_id))) return res.json({ skipped: "inactive" });
+  const b = req.body || {};
+  const out = await applyCallOutcome(req.user.tenant_id, {
+    phone: String(b.phone || ""),
+    contactName: b.contactName ? String(b.contactName).slice(0, 160) : null,
+    note: b.note ? String(b.note).slice(0, 5000) : null,
+    tags: Array.isArray(b.tags) ? b.tags.map((t) => String(t).slice(0, 60)).slice(0, 20) : undefined,
+    opportunity:
+      b.opportunity && typeof b.opportunity === "object"
+        ? {
+            mode: ["none", "create", "update"].includes(b.opportunity.mode) ? b.opportunity.mode : "none",
+            opportunityId: b.opportunity.opportunityId || null,
+            pipelineId: b.opportunity.pipelineId || null,
+            pipelineStageId: b.opportunity.pipelineStageId || null,
+            status: b.opportunity.status || null
+          }
+        : { mode: "none" }
+  });
+  res.json(out);
+}
+
 export default function createCrmRoutes(authenticate) {
   const router = express.Router();
   const owner = requirePermission("MANAGE_SETTINGS");
@@ -124,5 +181,10 @@ export default function createCrmRoutes(authenticate) {
   router.post("/toggle", authenticate, owner, asyncRoute(toggleActive));
   router.post("/settings", authenticate, owner, asyncRoute(saveSettings));
   router.post("/disconnect", authenticate, owner, asyncRoute(removeConnection));
+
+  // agent-facing — any authenticated user
+  router.get("/agent-config", authenticate, asyncRoute(agentConfig));
+  router.get("/call-context", authenticate, asyncRoute(callContext));
+  router.post("/call-outcome", authenticate, asyncRoute(callOutcome));
   return router;
 }

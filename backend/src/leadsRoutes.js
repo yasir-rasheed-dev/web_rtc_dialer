@@ -319,7 +319,27 @@ export default function createLeadsRoutes(
           ]);
           dispositionName = d?.name || null;
         }
-        await syncLeadFromCall(req.user.tenant_id, { phone, name, address, dispositionName, remarks, tags });
+        const ghlOpp =
+          req.body.ghlOpportunity && typeof req.body.ghlOpportunity === "object"
+            ? {
+                mode: ["none", "create", "update"].includes(req.body.ghlOpportunity.mode)
+                  ? req.body.ghlOpportunity.mode
+                  : "none",
+                opportunityId: req.body.ghlOpportunity.opportunityId || null,
+                pipelineId: req.body.ghlOpportunity.pipelineId || null,
+                pipelineStageId: req.body.ghlOpportunity.pipelineStageId || null,
+                status: req.body.ghlOpportunity.status || null
+              }
+            : null;
+        await syncLeadFromCall(req.user.tenant_id, {
+          phone,
+          name,
+          address,
+          dispositionName,
+          remarks,
+          tags,
+          ghlOpportunity: ghlOpp
+        });
       } catch (e) {
         console.warn("[ghl] lead-from-call sync failed:", e.message);
       }
