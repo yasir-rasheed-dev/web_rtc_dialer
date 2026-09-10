@@ -520,9 +520,12 @@ export class CallTracker {
         );
       }
 
-      // GoHighLevel sync — fire and forget, never blocks the call flow.
-      // No-ops unless the tenant has an active GHL connection.
-      this.#syncToGhl({ ...call }).catch(() => {});
+      // GoHighLevel sync — fire and forget, once per call, never blocks
+      // the call flow. No-ops unless the tenant has an active connection.
+      if (!call.ghlSynced) {
+        call.ghlSynced = true;
+        this.#syncToGhl({ ...call }).catch(() => {});
+      }
     }
   }
 
