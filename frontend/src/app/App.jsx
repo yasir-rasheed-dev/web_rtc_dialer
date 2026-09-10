@@ -13,6 +13,7 @@ import {
   PhoneCall,
   PhoneForwarded,
   PhoneOff,
+  Plug,
   RefreshCw,
   ShieldCheck,
   Target,
@@ -23,7 +24,7 @@ import {
 import Sidebar, { SIDEBAR_WIDTH, SIDEBAR_WIDTH_COLLAPSED } from "../components/layout/Sidebar";
 import Header from "../components/layout/Header";
 import { SkeletonCards } from "../components/ui/Skeleton";
-import { notifyError, notifyWarning } from "../lib/toast";
+import { notifyError, notifySuccess, notifyWarning } from "../lib/toast";
 import { api, getToken, getRefreshToken, refreshSession, clearAuth } from "../lib/api";
 import { API_BASE } from "../lib/apiConfig";
 import { hasAny } from "../lib/permissions";
@@ -60,6 +61,7 @@ const LazyUsagePage = lazy(() => import("../pages/usage/UsagePage"));
 const LazyUsersAdmin = lazy(() => import("../pages/users/UsersAdmin"));
 const LazyTollFreePage = lazy(() => import("../pages/toll-free/TollFreePage"));
 const LazyDncManagement = lazy(() => import("../pages/dnc/DncManagement"));
+const LazyIntegrationsPage = lazy(() => import("../pages/integrations/IntegrationsPage"));
 const LazyLeadsPage = lazy(() => import("../pages/leads/LeadsPage"));
 const LazyFollowUpsPage = lazy(() => import("../pages/leads/FollowUpsPage"));
 const LazySuperAdminApp = lazy(() => import("../pages/super-admin/SuperAdminApp"));
@@ -95,6 +97,7 @@ const NAVIGATION = [
   { id: "dids", label: "Phone Numbers", icon: Phone, permissions: ["VIEW_DIDS", "MANAGE_DIDS", "MANAGE_AGENTS"] },
   { id: "toll-free", label: "Toll-Free", icon: Headset, permissions: ["VIEW_TOLL_FREE", "MANAGE_TOLL_FREE_CAMPAIGNS"] },
   { id: "dnc", label: "Do-Not-Call", icon: PhoneOff, permissions: ["MANAGE_DNC"] },
+  { id: "integrations", label: "Integrations", icon: Plug, permissions: ["MANAGE_SETTINGS"] },
   { id: "usage", label: "Usage & Billing", icon: CreditCard, permissions: ["VIEW_USAGE", "VIEW_BILLING"] }
 ];
 
@@ -155,6 +158,22 @@ function TenantApp() {
   useEffect(() => {
     try { localStorage.setItem("ringnex.page", page); } catch { /* private mode */ }
   }, [page]);
+
+  // Landed back from the GoHighLevel OAuth round-trip (backend redirects to
+  // /?crm=connected|error). Show the result, drop the query param, and open
+  // the Integrations page.
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const crm = p.get("crm");
+    if (!crm) return;
+    if (crm === "connected") notifySuccess("GoHighLevel connected.");
+    else notifyError(`GoHighLevel connection failed${p.get("reason") ? ` (${p.get("reason")})` : ""}.`);
+    p.delete("crm");
+    p.delete("reason");
+    const qs = p.toString();
+    window.history.replaceState({}, "", window.location.pathname + (qs ? `?${qs}` : ""));
+    setPage("integrations");
+  }, []);
 
   useEffect(() => {
     if (!getToken() && !getRefreshToken()) {
@@ -387,6 +406,7 @@ function TenantApp() {
     if (page === "dids") return <LazyDidsPage permissions={session.permissions || []} canPurchaseNumbers={session.tenant?.canPurchaseNumbers !== false} />;
     if (page === "toll-free") return <LazyTollFreePage permissions={session.permissions || []} isOwner={ownerAccount} />;
     if (page === "dnc") return <LazyDncManagement />;
+    if (page === "integrations") return <LazyIntegrationsPage />;
     if (page === "usage") return <LazyUsagePage />;
     if (ownerAccount) {
       return (
