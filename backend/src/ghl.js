@@ -66,8 +66,7 @@ function rowToConn(r) {
     active: !!r.active,
     createOpportunity: !!r.create_opportunity,
     pipelineId: r.pipeline_id,
-    pipelineStageId: r.pipeline_stage_id,
-    conversationProviderId: r.conversation_provider_id || null
+    pipelineStageId: r.pipeline_stage_id
   };
 }
 
@@ -232,80 +231,15 @@ export async function addContactNote(tenantId, contactId, noteBody) {
   });
 }
 
-// A "Call" conversation message needs a Conversation Provider registered
-// for the location — GHL's mechanism for a 3rd-party phone system to
-// write into a contact's Activity timeline. Created once per tenant on
-// first use and cached on the connection row.
-let providerInFlight = new Map();
-export async function ensureConversationProvider(tenantId) {
-  const conn = await getConnection(tenantId);
-  if (!conn) return null;
-  if (conn.conversationProviderId) return conn.conversationProviderId;
-
-  if (providerInFlight.has(tenantId)) return providerInFlight.get(tenantId);
-  const p = (async () => {
-    try {
-      const data = await ghlFetch(tenantId, "/conversations/providers", {
-        method: "POST",
-        conn,
-        body: {
-          name: "ringNex",
-          locationId: conn.locationId,
-          type: "call",
-          deleted: false
-        }
-      });
-      const id = data.id || data.provider?.id || data._id || null;
-      if (id) {
-        await db.execute("UPDATE tenant_ghl_connections SET conversation_provider_id = ? WHERE tenant_id = ?", [
-          id,
-          tenantId
-        ]);
-      }
-      return id;
-    } catch (e) {
-      console.warn("[ghl] ensureConversationProvider failed:", e.message);
-      return null;
-    }
-  })();
-  providerInFlight.set(tenantId, p);
-  try {
-    return await p;
-  } finally {
-    providerInFlight.delete(tenantId);
-  }
-}
-
-// Logs an actual Call activity (direction/status/duration) into the GHL
-// contact's timeline — distinct from addContactNote's free-text note.
-// Best-effort: a failure here never breaks the rest of the call-end sync.
-export async function logCallActivity(tenantId, { contactId, direction, status, durationSec, from, to }) {
-  if (!contactId) return null;
-  try {
-    const conn = await getConnection(tenantId);
-    if (!conn) return null;
-    const providerId = await ensureConversationProvider(tenantId);
-    return await ghlFetch(tenantId, "/conversations/messages", {
-      method: "POST",
-      conn,
-      body: {
-        type: "Call",
-        contactId,
-        direction: String(direction || "").toUpperCase() === "OUTBOUND" ? "outbound" : "inbound",
-        ...(providerId ? { conversationProviderId: providerId } : {}),
-        ...(from ? { from: String(from) } : {}),
-        ...(to ? { to: String(to) } : {}),
-        call: {
-          status: status || "completed",
-          duration: Math.max(0, Math.round(Number(durationSec) || 0))
-        }
-      }
-    });
-  } catch (e) {
-    console.warn("[ghl] logCallActivity failed:", e.message);
-    return null;
-  }
-}
+// NOTE: a real "Call" conversation-message type (GHL's native call-activity
+// entry) needs a Conversation Provider registered for the location, and
+// that registration only accepts an Agency/Company-level token — every
+// scope combination on a Sub-Account OAuth connection (what this
+// integration uses) gets "token is not authorized for this scope" from
+// POST /conversations/providers. So call summaries go through
+// addContactNote() instead (see callTracker.js #syncToGhl) — same
+// practical result (duration + status visible on the contact), no
+// unavailable permission needed.
 
 const OPP_STATUSES = new Set(["open", "won", "lost", "abandoned"]);
 
