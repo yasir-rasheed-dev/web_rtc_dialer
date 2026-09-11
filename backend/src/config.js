@@ -127,7 +127,8 @@ export const config = Object.freeze({
       process.env.GHL_REDIRECT_URI || "https://demoapi.ringnex.co/api/integrations/crm/callback",
     scopes:
       process.env.GHL_SCOPES ||
-      "contacts.readonly contacts.write opportunities.readonly opportunities.write locations.readonly",
+      "contacts.readonly contacts.write opportunities.readonly opportunities.write locations.readonly " +
+        "conversations.readonly conversations.write conversations/message.readonly conversations/message.write",
     apiBase: process.env.GHL_API_BASE || "https://services.leadconnectorhq.com",
     apiVersion: process.env.GHL_API_VERSION || "2021-07-28"
   }
