@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { db } from "./db.js";
-import { createOpportunity, getConnection, isGhlEnabled, syncCallContact } from "./ghl.js";
+import { createOpportunity, getConnection, isGhlEnabled, logCallActivity, syncCallContact } from "./ghl.js";
 
 // Reads just the RIFF/fmt/data chunk headers (not the whole file) to
 // compute a WAV's duration — voicemails have no answered_at/ended_at
@@ -545,6 +545,20 @@ export class CallTracker {
       if (isNew && conn?.createOpportunity && conn.pipelineId && conn.pipelineStageId) {
         await createOpportunity(call.tenantId, { contactId, name });
       }
+
+      // Every call against a synced contact gets a real Call activity on
+      // its GHL timeline (duration + answered/no-answer) — not just a note.
+      const startedAt = call.startedAt ? new Date(call.startedAt).getTime() : null;
+      const endedAt = call.endedAt ? new Date(call.endedAt).getTime() : null;
+      const durationSec = startedAt && endedAt ? Math.max(0, Math.round((endedAt - startedAt) / 1000)) : 0;
+      await logCallActivity(call.tenantId, {
+        contactId,
+        direction: call.direction,
+        status: call.answeredAt ? "completed" : "no-answer",
+        durationSec,
+        from: call.from,
+        to: call.to
+      });
 
       await db.execute(
         "UPDATE tenant_ghl_connections SET last_sync_at = NOW(), last_error = NULL WHERE tenant_id = ?",
