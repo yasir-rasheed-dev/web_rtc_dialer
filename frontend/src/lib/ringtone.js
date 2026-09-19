@@ -66,3 +66,38 @@ export function stopRingtone() {
     ringTimer = null;
   }
 }
+
+// Outbound ringback ("too... too...") — WebRTC only gets the callee's 180
+// Ringing as a bare signal, not audio, and the carrier's own early-media
+// tone doesn't reliably survive the trip back through Asterisk to the
+// browser. So the agent hears this locally-generated tone the instant the
+// call state hits "ringing", regardless of what the far end/carrier sends.
+// Classic NANP cadence: 440Hz + 480Hz together, 2s on / 4s off.
+let ringbackTimer = null;
+let ringbackActive = false;
+
+function playRingbackCadence() {
+  const ctx = getContext();
+  if (!ctx) return;
+  if (ctx.state === "suspended") ctx.resume().catch(() => undefined);
+  const now = ctx.currentTime;
+  beep(ctx, now, 440, 2);
+  beep(ctx, now, 480, 2);
+}
+
+const RINGBACK_CYCLE_MS = 6000;
+
+export function startRingback() {
+  if (ringbackActive) return;
+  ringbackActive = true;
+  playRingbackCadence();
+  ringbackTimer = window.setInterval(playRingbackCadence, RINGBACK_CYCLE_MS);
+}
+
+export function stopRingback() {
+  ringbackActive = false;
+  if (ringbackTimer) {
+    window.clearInterval(ringbackTimer);
+    ringbackTimer = null;
+  }
+}

@@ -45,7 +45,7 @@ import {
   saveHistory,
   saveTabPassword
 } from "../../lib/storage";
-import { startRingtone, stopRingtone } from "../../lib/ringtone";
+import { startRingback, startRingtone, stopRingback, stopRingtone } from "../../lib/ringtone";
 import { closeIncomingCallNotification, ensureNotificationPermission, showIncomingCallNotification } from "../../lib/desktopNotify";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
@@ -213,6 +213,19 @@ const [transferStage, setTransferStage] = useState("idle");
       closeIncomingCallNotification();
     };
   }, [callStatus, currentParty]);
+
+  // Outbound ringback — callStatus only ever reaches "ringing" via
+  // onCallProgress (an outgoing call's far end signalling 18x); incoming
+  // calls go straight to "incoming" above, so there's no overlap with the
+  // ringtone effect.
+  useEffect(() => {
+    if (callStatus !== "ringing") {
+      stopRingback();
+      return undefined;
+    }
+    startRingback();
+    return () => stopRingback();
+  }, [callStatus]);
 
   const appendHistory = useCallback((entry) => {
     setHistory((current) => {
