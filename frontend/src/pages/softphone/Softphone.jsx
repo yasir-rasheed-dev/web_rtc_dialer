@@ -46,6 +46,7 @@ import {
   saveTabPassword
 } from "../../lib/storage";
 import { startRingback, startRingtone, stopRingback, stopRingtone } from "../../lib/ringtone";
+import { friendlyCallError } from "../../lib/sipErrors";
 import { closeIncomingCallNotification, ensureNotificationPermission, showIncomingCallNotification } from "../../lib/desktopNotify";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
@@ -423,7 +424,12 @@ const [transferStage, setTransferStage] = useState("idle");
         onRegistrationRejected: (reason) => {
           window.clearTimeout(registrationTimerRef.current);
           setConnectionStatus("error");
-          setError(`Registration rejected: ${reason}. Check the SIP password.`);
+          const code = Number(String(reason || "").match(/^\d{3}\b/)?.[0]);
+          setError(
+            code === 401 || code === 403
+              ? "Your SIP account couldn't be verified. Check the password or contact your admin."
+              : friendlyCallError(reason, "Your phone line couldn't be registered. Please try again.")
+          );
           clientRef.current?.disconnect().catch(() => undefined);
         },
         onCallTrying: () => setCallStatus("dialing"),
@@ -522,7 +528,7 @@ const [transferStage, setTransferStage] = useState("idle");
           setCallStatus(isHeld ? "held" : "active");
         },
         onCallRejected: (reason) => {
-          setError(`Call failed: ${reason}`);
+          setError(friendlyCallError(reason, "The call couldn't be completed. Please try again."));
           finishCall("failed");
         }
       }
@@ -651,7 +657,7 @@ const [transferStage, setTransferStage] = useState("idle");
       await clientRef.current.call(number);
       return number;
     } catch (callError) {
-      const message = callError?.message || "The call could not be started.";
+      const message = friendlyCallError(callError?.message, "The call could not be started. Please try again.");
       setError(message);
       finishCall("failed");
       throw new Error(message);
